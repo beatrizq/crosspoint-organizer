@@ -16,6 +16,8 @@ CrossPoint is open-source e-reader firmware - community-built, fully hackable, f
 
 - **Various formats**: native handling for `.epub`, `.xtc/.xtch`, `.txt`, and `.bmp`.
 
+- **Todoist**: today's tasks and overdue count on the device, complete them with a button, offline completion queue, and an optional task-list sleep screen ([docs](docs/todoist.md)).
+
 - **Screenshots.**
 
 - **Custom fonts**: install your favorite fonts on the SD card.
