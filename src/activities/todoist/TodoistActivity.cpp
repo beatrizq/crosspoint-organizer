@@ -315,7 +315,13 @@ void TodoistActivity::performSync() {
 }
 
 void TodoistActivity::saveSleepWallpaper() const {
-  if (!TODOIST_STORE.getSleepScreenEnabled()) return;
+  if (!TODOIST_STORE.getSleepScreenEnabled()) {
+    // Logged so a sync that leaves the sleep screen untouched is distinguishable
+    // from one where this was never reached; the rest of the function reports
+    // every other outcome, and silence here looked identical to both.
+    LOG_DBG("TDA", "Sleep screen disabled in settings; wallpaper not updated");
+    return;
+  }
 
   const uint8_t* framebuffer = renderer.getFrameBuffer();
   if (!framebuffer) {
