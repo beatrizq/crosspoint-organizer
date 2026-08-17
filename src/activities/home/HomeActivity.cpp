@@ -183,11 +183,8 @@ void HomeActivity::loop() {
       case HomeMenuItem::RECENTS:
         onRecentsOpen();
         break;
-      case HomeMenuItem::TODOIST:
-        onTodoistOpen();
-        break;
-      case HomeMenuItem::CALENDAR:
-        onCalendarOpen();
+      case HomeMenuItem::ORGANIZER:
+        onOrganizerOpen();
         break;
       case HomeMenuItem::OPDS_BROWSER:
         onOpdsBrowserOpen();
@@ -306,14 +303,14 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_TODOIST),
-                                        tr(STR_CALENDAR),     tr(STR_FILE_TRANSFER),     tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Tasks, Calendar, Transfer, Settings};
+  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_ORGANIZER),
+                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Folder, Recent, Calendar, Transfer, Settings};
 
   if (hasOpdsServers) {
-    // Index 4: after Calendar, matching indexToMenuItem's ordering.
-    menuItems.insert(menuItems.begin() + 4, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 4, Library);
+    // Index 3: after Organizer, matching indexToMenuItem's ordering.
+    menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + 3, Library);
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
@@ -353,9 +350,7 @@ void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
 
-void HomeActivity::onTodoistOpen() { activityManager.goToTodoist(); }
-
-void HomeActivity::onCalendarOpen() { activityManager.goToCalendar(); }
+void HomeActivity::onOrganizerOpen() { activityManager.goToOrganizer(); }
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
