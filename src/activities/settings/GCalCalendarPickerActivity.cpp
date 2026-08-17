@@ -166,9 +166,9 @@ void GCalCalendarPickerActivity::render(RenderLock&&) {
   }
 
   const bool navigable = state == State::LIST && itemCount > 0;
-  const auto labels =
-      mappedInput.mapLabels(tr(STR_BACK), navigable ? tr(STR_SELECT) : (state == State::FAILED ? tr(STR_OK_BUTTON) : ""),
-                            navigable ? tr(STR_DIR_UP) : "", navigable ? tr(STR_DIR_DOWN) : "");
+  const auto labels = mappedInput.mapLabels(
+      tr(STR_BACK), navigable ? tr(STR_SELECT) : (state == State::FAILED ? tr(STR_OK_BUTTON) : ""),
+      navigable ? tr(STR_DIR_UP) : "", navigable ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

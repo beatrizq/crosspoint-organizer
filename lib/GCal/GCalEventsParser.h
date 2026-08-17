@@ -79,10 +79,10 @@ class GCalEventsParser {
 
   Position position;
   LastKey lastKey;
-  uint8_t depth;        // Object/array nesting outside the items array
-  uint8_t eventDepth;   // Nesting inside the current event (1 = the event itself)
-  uint8_t startDepth;   // eventDepth of the event's start object; 0 when outside
-  uint8_t endDepth;     // eventDepth of the event's end object; 0 when outside
+  uint8_t depth;       // Object/array nesting outside the items array
+  uint8_t eventDepth;  // Nesting inside the current event (1 = the event itself)
+  uint8_t startDepth;  // eventDepth of the event's start object; 0 when outside
+  uint8_t endDepth;    // eventDepth of the event's end object; 0 when outside
   size_t eventsSeen;
 
   // RFC3339 with an offset is 25 chars ("2026-08-17T09:30:00+01:00"); an all-day

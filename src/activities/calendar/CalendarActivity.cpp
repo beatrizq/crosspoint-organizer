@@ -297,8 +297,7 @@ void CalendarActivity::render(RenderLock&&) {
     const uint16_t syncDate = GCAL_EVENTS.getSyncDate();
     snprintf(status, sizeof(status), "%s %u %s  ·  %s: %zu", WEEKDAY_NAMES[civil::weekdayFromDate(syncDate) % 7],
              static_cast<unsigned>(civil::dayOfMonthFromDate(syncDate)),
-             MONTH_NAMES[(civil::monthFromDate(syncDate) - 1) % 12], tr(STR_TODAY),
-             GCAL_EVENTS.getTodayCount());
+             MONTH_NAMES[(civil::monthFromDate(syncDate) - 1) % 12], tr(STR_TODAY), GCAL_EVENTS.getTodayCount());
   } else {
     snprintf(status, sizeof(status), "%s", tr(STR_GCAL_NEVER_SYNCED));
   }

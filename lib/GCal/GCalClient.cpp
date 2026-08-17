@@ -40,9 +40,8 @@ std::string urlEncode(const std::string& value) {
   std::string out;
   out.reserve(value.size() + 8);
   for (const unsigned char c : value) {
-    const bool unreserved =
-        (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
-        c == '.' || c == '~';
+    const bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                            c == '_' || c == '.' || c == '~';
     if (unreserved) {
       out.push_back(static_cast<char>(c));
     } else {
@@ -114,8 +113,7 @@ void collectEvent(void* ctx, const char* summary, const char* start, const char*
 
 }  // namespace
 
-GCalClient::Error GCalClient::fetchCalendars(const std::string& accessToken,
-                                             std::vector<CalendarInfo>& outCalendars) {
+GCalClient::Error GCalClient::fetchCalendars(const std::string& accessToken, std::vector<CalendarInfo>& outCalendars) {
   lastHttpCode = 0;
   outCalendars.clear();
   if (accessToken.empty()) return NO_TOKEN;

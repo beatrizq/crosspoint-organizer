@@ -18,13 +18,13 @@ class GCalAuth {
  public:
   enum Error {
     OK = 0,
-    NO_CLIENT,       // Client id/secret not configured yet
-    NETWORK_ERROR,   // Transport failure or non-JSON reply
-    AUTH_PENDING,    // User has not approved yet; keep polling
-    SLOW_DOWN,       // Polling too fast; back off and keep polling
-    ACCESS_DENIED,   // User refused
-    CODE_EXPIRED,    // The user code timed out before approval
-    INVALID_GRANT,   // Refresh token rejected: the account must be re-linked
+    NO_CLIENT,      // Client id/secret not configured yet
+    NETWORK_ERROR,  // Transport failure or non-JSON reply
+    AUTH_PENDING,   // User has not approved yet; keep polling
+    SLOW_DOWN,      // Polling too fast; back off and keep polling
+    ACCESS_DENIED,  // User refused
+    CODE_EXPIRED,   // The user code timed out before approval
+    INVALID_GRANT,  // Refresh token rejected: the account must be re-linked
     PARSE_ERROR,
     LOW_MEMORY,
   };

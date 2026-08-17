@@ -110,16 +110,15 @@ void GCalSettingsActivity::handleSelection() {
   }
 
   if (selectedIndex == ROW_CLIENT_SECRET) {
-    startActivityForResult(
-        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_GCAL_ENTER_CLIENT_SECRET),
-                                                GCAL_STORE.getClientSecret(), GCalStore::MAX_SECRET_LEN,
-                                                InputType::Password),
-        [this](const ActivityResult& result) {
-          if (result.isCancelled) return;
-          GCAL_STORE.setClientSecret(std::get<KeyboardResult>(result.data).text);
-          GCAL_STORE.saveToFile();
-          requestUpdate();
-        });
+    startActivityForResult(std::make_unique<KeyboardEntryActivity>(
+                               renderer, mappedInput, tr(STR_GCAL_ENTER_CLIENT_SECRET), GCAL_STORE.getClientSecret(),
+                               GCalStore::MAX_SECRET_LEN, InputType::Password),
+                           [this](const ActivityResult& result) {
+                             if (result.isCancelled) return;
+                             GCAL_STORE.setClientSecret(std::get<KeyboardResult>(result.data).text);
+                             GCAL_STORE.saveToFile();
+                             requestUpdate();
+                           });
     return;
   }
 

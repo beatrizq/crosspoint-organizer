@@ -48,7 +48,7 @@ class GCalSettingsActivity final : public Activity {
   const char* statusMessage = nullptr;  // Translated; only read in FAILED state
 
   GCalAuth::DeviceCode pairing;
-  unsigned long nextPollMs = 0;     // millis() of the next allowed poll
+  unsigned long nextPollMs = 0;  // millis() of the next allowed poll
   unsigned long pairingDeadlineMs = 0;
   bool wifiActivated = false;
 };

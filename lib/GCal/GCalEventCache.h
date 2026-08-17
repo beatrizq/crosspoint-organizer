@@ -16,8 +16,8 @@
  */
 class GCalEventCache : public PersistableStore<GCalEventCache> {
  private:
-  std::vector<GCalEvent> events;          // Chronological, all-day first per day
-  uint16_t syncDate = civil::NO_DATE;     // The "today" the window was built from
+  std::vector<GCalEvent> events;       // Chronological, all-day first per day
+  uint16_t syncDate = civil::NO_DATE;  // The "today" the window was built from
 
   GCalEventCache() = default;
   ~GCalEventCache() = default;

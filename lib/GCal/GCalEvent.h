@@ -12,10 +12,10 @@
  * ~6 bytes plus the summary per event instead of three heap blocks.
  */
 struct GCalEvent {
-  std::string summary;                     // Event title, truncated at parse time
-  uint16_t date = civil::NO_DATE;          // Start day, days since 2000-01-01
-  uint16_t startMin = civil::NO_TIME;      // Minutes since midnight; NO_TIME = all-day
-  uint16_t endMin = civil::NO_TIME;        // Minutes since midnight; NO_TIME if unknown
+  std::string summary;                 // Event title, truncated at parse time
+  uint16_t date = civil::NO_DATE;      // Start day, days since 2000-01-01
+  uint16_t startMin = civil::NO_TIME;  // Minutes since midnight; NO_TIME = all-day
+  uint16_t endMin = civil::NO_TIME;    // Minutes since midnight; NO_TIME if unknown
 
   // Google returns all-day events with a plain "date" and timed events with a
   // "dateTime", so the absence of a time is what distinguishes them.
