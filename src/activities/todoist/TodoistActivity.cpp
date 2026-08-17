@@ -12,6 +12,8 @@
 #include <time.h>
 
 #include <cstdio>
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "CrossPointSettings.h"
@@ -19,10 +21,9 @@
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
+#include "fontIds.h"
 #include "util/ScreenshotUtil.h"
 #include "util/TaskWatchdog.h"
-
-namespace fui = freeink::ui;
 
 namespace {
 // The sleep screen SleepActivity renders in CUSTOM mode, and the file the
@@ -47,25 +48,21 @@ void formatDisplayDate(const std::string& iso, char* out, const size_t outSize) 
 }  // namespace
 
 TodoistActivity::TodoistActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("Todoist", renderer, mappedInput) {}
+    : Activity("Todoist", renderer, mappedInput) {}
 
 void TodoistActivity::onEnter() {
-  UiListActivity::onEnter();
+  Activity::onEnter();
   TODOIST_TASKS.loadFromFile();
-  rebuildRowItems();
+  selectedIndex = 0;
   if (!TODOIST_STORE.hasToken()) {
     state = State::FAILED;
     statusMessage = tr(STR_TODOIST_NO_TOKEN);
   }
-  // The base onEnter() already asked for a paint before the cache and state
-  // above were in place; ask again so the first frame shows them.
   requestUpdate();
 }
 
 void TodoistActivity::onExit() {
   Activity::onExit();
-  // rowItems' labels alias the cache's task strings; drop the aliases first.
-  rowItems.clear();
 
   // Same teardown as the KOReader sync screen: drop the association, then
   // reboot silently to home so the WiFi/TLS heap fragmentation goes with it.
@@ -78,53 +75,28 @@ void TodoistActivity::onExit() {
   }
 }
 
-int TodoistActivity::listCount() const { return static_cast<int>(rowItems.size()); }
-
-void TodoistActivity::rebuildRowItems() {
-  const auto& tasks = TODOIST_TASKS.getTasks();
-  rowItems.clear();
-  rowItems.reserve(tasks.size());
-  for (const auto& task : tasks) {
-    fui::ListItem item;
-    item.label = task.content.c_str();
-    item.actionValue = static_cast<int16_t>(rowItems.size());
-    rowItems.push_back(item);
-  }
-}
-
-void TodoistActivity::activateIndex(const int index) {
-  // The row action is "complete": the interaction table can deliver an index
-  // captured before a completion shrank the list.
-  if (index < 0 || index >= listCount()) return;
-  app.clearTapFlash();
-  moveSelectionTo(index);
-  completeSelected();
-}
+int TodoistActivity::taskCount() const { return static_cast<int>(TODOIST_TASKS.getTasks().size()); }
 
 void TodoistActivity::completeSelected() {
-  const int selected = nav.selected;
-  if (selected < 0 || selected >= listCount()) return;
+  if (selectedIndex < 0 || selectedIndex >= taskCount()) return;
 
-  LOG_DBG("TDA", "Completing task: %s", TODOIST_TASKS.getTasks()[selected].content.c_str());
+  LOG_DBG("TDA", "Completing task: %s", TODOIST_TASKS.getTasks()[selectedIndex].content.c_str());
   {
-    // The interaction table still indexes the pre-removal rows; stop routing
-    // touches against it until the next render republishes.
-    closeRouting();
+    // The render task reads the task list; hold the lock across the removal so
+    // it never paints a half-updated list.
     RenderLock lock(*this);
     // Queued locally and pushed on the next sync, so completing works with the
     // radio off; the row leaves the list immediately either way.
-    TODOIST_TASKS.completeTaskAt(static_cast<size_t>(selected));
-    rebuildRowItems();
-    if (nav.selected >= listCount()) nav.selected = listCount() - 1;
-    if (nav.selected < 0) nav.selected = 0;
-    nav.follow(listCount());
+    TODOIST_TASKS.completeTaskAt(static_cast<size_t>(selectedIndex));
+    if (selectedIndex >= taskCount()) selectedIndex = taskCount() - 1;
+    if (selectedIndex < 0) selectedIndex = 0;
   }
   TODOIST_TASKS.saveToFile();
   requestUpdate(true);
 }
 
-bool TodoistActivity::handleButtons() {
-  if (state == State::SYNCING) return true;  // ignore input while the sync blocks
+void TodoistActivity::loop() {
+  if (state == State::SYNCING) return;  // ignore input while the sync blocks
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (state == State::FAILED) {
@@ -135,21 +107,62 @@ bool TodoistActivity::handleButtons() {
         statusMessage = nullptr;
       }
       requestUpdate(true);
-    } else if (mappedInput.getHeldTime() >= LONG_PRESS_MS || rowItems.empty()) {
+    } else if (mappedInput.getHeldTime() >= LONG_PRESS_MS || taskCount() == 0) {
       // Hold syncs; with nothing to complete, a plain press syncs too.
       startSync();
     } else {
       completeSelected();
     }
-    return true;
+    return;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     onGoHome();
-    return true;
+    return;
   }
 
-  return false;
+  const int itemCount = taskCount();
+  if (state != State::LIST || itemCount == 0) return;
+
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int contentHeight =
+      renderer.getScreenHeight() - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+
+  switch (handleListTouch(selectedIndex, itemCount, contentTop, contentHeight, false)) {
+    case ListTouchResult::Activated:
+      // The row action is "complete"; handleListTouch already moved the
+      // highlight to the tapped row.
+      completeSelected();
+      return;
+    case ListTouchResult::Consumed:
+      return;
+    case ListTouchResult::None:
+      break;
+  }
+
+  const int pageItems = GUI.getListPageItems(contentHeight, false);
+  const auto swipe = mappedInput.wasSwipe();
+  if (swipe == MappedInputManager::SwipeDir::Up) {
+    selectedIndex = ButtonNavigator::nextPageIndex(selectedIndex, itemCount, pageItems);
+    requestUpdate();
+    return;
+  }
+  if (swipe == MappedInputManager::SwipeDir::Down) {
+    selectedIndex = ButtonNavigator::previousPageIndex(selectedIndex, itemCount, pageItems);
+    requestUpdate();
+    return;
+  }
+
+  buttonNavigator.onNext([this, itemCount] {
+    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, itemCount);
+    requestUpdate();
+  });
+
+  buttonNavigator.onPrevious([this, itemCount] {
+    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, itemCount);
+    requestUpdate();
+  });
 }
 
 void TodoistActivity::startSync() {
@@ -257,12 +270,11 @@ void TodoistActivity::performSync() {
       TODOIST_TASKS.setTasks(std::move(fetched), today);
       state = State::LIST;
       statusMessage = nullptr;
-      nav.reset();
+      selectedIndex = 0;
     } else {
       state = State::FAILED;
       statusMessage = errorText(error);
     }
-    rebuildRowItems();
   }
   // Persists the fetched list and whatever the queue push managed to clear.
   TODOIST_TASKS.saveToFile();
@@ -320,8 +332,12 @@ const char* TodoistActivity::errorText(const TodoistClient::Error error) {
   }
 }
 
-void TodoistActivity::drawChrome() {
+void TodoistActivity::render(RenderLock&&) {
+  renderer.clearScreen();
+
   const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto pageWidth = renderer.getScreenWidth();
+  const auto pageHeight = renderer.getScreenHeight();
 
   // "Today DD-MM-YYYY" as the title, "Overdue: N" as the right-aligned
   // secondary label. Drawn through the theme's header so this screen keeps the
@@ -345,46 +361,27 @@ void TodoistActivity::drawChrome() {
     snprintf(status, sizeof(status), "%s", overdue);
   }
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, title, status);
-}
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title, status);
 
-void TodoistActivity::buildScreen(UiScreen& screen) {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  screen.setContentMargin(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                      static_cast<int16_t>(metrics.buttonHintsHeight), 0});
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+  const int itemCount = taskCount();
 
-  // centeredText() centers in the whole remaining band, so these states are
-  // one message each; the failure message covers the list until dismissed.
+  // One centered message per non-list state; the failure message covers the
+  // list until dismissed.
   if (state == State::SYNCING) {
-    screen.centeredText(tr(STR_TODOIST_SYNCING), screen.theme().bodyText);
-    return;
-  }
-  if (state == State::FAILED) {
-    screen.centeredText(statusMessage, screen.theme().bodyText);
-    return;
-  }
-  if (rowItems.empty()) {
-    screen.centeredText(TODOIST_TASKS.hasSynced() ? tr(STR_TODOIST_NO_TASKS) : tr(STR_TODOIST_NEVER_SYNCED),
-                        screen.theme().bodyText);
-    return;
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_TODOIST_SYNCING));
+  } else if (state == State::FAILED) {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, statusMessage);
+  } else if (itemCount == 0) {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2,
+                              TODOIST_TASKS.hasSynced() ? tr(STR_TODOIST_NO_TASKS) : tr(STR_TODOIST_NEVER_SYNCED));
+  } else {
+    const auto& tasks = TODOIST_TASKS.getTasks();
+    GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, itemCount, selectedIndex,
+                 [&tasks](int index) -> std::string { return tasks[index].content; });
   }
 
-  fui::ListProps props;
-  props.items = rowItems.data();
-  props.count = static_cast<uint16_t>(rowItems.size());
-  props.action = ACTION_ROW;
-  props.inputMask = fui::InputTouch;
-  // Task titles are sentences, not labels: wrap to a second line rather than
-  // truncating, the way the list reads on paper.
-  fui::TextStyle label = screen.theme().bodyText;
-  label.maxLines = 2;
-  props.labelText = label;
-  syncListViewport(screen, props);
-  screen.list(props);
-}
-
-void TodoistActivity::drawFooter() {
   // Select is context-dependent: it completes a task when there is one to
   // complete, dismisses a failure, and otherwise triggers the sync a hold
   // would. Up/Down only make sense over a list.
@@ -393,11 +390,13 @@ void TodoistActivity::drawFooter() {
     confirmLabel = "";
   } else if (state == State::FAILED) {
     confirmLabel = tr(STR_OK_BUTTON);
-  } else if (!rowItems.empty()) {
+  } else if (itemCount > 0) {
     confirmLabel = tr(STR_COMPLETE_TASK);
   }
-  const bool navigable = state == State::LIST && !rowItems.empty();
+  const bool navigable = state == State::LIST && itemCount > 0;
   const auto labels = mappedInput.mapLabels(tr(STR_HOME), confirmLabel, navigable ? tr(STR_DIR_UP) : "",
                                             navigable ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+  renderer.displayBuffer();
 }

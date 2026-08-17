@@ -2,9 +2,9 @@
 #include <TodoistClient.h>
 
 #include <string>
-#include <vector>
 
-#include "activities/UiListActivity.h"
+#include "activities/Activity.h"
+#include "util/ButtonNavigator.h"
 
 /**
  * Today screen: the tasks Todoist reports as due today or overdue, rendered
@@ -13,11 +13,13 @@
  * Select completes the selected task (queued locally, pushed on the next sync);
  * holding Select brings Wi-Fi up, pushes the queue, and re-fetches the list.
  */
-class TodoistActivity final : public UiListActivity {
+class TodoistActivity final : public Activity {
  public:
   explicit TodoistActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
   void onEnter() override;
   void onExit() override;
+  void loop() override;
+  void render(RenderLock&&) override;
 
  private:
   enum class State : uint8_t {
@@ -26,16 +28,8 @@ class TodoistActivity final : public UiListActivity {
     FAILED,   // Last sync failed; statusMessage holds the reason
   };
 
-  int listCount() const override;
-  void buildScreen(UiScreen& screen) override;
-  void activateIndex(int index) override;
-  bool handleButtons() override;
-  void drawChrome() override;
-  void drawFooter() override;
-
-  // Rebuilds rowItems from the cache. Callers must hold a RenderLock: the
-  // render task reads rowItems (and the strings its labels alias).
-  void rebuildRowItems();
+  // Rows come straight from the cache, so the count follows it.
+  int taskCount() const;
 
   void completeSelected();
   void startSync();
@@ -47,11 +41,10 @@ class TodoistActivity final : public UiListActivity {
   void saveSleepWallpaper() const;
   static const char* errorText(TodoistClient::Error error);
 
+  ButtonNavigator buttonNavigator;
+  int selectedIndex = 0;
+
   State state = State::LIST;
   const char* statusMessage = nullptr;  // Translated; only read in FAILED state
   bool wifiActivated = false;
-
-  // Row buffer rebuilt only when the task list changes; labels alias the
-  // cache's task strings, so both are dropped together in onExit().
-  std::vector<freeink::ui::ListItem> rowItems;
 };
