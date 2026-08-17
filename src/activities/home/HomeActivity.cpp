@@ -21,7 +21,7 @@
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 5;  // File Browser, Recents, Todoist, File transfer, Settings
+  int count = BASE_MENU_ITEMS;
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }

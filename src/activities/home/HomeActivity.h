@@ -33,6 +33,14 @@ class HomeActivity final : public Activity {
   std::vector<RecentBook> recentBooks;
   const HomeMenuItem initialMenuItem;
 
+  // Menu entries always present: File Browser, Recents, Todoist, Calendar,
+  // File Transfer, Settings. OPDS is conditional and counted separately.
+  //
+  // Kept next to the two index helpers below because all three encode the same
+  // list and must be changed together: getMenuItemCount() bounds navigation, so
+  // a stale count leaves the last entry drawn but unreachable.
+  static constexpr int BASE_MENU_ITEMS = 6;
+
   // Convert HomeMenuItem to menu index (used in onEnter)
   static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
     int i = 0;
