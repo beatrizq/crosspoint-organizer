@@ -9,6 +9,7 @@
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
+#include "calendar/CalendarActivity.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
@@ -200,6 +201,8 @@ void ActivityManager::goToRecentBooks() {
 }
 
 void ActivityManager::goToTodoist() { replaceActivity(std::make_unique<TodoistActivity>(renderer, mappedInput)); }
+
+void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToBrowser() {
   const auto& servers = OPDS_STORE.getServers();

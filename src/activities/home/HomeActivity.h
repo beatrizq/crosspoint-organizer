@@ -42,6 +42,8 @@ class HomeActivity final : public Activity {
     ++i;
     if (item == HomeMenuItem::TODOIST) return i;
     ++i;
+    if (item == HomeMenuItem::CALENDAR) return i;
+    ++i;
     if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
     if (hasOpdsUrl) ++i;
     if (item == HomeMenuItem::FILE_TRANSFER) return i;
@@ -56,6 +58,7 @@ class HomeActivity final : public Activity {
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
     if (idx == i++) return HomeMenuItem::RECENTS;
     if (idx == i++) return HomeMenuItem::TODOIST;
+    if (idx == i++) return HomeMenuItem::CALENDAR;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
@@ -65,6 +68,7 @@ class HomeActivity final : public Activity {
   void onFileBrowserOpen();
   void onRecentsOpen();
   void onTodoistOpen();
+  void onCalendarOpen();
   void onSettingsOpen();
   void onFileTransferOpen();
   void onOpdsBrowserOpen();

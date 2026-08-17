@@ -186,6 +186,9 @@ void HomeActivity::loop() {
       case HomeMenuItem::TODOIST:
         onTodoistOpen();
         break;
+      case HomeMenuItem::CALENDAR:
+        onCalendarOpen();
+        break;
       case HomeMenuItem::OPDS_BROWSER:
         onOpdsBrowserOpen();
         break;
@@ -304,12 +307,13 @@ void HomeActivity::render(RenderLock&&) {
 
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_TODOIST),
-                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Tasks, Transfer, Settings};
+                                        tr(STR_CALENDAR),     tr(STR_FILE_TRANSFER),     tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Folder, Recent, Tasks, Calendar, Transfer, Settings};
 
   if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 3, Library);
+    // Index 4: after Calendar, matching indexToMenuItem's ordering.
+    menuItems.insert(menuItems.begin() + 4, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + 4, Library);
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
@@ -350,6 +354,8 @@ void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
 
 void HomeActivity::onTodoistOpen() { activityManager.goToTodoist(); }
+
+void HomeActivity::onCalendarOpen() { activityManager.goToCalendar(); }
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
