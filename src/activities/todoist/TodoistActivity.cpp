@@ -45,6 +45,11 @@ void formatDisplayDate(const std::string& iso, char* out, const size_t outSize) 
   }
   snprintf(out, outSize, "%.2s-%.2s-%.4s", iso.c_str() + 8, iso.c_str() + 5, iso.c_str());
 }
+
+// Later of two "YYYY-MM-DD" dates. Today only ever moves forward, so picking the
+// newest of the available sources is what keeps a partial one from regressing.
+// ISO dates order correctly as plain strings, and "" loses to any real date.
+const std::string& laterDate(const std::string& a, const std::string& b) { return b > a ? b : a; }
 }  // namespace
 
 TodoistActivity::TodoistActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -205,16 +210,21 @@ void TodoistActivity::startSync() {
 }
 
 bool TodoistActivity::resolveTodayDate(std::string& outDate) const {
-  // Most boards (X3/X4 included) have no RTC, so the date the header shows and
-  // the date overdue flagging compares against both come from this sync.
+  // Most boards (X3/X4 included) have no RTC. This is the fallback source for
+  // today: the fetch derives it from the response's newest due date, which is
+  // both more reliable (it cannot fail when the fetch succeeded) and correct for
+  // the account's timezone rather than this device's configured offset. NTP is
+  // still needed for the cases the response cannot cover - an empty list, or one
+  // containing nothing due today.
+  outDate.clear();
   configTzTime("UTC0", "pool.ntp.org", "time.nist.gov");
   for (int i = 0; i < NTP_POLL_ATTEMPTS && sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED; i++) {
     delay(100);
     resetTaskWatchdogIfSubscribed();
   }
   if (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
-    LOG_ERR("TDA", "NTP sync timed out; reusing last known date");
-    outDate = TODOIST_TASKS.getSyncDate();
+    // Not an error on its own; the response usually supplies the date instead.
+    LOG_DBG("TDA", "NTP sync timed out; relying on the response date");
     return false;
   }
 
@@ -235,8 +245,10 @@ bool TodoistActivity::resolveTodayDate(std::string& outDate) const {
 }
 
 void TodoistActivity::performSync() {
-  std::string today;
-  resolveTodayDate(today);
+  // Fallback source, tried first only because it needs the radio while it is
+  // still up. The response date below wins when both are available.
+  std::string ntpDate;
+  if (!resolveTodayDate(ntpDate)) ntpDate.clear();
 
   // Push queued completions before fetching, so the fetched list already
   // reflects them. A copy: clearPending() mutates the queue as we go.
@@ -254,10 +266,23 @@ void TodoistActivity::performSync() {
   }
 
   std::vector<TodoistTask> fetched;
+  std::string derivedDate;
   if (error == TodoistClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::fetchTodayTasks(today, fetched);
+    error = TodoistClient::fetchTodayTasks(fetched, derivedDate);
     resetTaskWatchdogIfSubscribed();
+  }
+
+  // Today is the newest of every source we have. The response date is exact
+  // whenever something is due today, but reads early for an all-overdue list, so
+  // NTP and the previous sync guard against the date going backwards.
+  std::string today = laterDate(derivedDate, ntpDate);
+  today = laterDate(today, TODOIST_TASKS.getSyncDate());
+  if (today.empty()) {
+    LOG_ERR("TDA", "Today unresolved: no dated tasks, no NTP, no previous sync");
+  } else {
+    LOG_DBG("TDA", "Today resolved as %s (response '%s', ntp '%s')", today.c_str(), derivedDate.c_str(),
+            ntpDate.c_str());
   }
 
   // Drop the radio before touching the SD card and repainting; the full
@@ -290,7 +315,13 @@ void TodoistActivity::performSync() {
 }
 
 void TodoistActivity::saveSleepWallpaper() const {
-  if (!TODOIST_STORE.getSleepScreenEnabled()) return;
+  if (!TODOIST_STORE.getSleepScreenEnabled()) {
+    // Logged so a sync that leaves the sleep screen untouched is distinguishable
+    // from one where this was never reached; the rest of the function reports
+    // every other outcome, and silence here looked identical to both.
+    LOG_DBG("TDA", "Sleep screen disabled in settings; wallpaper not updated");
+    return;
+  }
 
   const uint8_t* framebuffer = renderer.getFrameBuffer();
   if (!framebuffer) {

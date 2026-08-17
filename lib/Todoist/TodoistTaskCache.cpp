@@ -11,7 +11,11 @@ void TodoistTaskCache::toJson(JsonDocument& doc) const {
     JsonObject obj = arr.add<JsonObject>();
     obj["id"] = task.id;
     obj["content"] = task.content;
-    obj["overdue"] = task.overdue;
+    // Stored as ISO so the file stays readable; overdue is derived on load and
+    // deliberately not written, so the two can never disagree.
+    char iso[11];
+    todoist::isoFromDueDays(task.dueDays, iso, sizeof(iso));
+    if (iso[0] != '\0') obj["due"] = iso;
   }
   JsonArray pending = doc["pending"].to<JsonArray>();
   for (const auto& id : pendingIds) {
@@ -31,10 +35,14 @@ bool TodoistTaskCache::fromJson(JsonVariantConst doc) {
     TodoistTask task;
     task.id = obj["id"] | "";
     task.content = obj["content"] | "";
-    task.overdue = obj["overdue"] | false;
+    task.dueDays = todoist::dueDaysFromIso(obj["due"] | "");
     if (task.id.empty()) continue;
     tasks.push_back(std::move(task));
   }
+  // Flags come from syncDate, not the file. A cache written by the pre-"due"
+  // build has no dates, so every task reads as undated until the next sync -
+  // the list still renders, it just shows no overdue marks.
+  applyOverdueFlags();
 
   JsonArrayConst pending = doc["pending"].as<JsonArrayConst>();
   pendingIds.reserve(std::min(pending.size(), MAX_PENDING));
@@ -56,11 +64,24 @@ size_t TodoistTaskCache::getOverdueCount() const {
 void TodoistTaskCache::setTasks(std::vector<TodoistTask>&& fetched, const std::string& date) {
   tasks = std::move(fetched);
   if (tasks.size() > MAX_TASKS) tasks.resize(MAX_TASKS);
-  // Overdue first; stable so the server's ordering survives within each group.
-  std::stable_partition(tasks.begin(), tasks.end(), [](const TodoistTask& t) { return t.overdue; });
-  // An empty date means the clock could not be resolved this sync; the header
+  // Ascending by due date: oldest overdue first, today's tasks last, undated
+  // after those (DUE_NONE is the maximum). Stable, so the server's ordering
+  // survives within a date.
+  std::stable_sort(tasks.begin(), tasks.end(),
+                   [](const TodoistTask& a, const TodoistTask& b) { return a.dueDays < b.dueDays; });
+  // An empty date means today could not be established this sync; the header
   // keeps showing the last date it did know rather than falling back to "--".
   if (!date.empty()) syncDate = date;
+  applyOverdueFlags();
+}
+
+void TodoistTaskCache::applyOverdueFlags() {
+  const uint16_t threshold = todoist::dueDaysFromIso(syncDate.c_str());
+  for (auto& task : tasks) {
+    // Undated tasks are never overdue, and nothing is flagged until today is
+    // known - guessing would report a wrong count, which is worse than zero.
+    task.overdue = threshold != todoist::DUE_NONE && task.dueDays != todoist::DUE_NONE && task.dueDays < threshold;
+  }
 }
 
 void TodoistTaskCache::completeTaskAt(const size_t index) {

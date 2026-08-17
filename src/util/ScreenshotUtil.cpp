@@ -110,12 +110,17 @@ bool ScreenshotUtil::saveFramebufferAsBmp(const char* filename, const uint8_t* f
   int phyWidth = height;
   int phyHeight = width;
 
+  // last_slash > 0 excludes a file directly on the SD root ("/sleep.bmp"), where
+  // the leading slash is the only one: substr(0, 0) would yield an empty dir and
+  // mkdir("") fails, bailing out before the file is ever opened. The root always
+  // exists, so there is nothing to create.
   std::string path(filename);
   size_t last_slash = path.find_last_of('/');
-  if (last_slash != std::string::npos) {
+  if (last_slash != std::string::npos && last_slash > 0) {
     std::string dir = path.substr(0, last_slash);
     if (!Storage.exists(dir.c_str())) {
       if (!Storage.mkdir(dir.c_str())) {
+        LOG_ERR("SCR", "Failed to create directory %s", dir.c_str());
         return false;
       }
     }

@@ -3,7 +3,6 @@
 #include <Logging.h>
 #include <SecureHttpClient.h>
 
-#include <cstring>
 #include <utility>
 
 #include "TodoistStore.h"
@@ -50,10 +49,10 @@ TodoistClient::Error errorForStatus(const int httpCode) {
 }
 
 // Sink context for TodoistTasksParser: appends parsed tasks until the cache cap
-// is reached, flagging anything due before today as overdue.
+// is reached, packing each due date and tracking the newest one seen.
 struct TaskCollector {
   std::vector<TodoistTask>* out;
-  const char* todayIso;  // "" when the date is unknown; nothing is flagged then
+  uint16_t newestDue = todoist::DUE_NONE;  // DUE_NONE until a dated task arrives
 };
 
 void collectTask(void* ctx, const char* id, const char* content, const char* dueDate) {
@@ -63,14 +62,20 @@ void collectTask(void* ctx, const char* id, const char* content, const char* due
   TodoistTask task;
   task.id = id;
   task.content = content;
-  // ISO dates compare correctly as plain strings, so no date parsing is needed.
-  task.overdue = collector->todayIso[0] != '\0' && dueDate[0] != '\0' && strcmp(dueDate, collector->todayIso) < 0;
+  task.dueDays = todoist::dueDaysFromIso(dueDate);
+  // Overdue is decided by the cache: it needs today, which is only known once
+  // the whole response has been seen.
+  if (task.dueDays != todoist::DUE_NONE &&
+      (collector->newestDue == todoist::DUE_NONE || task.dueDays > collector->newestDue)) {
+    collector->newestDue = task.dueDays;
+  }
   collector->out->push_back(std::move(task));
 }
 }  // namespace
 
-TodoistClient::Error TodoistClient::fetchTodayTasks(const std::string& todayIso, std::vector<TodoistTask>& outTasks) {
+TodoistClient::Error TodoistClient::fetchTodayTasks(std::vector<TodoistTask>& outTasks, std::string& outDerivedDate) {
   lastHttpCode = 0;
+  outDerivedDate.clear();
   if (!TODOIST_STORE.hasToken()) {
     LOG_DBG("TDA", "No API token configured");
     return NO_TOKEN;
@@ -79,7 +84,7 @@ TodoistClient::Error TodoistClient::fetchTodayTasks(const std::string& todayIso,
 
   outTasks.clear();
   outTasks.reserve(TODOIST_MAX_TASKS);
-  TaskCollector collector{&outTasks, todayIso.c_str()};
+  TaskCollector collector{&outTasks};
   TodoistTasksParser parser(collectTask, &collector);
 
   freeink::SecureHttpClient http;
@@ -109,6 +114,17 @@ TodoistClient::Error TodoistClient::fetchTodayTasks(const std::string& todayIso,
     LOG_ERR("TDA", "Malformed task JSON");
     outTasks.clear();
     return PARSE_ERROR;
+  }
+
+  // The filter caps the response at today, so its newest due date is today
+  // whenever anything is due today. Stack buffer, no allocation.
+  if (collector.newestDue != todoist::DUE_NONE) {
+    char iso[11];
+    todoist::isoFromDueDays(collector.newestDue, iso, sizeof(iso));
+    outDerivedDate = iso;
+    LOG_DBG("TDA", "Newest due date in response: %s", iso);
+  } else {
+    LOG_DBG("TDA", "No dated tasks in response; today not derivable");
   }
   return OK;
 }
