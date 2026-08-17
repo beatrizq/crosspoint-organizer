@@ -52,15 +52,15 @@ TEST(TodoistDate, AcceptsDatetimeByReadingOnlyTheDate) {
 TEST(TodoistDate, RejectsMalformedInput) {
   EXPECT_EQ(DUE_NONE, dueDaysFromIso(""));
   EXPECT_EQ(DUE_NONE, dueDaysFromIso(nullptr));
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-08"));        // truncated
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026/08/17"));     // wrong separators
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("20260817"));       // no separators
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("20x6-08-17"));     // non-digit
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-13-01"));     // month out of range
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-00-01"));     // month zero
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-08-32"));     // day out of range
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-08-00"));     // day zero
-  EXPECT_EQ(DUE_NONE, dueDaysFromIso("1999-12-31"));     // before the epoch
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-08"));     // truncated
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026/08/17"));  // wrong separators
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("20260817"));    // no separators
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("20x6-08-17"));  // non-digit
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-13-01"));  // month out of range
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-00-01"));  // month zero
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-08-32"));  // day out of range
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("2026-08-00"));  // day zero
+  EXPECT_EQ(DUE_NONE, dueDaysFromIso("1999-12-31"));  // before the epoch
 }
 
 TEST(TodoistDate, UndatedRendersEmpty) { EXPECT_EQ("", iso(DUE_NONE)); }
