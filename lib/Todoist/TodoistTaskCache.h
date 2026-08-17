@@ -40,8 +40,16 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   const std::string& getSyncDate() const { return syncDate; }
   bool hasSynced() const { return !syncDate.empty(); }
 
-  // Replace the list after a successful fetch. Overdue tasks are sorted first,
-  // preserving the server's order within each group.
+  // Replace the list after a successful fetch.
+  //
+  // Sorted by due date ascending, so the oldest overdue task leads and tasks
+  // due today trail; undated tasks (DUE_NONE) sort last. Stable, so the
+  // server's ordering survives within a single date.
+  //
+  // `date` is today as "YYYY-MM-DD" and sets the overdue threshold: anything
+  // due strictly before it is flagged. An empty date leaves the stored date
+  // untouched and clears no flags, so a sync that could not establish today
+  // keeps showing the last date it did know.
   void setTasks(std::vector<TodoistTask>&& fetched, const std::string& date);
 
   // Drop the task locally and remember to close it on the server. No-op for an
@@ -52,6 +60,11 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   bool hasPending() const { return !pendingIds.empty(); }
   // Called once the server accepted (or already knew about) the completion.
   void clearPending(const std::string& id);
+
+ private:
+  // Recomputes every task's overdue flag against syncDate. The flag is derived
+  // state, so it is set here rather than stored by the parser or the file.
+  void applyOverdueFlags();
 };
 
 #define TODOIST_TASKS TodoistTaskCache::getInstance()

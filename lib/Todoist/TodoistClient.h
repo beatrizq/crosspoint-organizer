@@ -32,12 +32,21 @@ class TodoistClient {
 
   /**
    * Fetch the tasks due today plus everything overdue, in one filter query.
-   * @param todayIso Local date as "YYYY-MM-DD", used to flag overdue tasks.
-   *                 When empty (the clock could not be resolved), nothing is
-   *                 flagged overdue rather than guessing.
-   * @param outTasks Output: parsed tasks, capped at TODOIST_MAX_TASKS.
+   *
+   * @param outTasks Output: parsed tasks, capped at TODOIST_MAX_TASKS. Each
+   *                 carries its due date packed as TodoistTask::dueDays; the
+   *                 overdue flag is left for the cache to set once the caller
+   *                 has settled on today's date.
+   * @param outDerivedDate Output: the newest due date in the response, as
+   *                 "YYYY-MM-DD", or empty when no task carried a due date.
+   *                 Because the filter is "today | overdue" the server can only
+   *                 return dates up to and including today, so this *is* today
+   *                 whenever at least one task is due today - and it is today in
+   *                 the account's timezone, which is the one the filter used.
+   *                 It reads earlier than today for an all-overdue response, so
+   *                 the caller must not let the stored date move backwards.
    */
-  static Error fetchTodayTasks(const std::string& todayIso, std::vector<TodoistTask>& outTasks);
+  static Error fetchTodayTasks(std::vector<TodoistTask>& outTasks, std::string& outDerivedDate);
 
   /**
    * Complete a task. A 404 is reported as OK: the task is already gone from the
