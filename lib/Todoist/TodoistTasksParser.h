@@ -1,0 +1,81 @@
+#pragma once
+
+#include <StreamingJsonParser.h>
+
+#include <cstddef>
+#include <cstdint>
+
+/**
+ * SAX-style extractor for the Todoist "get tasks by filter" response:
+ *
+ *   {"results":[{"id":"...","content":"...","due":{"date":"2026-08-17",...},...}],"next_cursor":null}
+ *
+ * Only id, content and due.date are kept; every other field (project, labels,
+ * priority, description, duration) is walked past without being stored. The
+ * body is fed in as it arrives off the socket, so a 200-task response never
+ * exists in RAM as a whole — only the ~200 bytes of the task being assembled.
+ */
+class TodoistTasksParser {
+ public:
+  // Invoked once per task object, as soon as it closes. dueDate is "" when the
+  // task has no due object (possible for tasks pulled in by a filter's
+  // secondary clauses).
+  using TaskSink = void (*)(void* ctx, const char* id, const char* content, const char* dueDate);
+
+  TodoistTasksParser(TaskSink sink, void* sinkCtx);
+
+  TodoistTasksParser(const TodoistTasksParser&) = delete;
+  TodoistTasksParser& operator=(const TodoistTasksParser&) = delete;
+
+  void reset();
+  void feed(const char* data, size_t len);
+
+  // Tasks seen in the response, including any the sink chose to drop.
+  size_t taskCount() const { return tasksSeen; }
+  bool hasError() const { return parser.hasError(); }
+
+ private:
+  enum class Position : uint8_t {
+    TOP_LEVEL,
+    IN_RESULTS_ARRAY,
+    IN_TASK_OBJECT,
+  };
+
+  enum class LastKey : uint8_t {
+    NONE,
+    RESULTS,
+    TASK_ID,
+    TASK_CONTENT,
+    TASK_DUE,
+    DUE_DATE,
+  };
+
+  static void sOnKey(void* ctx, const char* key, size_t len);
+  static void sOnString(void* ctx, const char* value, size_t len);
+  static void sOnNumber(void* ctx, const char* value, size_t len);
+  static void sOnBool(void* ctx, bool value);
+  static void sOnNull(void* ctx);
+  static void sOnObjectStart(void* ctx);
+  static void sOnObjectEnd(void* ctx);
+  static void sOnArrayStart(void* ctx);
+  static void sOnArrayEnd(void* ctx);
+
+  void commitTask();
+
+  StreamingJsonParser parser;
+  TaskSink sink;
+  void* sinkCtx;
+
+  Position position;
+  LastKey lastKey;
+  uint8_t depth;      // Object/array nesting outside the results array
+  uint8_t taskDepth;  // Nesting inside the current task object (1 = task itself)
+  uint8_t dueDepth;   // taskDepth of the task's due object; 0 when not inside it
+  size_t tasksSeen;
+
+  // Ids are 19-digit numerics or 16-char alphanumerics today; dates are
+  // "YYYY-MM-DD" (a datetime is truncated to its date half on copy).
+  char currentId[32];
+  char currentContent[121];
+  char currentDue[11];
+};
