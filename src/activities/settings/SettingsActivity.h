@@ -19,6 +19,7 @@ enum class SettingAction {
   KOReaderSync,
   Todoist,
   GoogleCalendar,
+  Ynab,
   OPDSBrowser,
   Network,
   ClearCache,

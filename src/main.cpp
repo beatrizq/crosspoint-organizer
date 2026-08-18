@@ -28,6 +28,7 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "TodoistStore.h"
+#include "YnabStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
@@ -316,6 +317,7 @@ void setup() {
   OPDS_STORE.loadFromFile();
   TODOIST_STORE.loadFromFile();
   GCAL_STORE.loadFromFile();
+  YNAB_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
