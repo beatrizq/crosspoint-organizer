@@ -187,6 +187,20 @@ int OrganizerActivity::listRowHeight() const {
   return titleH + subH + rowPadding();
 }
 
+void OrganizerActivity::startSyncForCurrentTab() {
+  switch (tab) {
+    case Tab::TASKS:
+      startTaskSync();
+      return;
+    case Tab::CALENDAR:
+      startCalendarSync();
+      return;
+    case Tab::BUDGET:
+      startBudgetSync();
+      return;
+  }
+}
+
 void OrganizerActivity::switchTab(const Tab next) {
   if (tab == next) return;
   tab = next;
@@ -686,7 +700,16 @@ void OrganizerActivity::loop() {
       return;
     }
     if (selectedIndex == 0) {
-      // Tabs focused: Select cycles them, matching the settings screen.
+      // Tabs focused: a press cycles them, a hold syncs the tab being shown.
+      //
+      // The hold is the only way in to a tab that has never synced. An empty
+      // list has no rows, so the tab bar is the only navigable index, and the
+      // row gestures below - the ones that used to own syncing - cannot be
+      // reached at all until something is already on screen.
+      if (mappedInput.getHeldTime() >= LONG_PRESS_MS) {
+        startSyncForCurrentTab();
+        return;
+      }
       {
         RenderLock lock(*this);
         switchTab(nextTab());
@@ -694,14 +717,10 @@ void OrganizerActivity::loop() {
       requestUpdate(true);
       return;
     }
-    if (tab == Tab::CALENDAR) {
-      // Events are read-only here, so a row press has nothing to act on.
-      startCalendarSync();
-      return;
-    }
-    if (tab == Tab::BUDGET) {
-      // Balances are read-only too; the device does not spend money.
-      startBudgetSync();
+    if (tab != Tab::TASKS) {
+      // Events and balances are read-only, so a row press has nothing to act
+      // on; it syncs instead.
+      startSyncForCurrentTab();
       return;
     }
     if (mappedInput.getHeldTime() >= LONG_PRESS_MS || rowCount() == 0) {
@@ -853,6 +872,12 @@ void OrganizerActivity::render(RenderLock&&) {
       empty = YNAB_STORE.getSelectedCategories().empty() ? tr(STR_YNAB_NO_CATEGORIES) : tr(STR_YNAB_NEVER_SYNCED);
     }
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, empty);
+    // An empty list has no rows, so the tab bar is the only thing that can be
+    // focused and the hold is the only gesture that reaches a sync. Spelling it
+    // out here is the only place it can be discovered: the Select hint is
+    // already spoken for by the tab it switches to.
+    renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2,
+                              tr(STR_ORGANIZER_HOLD_TO_SYNC));
   } else {
     // Drawn here rather than through GUI.drawList so the row font follows
     // SETTINGS.organizerFontSize; the theme's list draws at a fixed size.

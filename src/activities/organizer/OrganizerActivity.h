@@ -52,6 +52,8 @@ class OrganizerActivity final : public Activity {
   void switchTab(Tab next);
   // The tab Select moves to when the tab bar is focused; wraps at the end.
   Tab nextTab() const { return static_cast<Tab>((static_cast<uint8_t>(tab) + 1) % TAB_COUNT); }
+  // Syncs whichever tab is being shown.
+  void startSyncForCurrentTab();
   // selectedIndex 0 is the tab bar, so a row is selectedIndex - 1.
   int selectedRow() const { return selectedIndex - 1; }
 

@@ -26,12 +26,16 @@ the next boot and the token is re-saved obfuscated. The budget ID is not a secre
 
 ## Using the screen
 
-| Button             | Action                                          |
-| ------------------ | ----------------------------------------------- |
-| **Select** (press) | Sync: re-fetch the balances (on a category row) |
-| **Select**         | Switch tab (when the tab bar is highlighted)    |
-| **Up / Down**      | Move the selection                              |
-| **Back**           | Home                                            |
+| Button                 | Action                                                        |
+| ---------------------- | ------------------------------------------------------------- |
+| **Select** (press)     | Switch tab, when the tab bar is highlighted                   |
+| **Select** (hold ~1 s) | Sync the tab being shown, from the tab bar                    |
+| **Select** (press)     | Sync, when a category row is highlighted                      |
+| **Up / Down**          | Move the selection                                            |
+| **Back**               | Home                                                          |
+
+The hold is how you sync a tab that has nothing on it yet: an empty list has no rows to highlight, so the tab bar is
+the only thing the selection can reach. The same gesture syncs the Tasks and Calendar tabs from their tab bar.
 
 The header shows the month the balances belong to and how many categories are listed. Each row is the category name
 with its available balance flush right; a long name is truncated so the number always stays whole.
