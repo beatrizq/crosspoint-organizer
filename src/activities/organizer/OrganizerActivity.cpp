@@ -717,15 +717,9 @@ void OrganizerActivity::loop() {
       requestUpdate(true);
       return;
     }
-    if (tab == Tab::CALENDAR) {
-      // Events are read-only, and syncing now lives on the tab bar, so a row
-      // press has nothing left to do.
-      return;
-    }
-    if (tab == Tab::BUDGET) {
-      // Balances are read-only too, so a row press has nothing to act on; it
-      // syncs instead.
-      startBudgetSync();
+    if (tab != Tab::TASKS) {
+      // Events and balances are read-only, and syncing is a hold on the tab
+      // bar, so a row press has nothing left to do.
       return;
     }
     if (mappedInput.getHeldTime() >= LONG_PRESS_MS || rowCount() == 0) {
@@ -958,9 +952,9 @@ void OrganizerActivity::render(RenderLock&&) {
     }
   }
 
-  // Select is context-dependent: it cycles tabs when they are focused (and
-  // holding there syncs), completes a task on the Tasks tab, syncs on a Budget
-  // row, and does nothing on a Calendar row.
+  // Select is context-dependent: it cycles tabs when they are focused, and
+  // completes a task on a Tasks row. Every sync is a hold - on the tab bar for
+  // any tab, or on a task row.
   const char* confirmLabel;
   if (state == State::SYNCING) {
     confirmLabel = "";
@@ -972,11 +966,9 @@ void OrganizerActivity::render(RenderLock&&) {
     confirmLabel = tabLabel(nextTab());
   } else if (tab == Tab::TASKS && itemCount > 0) {
     confirmLabel = tr(STR_COMPLETE_TASK);
-  } else if (tab == Tab::BUDGET) {
-    confirmLabel = tr(STR_SYNC_NOW);
   } else {
-    // Nothing to act on: an event row is read-only and syncing is a hold on the
-    // tab bar, so the button is left unlabelled rather than promising an action.
+    // Nothing to act on: event and balance rows are read-only, and syncing is a
+    // hold, so the button is left unlabelled rather than promising an action.
     confirmLabel = "";
   }
   const bool navigable = state == State::LIST;
