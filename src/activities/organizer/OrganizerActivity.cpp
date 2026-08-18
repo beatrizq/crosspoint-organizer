@@ -11,8 +11,9 @@
 #include <TodoistStore.h>
 #include <TodoistTaskCache.h>
 #include <WiFi.h>
+#include <YnabCategoryCache.h>
+#include <YnabStore.h>
 #include <esp_sntp.h>
-#include <esp_wifi.h>
 #include <time.h>
 
 #include <algorithm>
@@ -71,6 +72,49 @@ void formatDayLabel(const uint16_t date, char* out, const size_t outSize) {
            static_cast<unsigned>(civil::dayOfMonthFromDate(date)), MONTH_NAMES[(month - 1) % 12]);
 }
 
+// "Aug 2026", or "--" when the month is unknown. The Budget tab's amounts are
+// month-scoped, so the month is what dates that list the way a day dates the
+// other two.
+void formatMonthLabel(const uint16_t date, char* out, const size_t outSize) {
+  if (out == nullptr || outSize == 0) return;
+  const uint8_t month = civil::monthFromDate(date);
+  if (date == civil::NO_DATE || month == 0) {
+    snprintf(out, outSize, "--");
+    return;
+  }
+  // The year is taken off the ISO form rather than unpacked separately; the
+  // civil helpers expose the month and day but not the year on its own.
+  char iso[11];
+  civil::isoFromDate(date, iso, sizeof(iso));
+  snprintf(out, outSize, "%s %.4s", MONTH_NAMES[(month - 1) % 12], iso);
+}
+
+// The tab bar's own labels. Also the Select hint when the tabs are focused,
+// where the button is labelled with the tab it moves to rather than with what
+// it is.
+const char* tabLabel(const OrganizerActivity::Tab which) {
+  switch (which) {
+    case OrganizerActivity::Tab::TASKS:
+      return tr(STR_ORGANIZER_TAB_TASKS);
+    case OrganizerActivity::Tab::CALENDAR:
+      return tr(STR_ORGANIZER_TAB_CALENDAR);
+    case OrganizerActivity::Tab::BUDGET:
+      return tr(STR_ORGANIZER_TAB_BUDGET);
+  }
+  return "";
+}
+
+// The tab bar, in enum order - so a tap that reports index i selects Tab(i).
+std::vector<TabInfo> buildTabs(const OrganizerActivity::Tab current) {
+  std::vector<TabInfo> tabs;
+  tabs.reserve(OrganizerActivity::TAB_COUNT);
+  for (int i = 0; i < OrganizerActivity::TAB_COUNT; i++) {
+    const auto which = static_cast<OrganizerActivity::Tab>(i);
+    tabs.push_back(TabInfo{tabLabel(which), which == current});
+  }
+  return tabs;
+}
+
 // Later of two "YYYY-MM-DD" dates. Today only ever moves forward, so picking the
 // newest of the available sources is what keeps a partial one from regressing.
 // ISO dates order correctly as plain strings, and "" loses to any real date.
@@ -84,6 +128,7 @@ void OrganizerActivity::onEnter() {
   Activity::onEnter();
   TODOIST_TASKS.loadFromFile();
   GCAL_EVENTS.loadFromFile();
+  YNAB_CATEGORIES.loadFromFile();
   selectedIndex = 0;
   requestUpdate();
 }
@@ -94,8 +139,9 @@ void OrganizerActivity::onExit() {
   // Same teardown as the KOReader sync screen: drop the association, then
   // reboot silently to home so the WiFi/TLS heap fragmentation goes with it.
   // The mode check keeps a cancelled Wi-Fi picker (radio never brought up)
-  // from costing a reboot.
-  if (wifiActivated && WiFi.getMode() != WIFI_MODE_NULL) {
+  // from costing a reboot; a sync that already took the radio down reports
+  // WIFI_MODE_NULL by then, so it says so itself.
+  if (wifiActivated && (radioTornDown || WiFi.getMode() != WIFI_MODE_NULL)) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
@@ -105,8 +151,15 @@ void OrganizerActivity::onExit() {
 // -- shared -----------------------------------------------------------------
 
 int OrganizerActivity::rowCount() const {
-  return tab == Tab::TASKS ? static_cast<int>(TODOIST_TASKS.getTasks().size())
-                           : static_cast<int>(GCAL_EVENTS.getEvents().size());
+  switch (tab) {
+    case Tab::TASKS:
+      return static_cast<int>(TODOIST_TASKS.getTasks().size());
+    case Tab::CALENDAR:
+      return static_cast<int>(GCAL_EVENTS.getEvents().size());
+    case Tab::BUDGET:
+      return static_cast<int>(YNAB_CATEGORIES.getCategories().size());
+  }
+  return 0;
 }
 
 int OrganizerActivity::titleFontId() const {
@@ -132,6 +185,33 @@ int OrganizerActivity::listRowHeight() const {
   const int titleH = renderer.getLineHeight(titleFontId());
   const int subH = tab == Tab::CALENDAR ? renderer.getLineHeight(subtitleFontId()) : 0;
   return titleH + subH + rowPadding();
+}
+
+void OrganizerActivity::tearDownRadio() {
+  // Through WiFi.mode(WIFI_OFF) rather than by stopping the driver directly.
+  // A bare stop leaves the Arduino layer believing the radio is still running:
+  // the flag it gates esp_wifi_start() on stays set, and WiFi.mode() then sees
+  // the mode it was asked for and returns early. The next sync in the same
+  // session scans and connects against a stopped driver - the saved network
+  // fails, no networks are found - and only a reboot clears it. Going through
+  // WiFi.mode() stops and deinitialises the driver, which hands back more heap
+  // than a bare stop, and lets the next sync bring it up from scratch.
+  WiFi.mode(WIFI_OFF);
+  radioTornDown = true;
+}
+
+void OrganizerActivity::startSyncForCurrentTab() {
+  switch (tab) {
+    case Tab::TASKS:
+      startTaskSync();
+      return;
+    case Tab::CALENDAR:
+      startCalendarSync();
+      return;
+    case Tab::BUDGET:
+      startBudgetSync();
+      return;
+  }
 }
 
 void OrganizerActivity::switchTab(const Tab next) {
@@ -278,7 +358,7 @@ void OrganizerActivity::performTaskSync() {
 
   // Drop the radio before touching the SD card and repainting; the full
   // teardown happens on the silent reboot in onExit().
-  esp_wifi_stop();
+  tearDownRadio();
 
   {
     RenderLock lock(*this);
@@ -440,7 +520,9 @@ void OrganizerActivity::performCalendarSync() {
     }
   }
 
-  esp_wifi_stop();
+  // Drop the radio before touching the SD card and repainting; the full
+  // teardown happens on the silent reboot in onExit().
+  tearDownRadio();
 
   {
     RenderLock lock(*this);
@@ -506,6 +588,111 @@ const char* OrganizerActivity::calendarErrorText(const GCalClient::Error error) 
   }
 }
 
+// -- budget tab -------------------------------------------------------------
+
+void OrganizerActivity::startBudgetSync() {
+  if (!YNAB_STORE.isConfigured()) {
+    {
+      RenderLock lock(*this);
+      state = State::FAILED;
+      statusMessage = tr(STR_YNAB_NOT_CONFIGURED);
+    }
+    requestUpdate(true);
+    return;
+  }
+  if (YNAB_STORE.getSelectedCategories().empty()) {
+    {
+      RenderLock lock(*this);
+      state = State::FAILED;
+      statusMessage = tr(STR_YNAB_NO_CATEGORIES);
+    }
+    requestUpdate(true);
+    return;
+  }
+
+  {
+    RenderLock lock(*this);
+    state = State::SYNCING;
+  }
+  requestUpdate();
+
+  wifiActivated = true;
+  if (WiFi.status() == WL_CONNECTED) {
+    performBudgetSync();
+    return;
+  }
+
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             {
+                               RenderLock lock(*this);
+                               state = State::FAILED;
+                               statusMessage = tr(STR_WIFI_CONN_FAILED);
+                             }
+                             requestUpdate(true);
+                             return;
+                           }
+                           performBudgetSync();
+                         });
+}
+
+void OrganizerActivity::performBudgetSync() {
+  // One request, and it carries its own month: the balances are month-scoped
+  // and YNAB says which month it answered for, so nothing here needs a clock.
+  // That matters on boards with no RTC, and it keeps this sync to a single
+  // call against a token allowed 200 requests an hour.
+  std::vector<YnabCategory> fetched;
+  uint16_t month = civil::NO_DATE;
+  resetTaskWatchdogIfSubscribed();
+  const YnabClient::Error error = YnabClient::fetchSelectedCategories(fetched, month);
+  resetTaskWatchdogIfSubscribed();
+  if (error != YnabClient::OK) {
+    LOG_ERR("ORG", "Budget fetch failed: %s", YnabClient::errorString(error));
+  }
+
+  // Drop the radio before touching the SD card and repainting; the full
+  // teardown happens on the silent reboot in onExit().
+  tearDownRadio();
+
+  {
+    RenderLock lock(*this);
+    if (error == YnabClient::OK) {
+      YNAB_CATEGORIES.setCategories(std::move(fetched), month);
+      state = State::LIST;
+      statusMessage = nullptr;
+      selectedIndex = rowCount() > 0 ? 1 : 0;
+    } else {
+      state = State::FAILED;
+      statusMessage = budgetErrorText(error);
+    }
+  }
+  YNAB_CATEGORIES.saveToFile();
+  requestUpdate(true);
+}
+
+const char* OrganizerActivity::budgetErrorText(const YnabClient::Error error) {
+  switch (error) {
+    case YnabClient::NO_TOKEN:
+    case YnabClient::NO_BUDGET:
+      return tr(STR_YNAB_NOT_CONFIGURED);
+    case YnabClient::AUTH_FAILED:
+      return tr(STR_YNAB_INVALID_TOKEN);
+    case YnabClient::NOT_FOUND:
+      return tr(STR_YNAB_BUDGET_NOT_FOUND);
+    case YnabClient::RATE_LIMITED:
+      return tr(STR_YNAB_RATE_LIMITED);
+    case YnabClient::SERVER_ERROR:
+      return tr(STR_YNAB_SERVER_ERROR);
+    case YnabClient::PARSE_ERROR:
+      return tr(STR_YNAB_BAD_RESPONSE);
+    case YnabClient::LOW_MEMORY:
+      return tr(STR_MEMORY_ERROR);
+    default:
+      return tr(STR_NETWORK_ERROR);
+  }
+}
+
 // -- input ------------------------------------------------------------------
 
 void OrganizerActivity::loop() {
@@ -528,25 +715,32 @@ void OrganizerActivity::loop() {
       return;
     }
     if (selectedIndex == 0) {
-      // Tabs focused: Select cycles them, matching the settings screen.
+      // Tabs focused: a press cycles them, a hold syncs the tab being shown.
+      //
+      // The hold is the only way in to a tab that has never synced. An empty
+      // list has no rows, so the tab bar is the only navigable index, and the
+      // row gestures below - the ones that used to own syncing - cannot be
+      // reached at all until something is already on screen.
+      if (mappedInput.getHeldTime() >= LONG_PRESS_MS) {
+        startSyncForCurrentTab();
+        return;
+      }
       {
         RenderLock lock(*this);
-        switchTab(tab == Tab::TASKS ? Tab::CALENDAR : Tab::TASKS);
+        switchTab(nextTab());
       }
       requestUpdate(true);
       return;
     }
-    if (tab == Tab::CALENDAR) {
-      // Events are read-only here, so a row press has nothing to act on.
-      startCalendarSync();
+    if (tab != Tab::TASKS) {
+      // Events and balances are read-only, and syncing is a hold on the tab
+      // bar, so a row press has nothing left to do.
       return;
     }
-    if (mappedInput.getHeldTime() >= LONG_PRESS_MS || rowCount() == 0) {
-      // Hold syncs; with nothing to complete, a plain press syncs too.
-      startTaskSync();
-      return;
-    }
-    completeSelectedTask();
+    // A press completes the task. A hold does nothing: syncing belongs to the
+    // tab bar alone, and letting the same gesture close a task when it lands on
+    // a row one place lower would make a misplaced hold destructive.
+    if (mappedInput.getHeldTime() < LONG_PRESS_MS) completeSelectedTask();
     return;
   }
 
@@ -564,15 +758,14 @@ void OrganizerActivity::loop() {
   int ty = 0;
   if (mappedInput.wasScreenTapped(tx, ty)) {
     // Tabs first: they sit above the list and share the same tap stream.
-    std::vector<TabInfo> tabs = {{tr(STR_ORGANIZER_TAB_TASKS), tab == Tab::TASKS},
-                                 {tr(STR_ORGANIZER_TAB_CALENDAR), tab == Tab::CALENDAR}};
+    const std::vector<TabInfo> tabs = buildTabs(tab);
     int tappedTab = -1;
     const int tabTop = metrics.topPadding + metrics.headerHeight;
     if (GUI.tabIndexFromPoint(renderer, Rect{0, tabTop, renderer.getScreenWidth(), metrics.tabBarHeight}, tabs, tx, ty,
                               tappedTab)) {
       {
         RenderLock lock(*this);
-        switchTab(tappedTab == 0 ? Tab::TASKS : Tab::CALENDAR);
+        switchTab(static_cast<Tab>(tappedTab));
       }
       requestUpdate(true);
       return;
@@ -638,18 +831,28 @@ void OrganizerActivity::render(RenderLock&&) {
     } else {
       snprintf(status, sizeof(status), "%s  ·  %s", date, overdue);
     }
-  } else if (GCAL_EVENTS.hasSynced()) {
-    char date[16];
-    formatDayLabel(GCAL_EVENTS.getSyncDate(), date, sizeof(date));
-    snprintf(status, sizeof(status), "%s  ·  %s: %zu", date, tr(STR_TODAY), GCAL_EVENTS.getTodayCount());
+  } else if (tab == Tab::CALENDAR) {
+    if (GCAL_EVENTS.hasSynced()) {
+      char date[16];
+      formatDayLabel(GCAL_EVENTS.getSyncDate(), date, sizeof(date));
+      snprintf(status, sizeof(status), "%s  ·  %s: %zu", date, tr(STR_TODAY), GCAL_EVENTS.getTodayCount());
+    } else {
+      snprintf(status, sizeof(status), "%s", tr(STR_GCAL_NEVER_SYNCED));
+    }
+  } else if (YNAB_CATEGORIES.hasSynced()) {
+    // The month, not the day: these balances are what YNAB holds for the month
+    // as a whole, and a day would imply they moved today.
+    char month[16];
+    formatMonthLabel(YNAB_CATEGORIES.getSyncMonth(), month, sizeof(month));
+    snprintf(status, sizeof(status), "%s  ·  %s: %zu", month, tr(STR_YNAB_CATEGORIES),
+             YNAB_CATEGORIES.getCategories().size());
   } else {
-    snprintf(status, sizeof(status), "%s", tr(STR_GCAL_NEVER_SYNCED));
+    snprintf(status, sizeof(status), "%s", tr(STR_YNAB_NEVER_SYNCED));
   }
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_ORGANIZER), status);
 
-  const std::vector<TabInfo> tabs = {{tr(STR_ORGANIZER_TAB_TASKS), tab == Tab::TASKS},
-                                     {tr(STR_ORGANIZER_TAB_CALENDAR), tab == Tab::CALENDAR}};
+  const std::vector<TabInfo> tabs = buildTabs(tab);
   GUI.drawTabBar(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight}, tabs,
                  selectedIndex == 0);
 
@@ -660,18 +863,33 @@ void OrganizerActivity::render(RenderLock&&) {
   // One centered message per non-list state; the failure message covers the
   // list until dismissed.
   if (state == State::SYNCING) {
-    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2,
-                              tab == Tab::TASKS ? tr(STR_TODOIST_SYNCING) : tr(STR_GCAL_SYNCING));
+    const char* syncing = tr(STR_YNAB_SYNCING);
+    if (tab == Tab::TASKS) {
+      syncing = tr(STR_TODOIST_SYNCING);
+    } else if (tab == Tab::CALENDAR) {
+      syncing = tr(STR_GCAL_SYNCING);
+    }
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, syncing);
   } else if (state == State::FAILED) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, statusMessage);
   } else if (itemCount == 0) {
     const char* empty;
     if (tab == Tab::TASKS) {
       empty = TODOIST_TASKS.hasSynced() ? tr(STR_TODOIST_NO_TASKS) : tr(STR_TODOIST_NEVER_SYNCED);
-    } else {
+    } else if (tab == Tab::CALENDAR) {
       empty = GCAL_EVENTS.hasSynced() ? tr(STR_GCAL_NO_EVENTS) : tr(STR_GCAL_NEVER_SYNCED);
+    } else {
+      // Nothing ticked is the usual reason this list is empty, and it is the
+      // one the user can act on.
+      empty = YNAB_STORE.getSelectedCategories().empty() ? tr(STR_YNAB_NO_CATEGORIES) : tr(STR_YNAB_NEVER_SYNCED);
     }
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, empty);
+    // An empty list has no rows, so the tab bar is the only thing that can be
+    // focused and the hold is the only gesture that reaches a sync. Spelling it
+    // out here is the only place it can be discovered: the Select hint is
+    // already spoken for by the tab it switches to.
+    renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2,
+                              tr(STR_ORGANIZER_HOLD_TO_SYNC));
   } else {
     // Drawn here rather than through GUI.drawList so the row font follows
     // SETTINGS.organizerFontSize; the theme's list draws at a fixed size.
@@ -686,6 +904,11 @@ void OrganizerActivity::render(RenderLock&&) {
 
     const auto& tasks = TODOIST_TASKS.getTasks();
     const auto& events = GCAL_EVENTS.getEvents();
+    const auto& categories = YNAB_CATEGORIES.getCategories();
+    // Gap between a category name and its balance, so a long name that had to
+    // be truncated does not run into the number. Two spaces of the row's own
+    // font, so it tracks the font-size setting.
+    const int balanceGap = renderer.getSpaceWidth(titleFont) * 2;
 
     for (int row = 0; row < pageItems; row++) {
       const int index = pageStart + row;
@@ -699,9 +922,25 @@ void OrganizerActivity::render(RenderLock&&) {
       // Selected rows invert: the fill is black, so the text has to be white.
       const bool ink = !selected;
 
-      const std::string& title = tab == Tab::TASKS ? tasks[index].content : events[index].summary;
-      const auto shownTitle = renderer.truncatedText(titleFont, title.c_str(), textWidth);
+      // The balance is measured first: it is the part being glanced at, so it
+      // is drawn whole and the name takes whatever width is left.
+      int titleWidth = textWidth;
+      int balanceWidth = 0;
+      if (tab == Tab::BUDGET) {
+        balanceWidth = renderer.getTextWidth(titleFont, categories[index].balance.c_str());
+        titleWidth = std::max(0, textWidth - balanceWidth - balanceGap);
+      }
+
+      const std::string& title = tab == Tab::TASKS      ? tasks[index].content
+                                 : tab == Tab::CALENDAR ? events[index].summary
+                                                        : categories[index].name;
+      const auto shownTitle = renderer.truncatedText(titleFont, title.c_str(), titleWidth);
       renderer.drawText(titleFont, textX, rowY + rowPad / 2, shownTitle.c_str(), ink);
+
+      if (tab == Tab::BUDGET) {
+        renderer.drawText(titleFont, textX + textWidth - balanceWidth, rowY + rowPad / 2,
+                          categories[index].balance.c_str(), ink);
+      }
 
       if (tab == Tab::CALENDAR) {
         char when[48];
@@ -726,21 +965,24 @@ void OrganizerActivity::render(RenderLock&&) {
     }
   }
 
-  // Select is context-dependent: it cycles tabs when they are focused, completes
-  // a task when there is one, and otherwise syncs the tab being shown.
+  // Select is context-dependent: it cycles tabs when they are focused, and
+  // completes a task on a Tasks row. Syncing is a hold on the tab bar, on every
+  // tab, and lives nowhere else.
   const char* confirmLabel;
   if (state == State::SYNCING) {
     confirmLabel = "";
   } else if (state == State::FAILED) {
     confirmLabel = tr(STR_OK_BUTTON);
   } else if (selectedIndex == 0) {
-    // With the tabs focused, Select switches to the other one - so it is labelled
+    // With the tabs focused, Select moves to the next one - so it is labelled
     // with where it goes rather than with what it is.
-    confirmLabel = tab == Tab::TASKS ? tr(STR_ORGANIZER_TAB_CALENDAR) : tr(STR_ORGANIZER_TAB_TASKS);
+    confirmLabel = tabLabel(nextTab());
   } else if (tab == Tab::TASKS && itemCount > 0) {
     confirmLabel = tr(STR_COMPLETE_TASK);
   } else {
-    confirmLabel = tr(STR_SYNC_NOW);
+    // Nothing to act on: event and balance rows are read-only, and syncing is a
+    // hold, so the button is left unlabelled rather than promising an action.
+    confirmLabel = "";
   }
   const bool navigable = state == State::LIST;
   const auto labels = mappedInput.mapLabels(tr(STR_HOME), confirmLabel, navigable ? tr(STR_DIR_UP) : "",
