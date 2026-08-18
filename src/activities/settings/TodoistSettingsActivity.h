@@ -25,4 +25,7 @@ class TodoistSettingsActivity final : public Activity {
   int selectedIndex = 0;
 
   void handleSelection();
+  // Puts the wallpaper and the sleep screen mode back as they were before the
+  // task screenshot took them over.
+  void restoreSleepScreen();
 };

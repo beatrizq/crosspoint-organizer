@@ -11,6 +11,7 @@
 #include "CrossPointSettings.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/SleepWallpaperBackup.h"
 
 BmpViewerActivity::BmpViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path)
     : Activity("BmpViewer", renderer, mappedInput), filePath(std::move(path)) {}
@@ -165,6 +166,9 @@ void BmpViewerActivity::doSetSleepCover() {
   }
 
   if (success) {
+    // The user has just said what the wallpaper should be, so any copy the
+    // Organizer's task screenshot was holding is no longer theirs to put back.
+    SleepWallpaperBackup::discard();
     SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
     SETTINGS.saveToFile();
     GUI.drawPopup(renderer, tr(STR_DONE));

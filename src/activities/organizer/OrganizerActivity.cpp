@@ -30,6 +30,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ScreenshotUtil.h"
+#include "util/SleepWallpaperBackup.h"
 #include "util/TaskWatchdog.h"
 
 namespace {
@@ -398,6 +399,12 @@ void OrganizerActivity::saveSleepWallpaper() const {
     LOG_ERR("ORG", "Framebuffer unavailable; sleep screen not updated");
     return;
   }
+  // Whatever wallpaper is there is the user's until this screen replaces it, so
+  // it is copied aside first - once, on the first replacement - and handed back
+  // when the option is switched off. Without it, turning the option on destroyed
+  // a chosen wallpaper and turning it off left the task list in its place.
+  SleepWallpaperBackup::captureIfAbsent();
+
   // Same file and format the "Set Cover" action writes from the image viewer,
   // so SleepActivity's CUSTOM mode picks it up unchanged.
   if (!ScreenshotUtil::saveFramebufferAsBmp(SLEEP_SCREEN_PATH, framebuffer, renderer.getDisplayWidth(),
@@ -408,6 +415,12 @@ void OrganizerActivity::saveSleepWallpaper() const {
   LOG_DBG("ORG", "Sleep screen updated from the task list");
 
   if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM) {
+    // Remembered before it is overwritten, and only the first time: a later sync
+    // would otherwise record CUSTOM as the mode to go back to.
+    if (TODOIST_STORE.getPreviousSleepScreen() == TodoistStore::NO_SLEEP_SCREEN) {
+      TODOIST_STORE.setPreviousSleepScreen(SETTINGS.sleepScreen);
+      TODOIST_STORE.saveToFile();
+    }
     // The wallpaper is only shown in CUSTOM mode; switching is what makes the
     // snapshot visible at all.
     SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;

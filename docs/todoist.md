@@ -36,8 +36,17 @@ stays queued.
 ## Sleep screen
 
 After every successful sync, the rendered task list is saved to `/sleep.bmp` and the sleep screen mode is switched to
-**Custom**, so the sleeping device shows your task list. This **overwrites any existing `/sleep.bmp`**. Turn it off
-with **Settings → Todoist → Sleep Screen**.
+**Custom**, so the sleeping device shows your task list. Turn it off with **Settings → Organizer → Todoist → Sleep
+Screen**.
+
+`/sleep.bmp` is also where the image viewer's **Set Cover** action writes, so the first task screenshot would replace
+a wallpaper you had chosen. It doesn't: the file is copied to `/.crosspoint/sleep_backup.bmp` before the first
+replacement, and switching the option off puts it back — along with the sleep screen mode that was in force before
+(Cover, Dark, and so on). The copy is dropped once it has been restored, and also when you pick a new cover in the
+image viewer, since that is you saying what the wallpaper should be.
+
+If there was no `/sleep.bmp` to begin with, switching the option off restores the mode only; the last task screenshot
+stays on the card, unused, until something overwrites it.
 
 ## Notes and limits
 
