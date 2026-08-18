@@ -710,6 +710,18 @@ void OrganizerActivity::render(RenderLock&&) {
         renderer.drawText(subFont, textX, rowY + ROW_PADDING / 2 + renderer.getLineHeight(titleFont), shownWhen.c_str(),
                           ink);
       }
+
+      // Soft rule between entries, so a wrapped title cannot be mistaken for the
+      // start of the next one. Dithered rather than solid: a black hairline
+      // carries more weight on e-ink than the text it is separating.
+      //
+      // Skipped either side of the selected row, whose fill already bounds it,
+      // and after the last row on the page, where it would underline nothing.
+      const bool nextSelected = (index + 1) == selectedRow();
+      const bool lastOnPage = row + 1 >= pageItems || index + 1 >= itemCount;
+      if (!selected && !nextSelected && !lastOnPage) {
+        renderer.fillRectDither(textX, rowY + rowHeight - 1, textWidth, 1, Color::LightGray);
+      }
     }
   }
 
