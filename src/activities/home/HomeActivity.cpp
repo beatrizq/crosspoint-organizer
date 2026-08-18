@@ -40,12 +40,8 @@ void HomeActivity::buildEntries() {
     }
   }
 
-  // Organize leads: it is the screen that changes daily, and the one this
-  // device is checked for between reading sessions.
-  entries.push_back({tr(STR_MENU_ORGANIZE), Tasks, HomeMenuItem::ORGANIZER, -1});
-
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
-    // Reading, as an entry rather than a cover tile. Second, but a press away.
+    // Themes without a cover tile carry reading as the first entry instead.
     entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::NONE, 0});
   }
 
@@ -55,6 +51,9 @@ void HomeActivity::buildEntries() {
     entries.push_back({tr(STR_OPDS_BROWSER), Library, HomeMenuItem::OPDS_BROWSER, -1});
   }
   entries.push_back({tr(STR_FILE_TRANSFER), Transfer, HomeMenuItem::FILE_TRANSFER, -1});
+  // Organize sits at the end: the cover card above owns the top of the screen,
+  // and the entries read as books-first, then the rest.
+  entries.push_back({tr(STR_MENU_ORGANIZE), Tasks, HomeMenuItem::ORGANIZER, -1});
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {

@@ -11,9 +11,7 @@ constexpr ThemeMetrics values = [] {
   ThemeMetrics v = LyraMetrics::values;
   v.homeCoverTileHeight = 300;
   v.homeRecentBooksCount = 3;
-  // This variant is built around the cover tile, so reading stays in it rather
-  // than becoming a menu entry the way the base theme now does.
-  v.homeContinueReadingInMenu = false;
+  // A taller tile leaves less room underneath, so the rows stay as they were.
   v.menuRowHeight = 64;
   return v;
 }();
