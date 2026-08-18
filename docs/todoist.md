@@ -21,8 +21,8 @@ decoded on another device or on a PC. If you would rather not type 40 characters
 
 | Button                 | Action                                                                       |
 | ---------------------- | ---------------------------------------------------------------------------- |
-| **Select** (press)     | Complete the highlighted task (syncs the task list when the list is empty)    |
-| **Select** (hold ~1 s) | Sync: push pending completions, then re-fetch the list                        |
+| **Select** (press)     | Complete the highlighted task                                                |
+| **Select** (hold ~1 s) | On the tab bar: sync — push pending completions, then re-fetch the list       |
 | **Up / Down**          | Move the selection                                                           |
 | **Back**               | Home                                                                         |
 

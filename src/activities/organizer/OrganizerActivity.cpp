@@ -722,12 +722,10 @@ void OrganizerActivity::loop() {
       // bar, so a row press has nothing left to do.
       return;
     }
-    if (mappedInput.getHeldTime() >= LONG_PRESS_MS || rowCount() == 0) {
-      // Hold syncs; with nothing to complete, a plain press syncs too.
-      startTaskSync();
-      return;
-    }
-    completeSelectedTask();
+    // A press completes the task. A hold does nothing: syncing belongs to the
+    // tab bar alone, and letting the same gesture close a task when it lands on
+    // a row one place lower would make a misplaced hold destructive.
+    if (mappedInput.getHeldTime() < LONG_PRESS_MS) completeSelectedTask();
     return;
   }
 
@@ -953,8 +951,8 @@ void OrganizerActivity::render(RenderLock&&) {
   }
 
   // Select is context-dependent: it cycles tabs when they are focused, and
-  // completes a task on a Tasks row. Every sync is a hold - on the tab bar for
-  // any tab, or on a task row.
+  // completes a task on a Tasks row. Syncing is a hold on the tab bar, on every
+  // tab, and lives nowhere else.
   const char* confirmLabel;
   if (state == State::SYNCING) {
     confirmLabel = "";
