@@ -1,0 +1,43 @@
+#pragma once
+
+#include "activities/Activity.h"
+#include "util/ButtonNavigator.h"
+
+/**
+ * Settings submenu for the YNAB integration.
+ *
+ * Holds the one-time setup: the personal access token generated in the owner's
+ * own YNAB account, the budget (plan) id to read, and which categories feed the
+ * Organizer's Budget tab. Syncing itself happens on that screen, not here.
+ *
+ * There is no pairing flow to run: YNAB issues long-lived personal access
+ * tokens, so "connecting" is just entering the token and the budget id, after
+ * which the category picker can reach the API.
+ */
+class YnabSettingsActivity final : public Activity {
+ public:
+  explicit YnabSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+      : Activity("YnabSettings", renderer, mappedInput) {}
+
+  // Access Token, Budget ID, Categories, Clear Token, and the sync hint row.
+  static constexpr int MENU_ITEMS = 5;
+
+  void onEnter() override;
+  void onExit() override;
+  void loop() override;
+  void render(RenderLock&&) override;
+
+ private:
+  enum class State : uint8_t {
+    MENU,    // The settings list
+    FAILED,  // statusMessage holds the reason
+  };
+
+  void handleSelection();
+
+  ButtonNavigator buttonNavigator;
+  int selectedIndex = 0;
+
+  State state = State::MENU;
+  const char* statusMessage = nullptr;  // Translated; only read in FAILED state
+};
