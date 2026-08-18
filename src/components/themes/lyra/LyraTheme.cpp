@@ -15,20 +15,26 @@
 #include "components/UITheme.h"
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
+#include "components/icons/book64.h"
 #include "components/icons/bookmark.h"
 #include "components/icons/calendar.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
 #include "components/icons/folder24.h"
+#include "components/icons/folder64.h"
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
+#include "components/icons/library64.h"
 #include "components/icons/recent.h"
+#include "components/icons/recent64.h"
 #include "components/icons/settings2.h"
 #include "components/icons/tasks.h"
+#include "components/icons/tasks64.h"
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
+#include "components/icons/transfer64.h"
 #include "components/icons/wifi.h"
 #include "fontIds.h"
 
@@ -39,12 +45,33 @@ constexpr int cornerRadius = 6;
 constexpr int topHintButtonY = 345;
 constexpr int maxListValueWidth = 200;
 constexpr int mainMenuIconSize = 32;
+// The home menu is the one screen that is all destination and no content, so
+// it carries the artwork at twice the size the lists use.
+constexpr int homeMenuIconSize = 64;
 constexpr int listIconSize = 24;
 constexpr int mainMenuColumns = 2;
 int coverWidth = 0;
 
 const uint8_t* iconForName(UIIcon icon, int size) {
-  if (size == 24) {
+  if (size == 64) {
+    // The home menu's own size. Only the entries that menu uses exist at 64.
+    switch (icon) {
+      case UIIcon::Book:
+        return Book64Icon;
+      case UIIcon::Tasks:
+        return Tasks64Icon;
+      case UIIcon::Folder:
+        return Folder64Icon;
+      case UIIcon::Recent:
+        return Recent64Icon;
+      case UIIcon::Transfer:
+        return Transfer64Icon;
+      case UIIcon::Library:
+        return Library64Icon;
+      default:
+        return nullptr;
+    }
+  } else if (size == 24) {
     switch (icon) {
       case UIIcon::Folder:
         return Folder24Icon;
@@ -575,10 +602,13 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
-      const uint8_t* iconBitmap = iconForName(icon, mainMenuIconSize);
+      const uint8_t* iconBitmap = iconForName(icon, homeMenuIconSize);
       if (iconBitmap != nullptr) {
-        renderer.drawIcon(iconBitmap, textX, textY, mainMenuIconSize);
-        textX += mainMenuIconSize + hPaddingInSelection + 2;
+        // Centred on the row rather than aligned with the text: the icon is
+        // taller than the label now, so a shared top edge would hang it high.
+        const int iconY = tileRect.y + (LyraMetrics::values.menuRowHeight - homeMenuIconSize) / 2;
+        renderer.drawIcon(iconBitmap, textX, iconY, homeMenuIconSize);
+        textX += homeMenuIconSize + hPaddingInSelection + 2;
       }
     }
 

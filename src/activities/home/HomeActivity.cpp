@@ -20,15 +20,41 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
-int HomeActivity::getMenuItemCount() const {
-  int count = BASE_MENU_ITEMS;
-  if (!recentBooks.empty()) {
-    count += recentBooks.size();
+int HomeActivity::getMenuItemCount() const { return static_cast<int>(entries.size()); }
+
+int HomeActivity::leadingRecentCount() const {
+  return UITheme::getInstance().getMetrics().homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
+}
+
+void HomeActivity::buildEntries() {
+  entries.clear();
+  entries.reserve(8);
+
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  if (!metrics.homeContinueReadingInMenu) {
+    // Cover-tile themes: the recent books own the leading slots and are drawn
+    // by the tile rather than the menu, but they are still entries, so one
+    // list describes the whole screen.
+    for (int i = 0; i < static_cast<int>(recentBooks.size()); i++) {
+      entries.push_back({nullptr, Book, HomeMenuItem::NONE, i});
+    }
   }
+
+  // Organize leads: it is the screen that changes daily, and the one this
+  // device is checked for between reading sessions.
+  entries.push_back({tr(STR_MENU_ORGANIZE), Tasks, HomeMenuItem::ORGANIZER, -1});
+
+  if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
+    // Reading, as an entry rather than a cover tile. Second, but a press away.
+    entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::NONE, 0});
+  }
+
+  entries.push_back({tr(STR_BROWSE_FILES), Folder, HomeMenuItem::FILE_BROWSER, -1});
+  entries.push_back({tr(STR_MENU_RECENT_BOOKS), Recent, HomeMenuItem::RECENTS, -1});
   if (hasOpdsServers) {
-    count++;
+    entries.push_back({tr(STR_OPDS_BROWSER), Library, HomeMenuItem::OPDS_BROWSER, -1});
   }
-  return count;
+  entries.push_back({tr(STR_FILE_TRANSFER), Transfer, HomeMenuItem::FILE_TRANSFER, -1});
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -116,8 +142,17 @@ void HomeActivity::onEnter() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
-  const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
+  buildEntries();
+
+  selectorIndex = 0;
+  if (initialMenuItem != HomeMenuItem::NONE) {
+    for (int i = 0; i < static_cast<int>(entries.size()); i++) {
+      if (entries[i].item == initialMenuItem) {
+        selectorIndex = i;
+        break;
+      }
+    }
+  }
 
   // Trigger first update
   requestUpdate();
@@ -171,12 +206,14 @@ void HomeActivity::loop() {
   const auto& metrics = UITheme::getInstance().getMetrics();
 
   auto activateSelection = [this] {
-    if (selectorIndex < recentBooks.size()) {
-      onSelectBook(recentBooks[selectorIndex].path);
+    if (selectorIndex < 0 || selectorIndex >= static_cast<int>(entries.size())) return;
+    const HomeEntry& entry = entries[selectorIndex];
+
+    if (entry.recentIndex >= 0 && entry.recentIndex < static_cast<int>(recentBooks.size())) {
+      onSelectBook(recentBooks[entry.recentIndex].path);
       return;
     }
-    const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasOpdsServers)) {
+    switch (entry.item) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -191,9 +228,6 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
-        break;
-      case HomeMenuItem::SETTINGS_MENU:
-        onSettingsOpen();
         break;
       default:
         break;
@@ -224,12 +258,12 @@ void HomeActivity::loop() {
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen = true;
 
-  // Back is otherwise unused on the home menu: open the most recently read
-  // book directly (recentBooks is most-recent-first and already pruned of
-  // files missing from the SD card). backPressSeen guards against the stale
+  // Back is otherwise unused on the home menu, and Settings no longer has a row
+  // of its own, so it lives here. Resuming moved to the Read entry, which is a
+  // press away in the menu itself. backPressSeen guards against the stale
   // release of the Back press that closed the previous activity.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen && !recentBooks.empty()) {
-    onSelectBook(recentBooks[0].path);
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen) {
+    onSettingsOpen();
     return;
   }
 
@@ -252,16 +286,13 @@ void HomeActivity::loop() {
   }
 
   const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
-  const int renderedMenuSelection =
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
-  const int renderedMenuCount =
-      menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
+  const int leadingRecents = leadingRecentCount();
+  const int renderedMenuCount = menuCount - leadingRecents;
   int menuRow = -1;
   const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, metrics.menuRowHeight + metrics.menuSpacing,
                                               renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
   if (menuTouch != MappedInputManager::RowTouch::None) {
-    const int touchedIndex =
-        metrics.homeContinueReadingInMenu ? menuRow : menuRow + static_cast<int>(recentBooks.size());
+    const int touchedIndex = menuRow + leadingRecents;
     if (menuTouch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
@@ -302,35 +333,24 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_ORGANIZER), tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS),
-                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Tasks, Folder, Recent, Transfer, Settings};
-
-  if (hasOpdsServers) {
-    // Index 3: after Recents, matching indexToMenuItem's ordering.
-    menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 3, Library);
-  }
-
-  if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
-    // Insert Continue Reading at the top if enabled in theme
-    menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
-    menuIcons.insert(menuIcons.begin(), Book);
-  }
+  // The menu draws the entries the cover tile does not own.
+  const int leadingRecents = leadingRecentCount();
+  const int renderedCount = static_cast<int>(entries.size()) - leadingRecents;
+  const auto& rows = entries;
 
   GUI.drawButtonMenu(
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
            pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
                          metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
-      static_cast<int>(menuItems.size()),
-      metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
-      [&menuItems](int index) { return std::string(menuItems[index]); },
-      [&menuIcons](int index) { return menuIcons[index]; });
+      renderedCount, selectorIndex - leadingRecents,
+      [&rows, leadingRecents](int index) {
+        const char* label = rows[index + leadingRecents].label;
+        return std::string(label != nullptr ? label : "");
+      },
+      [&rows, leadingRecents](int index) { return rows[index + leadingRecents].icon; });
 
-  const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
-                                            tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_SETTINGS_TITLE), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
