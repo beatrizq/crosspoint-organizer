@@ -14,7 +14,6 @@
 #include <YnabCategoryCache.h>
 #include <YnabStore.h>
 #include <esp_sntp.h>
-#include <esp_wifi.h>
 #include <time.h>
 
 #include <algorithm>
@@ -140,8 +139,9 @@ void OrganizerActivity::onExit() {
   // Same teardown as the KOReader sync screen: drop the association, then
   // reboot silently to home so the WiFi/TLS heap fragmentation goes with it.
   // The mode check keeps a cancelled Wi-Fi picker (radio never brought up)
-  // from costing a reboot.
-  if (wifiActivated && WiFi.getMode() != WIFI_MODE_NULL) {
+  // from costing a reboot; a sync that already took the radio down reports
+  // WIFI_MODE_NULL by then, so it says so itself.
+  if (wifiActivated && (radioTornDown || WiFi.getMode() != WIFI_MODE_NULL)) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
@@ -185,6 +185,19 @@ int OrganizerActivity::listRowHeight() const {
   const int titleH = renderer.getLineHeight(titleFontId());
   const int subH = tab == Tab::CALENDAR ? renderer.getLineHeight(subtitleFontId()) : 0;
   return titleH + subH + rowPadding();
+}
+
+void OrganizerActivity::tearDownRadio() {
+  // Through WiFi.mode(WIFI_OFF) rather than by stopping the driver directly.
+  // A bare stop leaves the Arduino layer believing the radio is still running:
+  // the flag it gates esp_wifi_start() on stays set, and WiFi.mode() then sees
+  // the mode it was asked for and returns early. The next sync in the same
+  // session scans and connects against a stopped driver - the saved network
+  // fails, no networks are found - and only a reboot clears it. Going through
+  // WiFi.mode() stops and deinitialises the driver, which hands back more heap
+  // than a bare stop, and lets the next sync bring it up from scratch.
+  WiFi.mode(WIFI_OFF);
+  radioTornDown = true;
 }
 
 void OrganizerActivity::startSyncForCurrentTab() {
@@ -345,7 +358,7 @@ void OrganizerActivity::performTaskSync() {
 
   // Drop the radio before touching the SD card and repainting; the full
   // teardown happens on the silent reboot in onExit().
-  esp_wifi_stop();
+  tearDownRadio();
 
   {
     RenderLock lock(*this);
@@ -507,7 +520,9 @@ void OrganizerActivity::performCalendarSync() {
     }
   }
 
-  esp_wifi_stop();
+  // Drop the radio before touching the SD card and repainting; the full
+  // teardown happens on the silent reboot in onExit().
+  tearDownRadio();
 
   {
     RenderLock lock(*this);
@@ -638,7 +653,7 @@ void OrganizerActivity::performBudgetSync() {
 
   // Drop the radio before touching the SD card and repainting; the full
   // teardown happens on the silent reboot in onExit().
-  esp_wifi_stop();
+  tearDownRadio();
 
   {
     RenderLock lock(*this);

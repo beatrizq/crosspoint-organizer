@@ -80,7 +80,12 @@ class OrganizerActivity final : public Activity {
   Tab tab = Tab::TASKS;
   int selectedIndex = 0;
 
+  // Takes the radio down after a sync, through the Arduino layer so its own
+  // state goes down with it, and records that it happened.
+  void tearDownRadio();
+
   State state = State::LIST;
   const char* statusMessage = nullptr;  // Translated; only read in FAILED state
   bool wifiActivated = false;
+  bool radioTornDown = false;
 };
