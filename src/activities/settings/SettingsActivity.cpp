@@ -95,6 +95,13 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
   // Update currentSettings pointer and count for the active category
+  applyCategorySelection();
+}
+
+// The one place category index maps to a bucket. It used to be written twice -
+// here and as a lambda in loop() - and adding the Organizer tab updated only
+// this copy, so selecting that tab left the list showing System's entries.
+void SettingsActivity::applyCategorySelection() {
   switch (selectedCategoryIndex) {
     case 0:
       currentSettings = &displaySettings;
@@ -110,6 +117,9 @@ void SettingsActivity::rebuildSettingsLists() {
       break;
     case 4:
       currentSettings = &organizerSettings;
+      break;
+    default:
+      currentSettings = &displaySettings;
       break;
   }
   settingsCount = static_cast<int>(currentSettings->size());
@@ -142,24 +152,6 @@ void SettingsActivity::loop() {
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
 
   bool hasChangedCategory = false;
-
-  auto applyCategorySelection = [this] {
-    switch (selectedCategoryIndex) {
-      case 0:
-        currentSettings = &displaySettings;
-        break;
-      case 1:
-        currentSettings = &readerSettings;
-        break;
-      case 2:
-        currentSettings = &controlsSettings;
-        break;
-      case 3:
-        currentSettings = &systemSettings;
-        break;
-    }
-    settingsCount = static_cast<int>(currentSettings->size());
-  };
 
   // Handle actions with early return
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {

@@ -54,14 +54,18 @@ static const char* const WEEKDAY_NAMES[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", 
 static const char* const MONTH_NAMES[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
-// Reformats "YYYY-MM-DD" as "DD-MM-YYYY". Writes "--" when the date is unset or
-// not the expected shape (a hand-edited cache file, or a never-synced device).
-void formatDisplayDate(const std::string& iso, char* out, const size_t outSize) {
-  if (iso.size() != 10 || iso[4] != '-' || iso[7] != '-') {
+// "Mon 17 Aug", or "--" when the date is unknown. Both tabs date themselves the
+// same way: they answer the same question, and two formats on one screen read as
+// an inconsistency rather than a distinction.
+void formatDayLabel(const uint16_t date, char* out, const size_t outSize) {
+  if (out == nullptr || outSize == 0) return;
+  const uint8_t month = civil::monthFromDate(date);
+  if (date == civil::NO_DATE || month == 0) {
     snprintf(out, outSize, "--");
     return;
   }
-  snprintf(out, outSize, "%.2s-%.2s-%.4s", iso.c_str() + 8, iso.c_str() + 5, iso.c_str());
+  snprintf(out, outSize, "%s %u %s", WEEKDAY_NAMES[civil::weekdayFromDate(date) % 7],
+           static_cast<unsigned>(civil::dayOfMonthFromDate(date)), MONTH_NAMES[(month - 1) % 12]);
 }
 
 // Later of two "YYYY-MM-DD" dates. Today only ever moves forward, so picking the
@@ -465,14 +469,10 @@ void OrganizerActivity::formatEventWhen(const int index, char* out, const size_t
   if (index < 0 || static_cast<size_t>(index) >= events.size()) return;
   const GCalEvent& event = events[index];
 
-  const uint8_t weekday = civil::weekdayFromDate(event.date);
-  const uint8_t month = civil::monthFromDate(event.date);
-  const uint8_t day = civil::dayOfMonthFromDate(event.date);
-  if (month == 0) return;
+  if (civil::monthFromDate(event.date) == 0) return;
 
-  char when[24];
-  snprintf(when, sizeof(when), "%s %u %s", WEEKDAY_NAMES[weekday % 7], static_cast<unsigned>(day),
-           MONTH_NAMES[(month - 1) % 12]);
+  char when[16];
+  formatDayLabel(event.date, when, sizeof(when));
 
   if (event.isAllDay()) {
     snprintf(out, outSize, "%s  %s", when, tr(STR_GCAL_ALL_DAY));
@@ -627,8 +627,8 @@ void OrganizerActivity::render(RenderLock&&) {
   // Header: the screen's name, with the active tab's own summary on the right.
   char status[64];
   if (tab == Tab::TASKS) {
-    char date[12];
-    formatDisplayDate(TODOIST_TASKS.getSyncDate(), date, sizeof(date));
+    char date[16];
+    formatDayLabel(civil::dateFromIso(TODOIST_TASKS.getSyncDate().c_str()), date, sizeof(date));
     char overdue[32];
     snprintf(overdue, sizeof(overdue), "%s: %zu", tr(STR_OVERDUE), TODOIST_TASKS.getOverdueCount());
     if (TODOIST_TASKS.hasPending()) {
@@ -640,10 +640,9 @@ void OrganizerActivity::render(RenderLock&&) {
       snprintf(status, sizeof(status), "%s  ·  %s", date, overdue);
     }
   } else if (GCAL_EVENTS.hasSynced()) {
-    const uint16_t syncDate = GCAL_EVENTS.getSyncDate();
-    snprintf(status, sizeof(status), "%s %u %s  ·  %s: %zu", WEEKDAY_NAMES[civil::weekdayFromDate(syncDate) % 7],
-             static_cast<unsigned>(civil::dayOfMonthFromDate(syncDate)),
-             MONTH_NAMES[(civil::monthFromDate(syncDate) - 1) % 12], tr(STR_TODAY), GCAL_EVENTS.getTodayCount());
+    char date[16];
+    formatDayLabel(GCAL_EVENTS.getSyncDate(), date, sizeof(date));
+    snprintf(status, sizeof(status), "%s  ·  %s: %zu", date, tr(STR_TODAY), GCAL_EVENTS.getTodayCount());
   } else {
     snprintf(status, sizeof(status), "%s", tr(STR_GCAL_NEVER_SYNCED));
   }
@@ -722,7 +721,9 @@ void OrganizerActivity::render(RenderLock&&) {
   } else if (state == State::FAILED) {
     confirmLabel = tr(STR_OK_BUTTON);
   } else if (selectedIndex == 0) {
-    confirmLabel = tr(STR_SELECT);
+    // With the tabs focused, Select switches to the other one - so it is labelled
+    // with where it goes rather than with what it is.
+    confirmLabel = tab == Tab::TASKS ? tr(STR_ORGANIZER_TAB_CALENDAR) : tr(STR_ORGANIZER_TAB_TASKS);
   } else if (tab == Tab::TASKS && itemCount > 0) {
     confirmLabel = tr(STR_COMPLETE_TASK);
   } else {

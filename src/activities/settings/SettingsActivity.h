@@ -179,6 +179,8 @@ class SettingsActivity final : public Activity {
   void toggleCurrentSetting();
   void openSleepTimeoutPicker();
   void rebuildSettingsLists();
+  // Points currentSettings at the bucket for selectedCategoryIndex.
+  void applyCategorySelection();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
 
  public:
