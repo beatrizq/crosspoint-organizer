@@ -115,7 +115,8 @@ enum UIIcon {
   Wifi,
   Hotspot,
   Bookmark,
-  Tasks
+  Tasks,
+  Calendar
 };
 
 // Default theme implementation (Classic Theme)

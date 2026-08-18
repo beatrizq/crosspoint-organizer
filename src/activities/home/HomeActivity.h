@@ -33,14 +33,22 @@ class HomeActivity final : public Activity {
   std::vector<RecentBook> recentBooks;
   const HomeMenuItem initialMenuItem;
 
+  // Menu entries always present: Organizer, File Browser, Recents,
+  // File Transfer, Settings. OPDS is conditional and counted separately.
+  //
+  // Kept next to the two index helpers below because all three encode the same
+  // list and must be changed together: getMenuItemCount() bounds navigation, so
+  // a stale count leaves the last entry drawn but unreachable.
+  static constexpr int BASE_MENU_ITEMS = 5;
+
   // Convert HomeMenuItem to menu index (used in onEnter)
   static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
     int i = 0;
+    if (item == HomeMenuItem::ORGANIZER) return i;
+    ++i;
     if (item == HomeMenuItem::FILE_BROWSER) return i;
     ++i;
     if (item == HomeMenuItem::RECENTS) return i;
-    ++i;
-    if (item == HomeMenuItem::TODOIST) return i;
     ++i;
     if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
     if (hasOpdsUrl) ++i;
@@ -53,9 +61,9 @@ class HomeActivity final : public Activity {
   // Convert menu index to HomeMenuItem (used in loop)
   static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
     int i = 0;
+    if (idx == i++) return HomeMenuItem::ORGANIZER;
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
     if (idx == i++) return HomeMenuItem::RECENTS;
-    if (idx == i++) return HomeMenuItem::TODOIST;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
@@ -64,7 +72,7 @@ class HomeActivity final : public Activity {
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onRecentsOpen();
-  void onTodoistOpen();
+  void onOrganizerOpen();
   void onSettingsOpen();
   void onFileTransferOpen();
   void onOpdsBrowserOpen();

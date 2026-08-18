@@ -14,10 +14,10 @@
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "organizer/OrganizerActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
-#include "todoist/TodoistActivity.h"
 #include "util/FullScreenMessageActivity.h"
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
@@ -199,7 +199,7 @@ void ActivityManager::goToRecentBooks() {
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
 }
 
-void ActivityManager::goToTodoist() { replaceActivity(std::make_unique<TodoistActivity>(renderer, mappedInput)); }
+void ActivityManager::goToOrganizer() { replaceActivity(std::make_unique<OrganizerActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToBrowser() {
   const auto& servers = OPDS_STORE.getServers();

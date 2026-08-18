@@ -18,6 +18,7 @@ enum class SettingAction {
   CustomiseStatusBar,
   KOReaderSync,
   Todoist,
+  GoogleCalendar,
   OPDSBrowser,
   Network,
   ClearCache,
@@ -163,6 +164,7 @@ class SettingsActivity final : public Activity {
   std::vector<SettingInfo> readerSettings;
   std::vector<SettingInfo> controlsSettings;
   std::vector<SettingInfo> systemSettings;
+  std::vector<SettingInfo> organizerSettings;
   const std::vector<SettingInfo>* currentSettings = nullptr;
 
   bool preserveQuickResumeTimeoutOn = false;
@@ -170,13 +172,15 @@ class SettingsActivity final : public Activity {
 
   OptionPopup optionPopup;
 
-  static constexpr int categoryCount = 4;
+  static constexpr int categoryCount = 5;
   static const StrId categoryNames[categoryCount];
 
   void enterCategory(int categoryIndex);
   void toggleCurrentSetting();
   void openSleepTimeoutPicker();
   void rebuildSettingsLists();
+  // Points currentSettings at the bucket for selectedCategoryIndex.
+  void applyCategorySelection();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
 
  public:

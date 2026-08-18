@@ -7,6 +7,7 @@ add_executable(TodoistTasksParserTest
 
 target_include_directories(TodoistTasksParserTest PRIVATE
   ${REPO_ROOT}/lib/Todoist
+  ${REPO_ROOT}/lib/CivilTime
   ${REPO_ROOT}/lib/JsonParser
 )
 

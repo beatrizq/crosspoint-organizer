@@ -174,6 +174,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Sleep screen settings
   uint8_t sleepScreen = DARK;
   // Sleep screen cover mode settings
+  // Font size for the Organizer screens (tasks and calendar). One setting for
+  // both tabs: they are read the same way, at the same distance, and splitting
+  // them would be two settings answering one question.
+  enum ORGANIZER_FONT_SIZE { ORGANIZER_FONT_SMALL = 0, ORGANIZER_FONT_LARGE, ORGANIZER_FONT_SIZE_COUNT };
+  uint8_t organizerFontSize = ORGANIZER_FONT_SMALL;
+
   uint8_t sleepScreenCoverMode = FIT;
   // Sleep screen cover filter
   uint8_t sleepScreenCoverFilter = NO_FILTER;

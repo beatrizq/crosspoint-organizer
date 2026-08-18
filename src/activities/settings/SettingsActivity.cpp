@@ -12,6 +12,7 @@
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
 #include "FontDownloadActivity.h"
+#include "GCalSettingsActivity.h"
 #include "KOReaderSettingsActivity.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
@@ -29,13 +30,15 @@
 #include "fontIds.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
-                                                              StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM};
+                                                              StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM,
+                                                              StrId::STR_CAT_ORGANIZER};
 
 void SettingsActivity::rebuildSettingsLists() {
   displaySettings.clear();
   readerSettings.clear();
   controlsSettings.clear();
   systemSettings.clear();
+  organizerSettings.clear();
 
   // Pick up any fonts uploaded/deleted over the web server since the last
   // reader activity ran — otherwise the font-family picker shows stale list.
@@ -63,6 +66,8 @@ void SettingsActivity::rebuildSettingsLists() {
       controlsSettings.push_back(setting);
     } else if (setting.category == StrId::STR_CAT_SYSTEM) {
       systemSettings.push_back(setting);
+    } else if (setting.category == StrId::STR_CAT_ORGANIZER) {
+      organizerSettings.push_back(setting);
     }
   }
 
@@ -73,8 +78,9 @@ void SettingsActivity::rebuildSettingsLists() {
   }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_TODOIST, SettingAction::Todoist));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_TODOIST, SettingAction::Todoist));
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   // TODO: Touch devices need their own firmware update path/artifacts before OTA is exposed.
   if (!BoardConfig::hasTouch()) {
@@ -89,6 +95,13 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
   // Update currentSettings pointer and count for the active category
+  applyCategorySelection();
+}
+
+// The one place category index maps to a bucket. It used to be written twice -
+// here and as a lambda in loop() - and adding the Organizer tab updated only
+// this copy, so selecting that tab left the list showing System's entries.
+void SettingsActivity::applyCategorySelection() {
   switch (selectedCategoryIndex) {
     case 0:
       currentSettings = &displaySettings;
@@ -101,6 +114,12 @@ void SettingsActivity::rebuildSettingsLists() {
       break;
     case 3:
       currentSettings = &systemSettings;
+      break;
+    case 4:
+      currentSettings = &organizerSettings;
+      break;
+    default:
+      currentSettings = &displaySettings;
       break;
   }
   settingsCount = static_cast<int>(currentSettings->size());
@@ -133,24 +152,6 @@ void SettingsActivity::loop() {
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
 
   bool hasChangedCategory = false;
-
-  auto applyCategorySelection = [this] {
-    switch (selectedCategoryIndex) {
-      case 0:
-        currentSettings = &displaySettings;
-        break;
-      case 1:
-        currentSettings = &readerSettings;
-        break;
-      case 2:
-        currentSettings = &controlsSettings;
-        break;
-      case 3:
-        currentSettings = &systemSettings;
-        break;
-    }
-    settingsCount = static_cast<int>(currentSettings->size());
-  };
 
   // Handle actions with early return
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
@@ -380,6 +381,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::Todoist:
         startActivityForResult(std::make_unique<TodoistSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::GoogleCalendar:
+        startActivityForResult(std::make_unique<GCalSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::OPDSBrowser:
         startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
