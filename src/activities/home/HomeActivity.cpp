@@ -303,12 +303,12 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_ORGANIZER),
+  std::vector<const char*> menuItems = {tr(STR_ORGANIZER), tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS),
                                         tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Calendar, Transfer, Settings};
+  std::vector<UIIcon> menuIcons = {Tasks, Folder, Recent, Transfer, Settings};
 
   if (hasOpdsServers) {
-    // Index 3: after Organizer, matching indexToMenuItem's ordering.
+    // Index 3: after Recents, matching indexToMenuItem's ordering.
     menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 3, Library);
   }
