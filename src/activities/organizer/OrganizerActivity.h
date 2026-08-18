@@ -86,6 +86,11 @@ class OrganizerActivity final : public Activity {
   // state goes down with it, and records that it happened.
   void tearDownRadio();
 
+  // The confirmation popup acts on the button going down, so the release lands
+  // back here - in a screen where Select completes a task. Set while that
+  // release is still owed, so it is dropped rather than acted on.
+  bool swallowConfirmRelease = false;
+
   State state = State::LIST;
   const char* statusMessage = nullptr;  // Translated; only read in FAILED state
   bool wifiActivated = false;

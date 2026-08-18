@@ -238,6 +238,11 @@ void OrganizerActivity::completeSelectedTask() {
   startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
                                                                 TODOIST_TASKS.getTasks()[row].content),
                          [this, row](const ActivityResult& result) {
+                           // The popup answered on the press; this screen acts on
+                           // the release, and the button may still be down.
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
                            if (result.isCancelled) {
                              LOG_DBG("ORG", "Task completion cancelled");
                              return;
@@ -742,7 +747,16 @@ void OrganizerActivity::loop() {
     return;
   }
 
+  // A press seen here is a fresh one, so nothing is owed any more.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      // The tail of the press that answered the confirmation prompt. Acting on
+      // it would reopen the prompt, and cancelling would reopen it again.
+      swallowConfirmRelease = false;
+      return;
+    }
     if (state == State::FAILED) {
       // Dismiss the failure message and fall back to whatever is cached.
       {
