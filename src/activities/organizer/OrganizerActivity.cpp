@@ -243,7 +243,12 @@ void OrganizerActivity::completeSelectedTask() {
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
   TODOIST_TASKS.saveToFile();
-  requestUpdate(true);
+  // Wait for the repaint rather than firing and forgetting, so the framebuffer
+  // holds the list without the completed task before it is snapshotted. The
+  // sleep screen tracks the list, not the sync: a task completed with the radio
+  // off changes what is on screen just as much as a fetch does.
+  requestUpdateAndWait();
+  saveSleepWallpaper();
 }
 
 void OrganizerActivity::startTaskSync() {
