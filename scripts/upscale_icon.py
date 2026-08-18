@@ -61,6 +61,9 @@ def main():
     lines = []
     for i in range(0, len(doubled), 19):
         lines.append("    " + ", ".join(f"0x{b:02X}" for b in doubled[i : i + 19]) + ",")
+    # clang-format keeps the closing brace on the last data line, so emit it
+    # that way: CI runs bin/clang-format-fix over the whole tree and fails on a
+    # diff, and generated files are checked in.
     body = "\n".join(lines).rstrip(",")
 
     print(f"#pragma once")
@@ -71,8 +74,7 @@ def main():
     print(f"// scripts/upscale_icon.py. Stored pre-rotated 90 degrees like every other")
     print(f"// icon here; see tasks.h for why.")
     print(f"static const uint8_t {output_name}[] = {{")
-    print(body)
-    print("};")
+    print(body + "};")
 
 
 if __name__ == "__main__":
