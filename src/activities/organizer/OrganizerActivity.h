@@ -44,6 +44,8 @@ class OrganizerActivity final : public Activity {
   // -- shared ---------------------------------------------------------------
   int rowCount() const;
   int listRowHeight() const;
+  // Vertical breathing room in a row; scales with the chosen font.
+  int rowPadding() const;
   int titleFontId() const;
   int subtitleFontId() const;
   void switchTab(Tab next);

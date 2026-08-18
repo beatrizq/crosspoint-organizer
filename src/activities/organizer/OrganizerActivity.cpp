@@ -42,8 +42,11 @@ constexpr unsigned long LONG_PRESS_MS = 1000;
 // SNTP poll: 100ms x 50 = 5s, matching HalClock::syncFromNTP().
 constexpr int NTP_POLL_ATTEMPTS = 50;
 
-// Breathing room above and below a row's text.
-constexpr int ROW_PADDING = 8;
+// The dither patterns have period 2 in logical space, so a 1px rule lands on
+// either an "on" or an "off" phase depending on its y parity - with an odd row
+// height that made the separator appear on every other row. Two pixels covers
+// both phases whatever the parity.
+constexpr int SEPARATOR_HEIGHT = 2;
 
 // Abbreviated weekday and month names, indexed by civil::weekdayFromDate (0 =
 // Sunday) and month-1. Deliberately not translated: they are drawn in a narrow
@@ -107,32 +110,43 @@ int OrganizerActivity::rowCount() const {
 }
 
 int OrganizerActivity::titleFontId() const {
+  // Small is the size these screens always drew at, so the setting only ever
+  // adds larger options. UI fonts stop at 12pt, so Large borrows Noto Sans -
+  // the same family the reader uses, which keeps it from looking foreign.
   switch (SETTINGS.organizerFontSize) {
-    case CrossPointSettings::ORGANIZER_FONT_SMALL:
-      return SMALL_FONT_ID;
-    case CrossPointSettings::ORGANIZER_FONT_LARGE:
+    case CrossPointSettings::ORGANIZER_FONT_MEDIUM:
       return UI_12_FONT_ID;
+    case CrossPointSettings::ORGANIZER_FONT_LARGE:
+      return NOTOSANS_14_FONT_ID;
     default:
       return UI_10_FONT_ID;
   }
 }
 
 int OrganizerActivity::subtitleFontId() const {
-  // One step below the title, so the pairing stays legible at every size. At
-  // Small there is nothing smaller, so both halves share a font.
+  // One step below the title, so the date stays subordinate to the event at
+  // every size.
   switch (SETTINGS.organizerFontSize) {
-    case CrossPointSettings::ORGANIZER_FONT_LARGE:
+    case CrossPointSettings::ORGANIZER_FONT_MEDIUM:
       return UI_10_FONT_ID;
+    case CrossPointSettings::ORGANIZER_FONT_LARGE:
+      return UI_12_FONT_ID;
     default:
       return SMALL_FONT_ID;
   }
+}
+
+int OrganizerActivity::rowPadding() const {
+  // Proportional to the text: a fixed gap that suits 10pt leaves the rows
+  // looking cramped once the font grows, which is the point of the setting.
+  return std::max(6, renderer.getLineHeight(titleFontId()) * 2 / 5);
 }
 
 int OrganizerActivity::listRowHeight() const {
   // Only the calendar tab carries a second line, so task rows stay compact.
   const int titleH = renderer.getLineHeight(titleFontId());
   const int subH = tab == Tab::CALENDAR ? renderer.getLineHeight(subtitleFontId()) : 0;
-  return titleH + subH + ROW_PADDING;
+  return titleH + subH + rowPadding();
 }
 
 void OrganizerActivity::switchTab(const Tab next) {
@@ -679,6 +693,7 @@ void OrganizerActivity::render(RenderLock&&) {
     const int titleFont = titleFontId();
     const int subFont = subtitleFontId();
     const int rowHeight = std::max(1, listRowHeight());
+    const int rowPad = rowPadding();
     const int pageItems = std::max(1, listHeight / rowHeight);
     const int pageStart = selectedRow() < 0 ? 0 : (selectedRow() / pageItems) * pageItems;
     const int textX = metrics.contentSidePadding;
@@ -701,13 +716,13 @@ void OrganizerActivity::render(RenderLock&&) {
 
       const std::string& title = tab == Tab::TASKS ? tasks[index].content : events[index].summary;
       const auto shownTitle = renderer.truncatedText(titleFont, title.c_str(), textWidth);
-      renderer.drawText(titleFont, textX, rowY + ROW_PADDING / 2, shownTitle.c_str(), ink);
+      renderer.drawText(titleFont, textX, rowY + rowPad / 2, shownTitle.c_str(), ink);
 
       if (tab == Tab::CALENDAR) {
         char when[48];
         formatEventWhen(index, when, sizeof(when));
         const auto shownWhen = renderer.truncatedText(subFont, when, textWidth);
-        renderer.drawText(subFont, textX, rowY + ROW_PADDING / 2 + renderer.getLineHeight(titleFont), shownWhen.c_str(),
+        renderer.drawText(subFont, textX, rowY + rowPad / 2 + renderer.getLineHeight(titleFont), shownWhen.c_str(),
                           ink);
       }
 
@@ -720,7 +735,8 @@ void OrganizerActivity::render(RenderLock&&) {
       const bool nextSelected = (index + 1) == selectedRow();
       const bool lastOnPage = row + 1 >= pageItems || index + 1 >= itemCount;
       if (!selected && !nextSelected && !lastOnPage) {
-        renderer.fillRectDither(textX, rowY + rowHeight - 1, textWidth, 1, Color::LightGray);
+        renderer.fillRectDither(textX, rowY + rowHeight - SEPARATOR_HEIGHT, textWidth, SEPARATOR_HEIGHT,
+                                Color::LightGray);
       }
     }
   }
