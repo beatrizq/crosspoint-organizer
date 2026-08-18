@@ -110,30 +110,15 @@ int OrganizerActivity::rowCount() const {
 }
 
 int OrganizerActivity::titleFontId() const {
-  // Small is the size these screens always drew at, so the setting only ever
-  // adds larger options. UI fonts stop at 12pt, so Large borrows Noto Sans -
-  // the same family the reader uses, which keeps it from looking foreign.
-  switch (SETTINGS.organizerFontSize) {
-    case CrossPointSettings::ORGANIZER_FONT_MEDIUM:
-      return UI_12_FONT_ID;
-    case CrossPointSettings::ORGANIZER_FONT_LARGE:
-      return NOTOSANS_14_FONT_ID;
-    default:
-      return UI_10_FONT_ID;
-  }
+  // Small is the size these screens always drew at; Large is the only larger UI
+  // font there is. The default arm also absorbs a stale persisted value from
+  // when this setting had three options.
+  return SETTINGS.organizerFontSize == CrossPointSettings::ORGANIZER_FONT_SMALL ? UI_10_FONT_ID : UI_12_FONT_ID;
 }
 
 int OrganizerActivity::subtitleFontId() const {
-  // One step below the title, so the date stays subordinate to the event at
-  // every size.
-  switch (SETTINGS.organizerFontSize) {
-    case CrossPointSettings::ORGANIZER_FONT_MEDIUM:
-      return UI_10_FONT_ID;
-    case CrossPointSettings::ORGANIZER_FONT_LARGE:
-      return UI_12_FONT_ID;
-    default:
-      return SMALL_FONT_ID;
-  }
+  // One step below the title, so the date stays subordinate to the event.
+  return SETTINGS.organizerFontSize == CrossPointSettings::ORGANIZER_FONT_SMALL ? SMALL_FONT_ID : UI_10_FONT_ID;
 }
 
 int OrganizerActivity::rowPadding() const {
