@@ -27,6 +27,7 @@
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ScreenshotUtil.h"
@@ -228,6 +229,26 @@ void OrganizerActivity::switchTab(const Tab next) {
 
 void OrganizerActivity::completeSelectedTask() {
   const int row = selectedRow();
+  if (row < 0 || row >= rowCount()) return;
+
+  // Asked rather than done: completing pushes to Todoist and cannot be undone
+  // from the device, and Select is the same button that switches tabs one row
+  // up. The prompt names the task, because the list is behind it by then, and
+  // it opens on Cancel.
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
+                                                                TODOIST_TASKS.getTasks()[row].content),
+                         [this, row](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             LOG_DBG("ORG", "Task completion cancelled");
+                             return;
+                           }
+                           performTaskCompletion(row);
+                         });
+}
+
+void OrganizerActivity::performTaskCompletion(const int row) {
+  // Re-checked: the prompt sat on top of this screen for as long as the user
+  // took to answer, and an index is not a task.
   if (row < 0 || row >= rowCount()) return;
 
   LOG_DBG("ORG", "Completing task: %s", TODOIST_TASKS.getTasks()[row].content.c_str());

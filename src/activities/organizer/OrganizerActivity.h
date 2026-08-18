@@ -58,7 +58,9 @@ class OrganizerActivity final : public Activity {
   int selectedRow() const { return selectedIndex - 1; }
 
   // -- tasks tab ------------------------------------------------------------
+  // Asks first; performTaskCompletion() is what actually closes the task.
   void completeSelectedTask();
+  void performTaskCompletion(int row);
   void startTaskSync();
   void performTaskSync();
   bool resolveTodayDate(std::string& outDate) const;
