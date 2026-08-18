@@ -27,9 +27,11 @@
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ScreenshotUtil.h"
+#include "util/SleepWallpaperBackup.h"
 #include "util/TaskWatchdog.h"
 
 namespace {
@@ -229,6 +231,31 @@ void OrganizerActivity::completeSelectedTask() {
   const int row = selectedRow();
   if (row < 0 || row >= rowCount()) return;
 
+  // Asked rather than done: completing pushes to Todoist and cannot be undone
+  // from the device, and Select is the same button that switches tabs one row
+  // up. The prompt names the task, because the list is behind it by then, and
+  // it opens on Cancel.
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
+                                                                TODOIST_TASKS.getTasks()[row].content),
+                         [this, row](const ActivityResult& result) {
+                           // The popup answered on the press; this screen acts on
+                           // the release, and the button may still be down.
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled) {
+                             LOG_DBG("ORG", "Task completion cancelled");
+                             return;
+                           }
+                           performTaskCompletion(row);
+                         });
+}
+
+void OrganizerActivity::performTaskCompletion(const int row) {
+  // Re-checked: the prompt sat on top of this screen for as long as the user
+  // took to answer, and an index is not a task.
+  if (row < 0 || row >= rowCount()) return;
+
   LOG_DBG("ORG", "Completing task: %s", TODOIST_TASKS.getTasks()[row].content.c_str());
   {
     // The render task reads the task list; hold the lock across the removal so
@@ -242,7 +269,12 @@ void OrganizerActivity::completeSelectedTask() {
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
   TODOIST_TASKS.saveToFile();
-  requestUpdate(true);
+  // Wait for the repaint rather than firing and forgetting, so the framebuffer
+  // holds the list without the completed task before it is snapshotted. The
+  // sleep screen tracks the list, not the sync: a task completed with the radio
+  // off changes what is on screen just as much as a fetch does.
+  requestUpdateAndWait();
+  saveSleepWallpaper();
 }
 
 void OrganizerActivity::startTaskSync() {
@@ -398,6 +430,12 @@ void OrganizerActivity::saveSleepWallpaper() const {
     LOG_ERR("ORG", "Framebuffer unavailable; sleep screen not updated");
     return;
   }
+  // Whatever wallpaper is there is the user's until this screen replaces it, so
+  // it is copied aside first - once, on the first replacement - and handed back
+  // when the option is switched off. Without it, turning the option on destroyed
+  // a chosen wallpaper and turning it off left the task list in its place.
+  SleepWallpaperBackup::captureIfAbsent();
+
   // Same file and format the "Set Cover" action writes from the image viewer,
   // so SleepActivity's CUSTOM mode picks it up unchanged.
   if (!ScreenshotUtil::saveFramebufferAsBmp(SLEEP_SCREEN_PATH, framebuffer, renderer.getDisplayWidth(),
@@ -408,6 +446,12 @@ void OrganizerActivity::saveSleepWallpaper() const {
   LOG_DBG("ORG", "Sleep screen updated from the task list");
 
   if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM) {
+    // Remembered before it is overwritten, and only the first time: a later sync
+    // would otherwise record CUSTOM as the mode to go back to.
+    if (TODOIST_STORE.getPreviousSleepScreen() == TodoistStore::NO_SLEEP_SCREEN) {
+      TODOIST_STORE.setPreviousSleepScreen(SETTINGS.sleepScreen);
+      TODOIST_STORE.saveToFile();
+    }
     // The wallpaper is only shown in CUSTOM mode; switching is what makes the
     // snapshot visible at all.
     SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
@@ -703,7 +747,16 @@ void OrganizerActivity::loop() {
     return;
   }
 
+  // A press seen here is a fresh one, so nothing is owed any more.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      // The tail of the press that answered the confirmation prompt. Acting on
+      // it would reopen the prompt, and cancelling would reopen it again.
+      swallowConfirmRelease = false;
+      return;
+    }
     if (state == State::FAILED) {
       // Dismiss the failure message and fall back to whatever is cached.
       {

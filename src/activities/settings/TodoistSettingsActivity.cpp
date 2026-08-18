@@ -8,10 +8,12 @@
 #include <memory>
 #include <string>
 
+#include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/SleepWallpaperBackup.h"
 
 namespace {
 constexpr int ROW_TOKEN = 0;
@@ -97,8 +99,13 @@ void TodoistSettingsActivity::handleSelection() {
   }
 
   if (selectedIndex == ROW_SLEEP_SCREEN) {
-    // Off keeps /sleep.bmp (and the sleep screen mode) as the user set them.
-    TODOIST_STORE.setSleepScreenEnabled(!TODOIST_STORE.getSleepScreenEnabled());
+    const bool enabled = !TODOIST_STORE.getSleepScreenEnabled();
+    TODOIST_STORE.setSleepScreenEnabled(enabled);
+    // Switching off undoes what switching on did: the wallpaper that was there
+    // before the first task screenshot comes back, and so does the sleep screen
+    // mode it was being shown in. Off used to leave the task list as the
+    // wallpaper forever, with the original gone.
+    if (!enabled) restoreSleepScreen();
     TODOIST_STORE.saveToFile();
     requestUpdate(true);
     return;
@@ -111,6 +118,28 @@ void TodoistSettingsActivity::handleSelection() {
     requestUpdate(true);
   }
   // ROW_HINT is a footnote, not an action.
+}
+
+void TodoistSettingsActivity::restoreSleepScreen() {
+  const bool hadWallpaper = SleepWallpaperBackup::hasBackup();
+  // The copy is ~48KB off the SD card, so the screen says something is happening.
+  if (hadWallpaper) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  const bool restored = hadWallpaper && SleepWallpaperBackup::restore();
+
+  const uint8_t previous = TODOIST_STORE.getPreviousSleepScreen();
+  if (previous != TodoistStore::NO_SLEEP_SCREEN) {
+    // Guarded: a corrupt file must not put an out-of-range mode into settings.
+    if (previous < CrossPointSettings::SLEEP_SCREEN_MODE::SLEEP_SCREEN_MODE_COUNT) {
+      SETTINGS.sleepScreen = previous;
+      SETTINGS.saveToFile();
+      LOG_INF("TDS", "Sleep screen mode restored to %u", static_cast<unsigned>(previous));
+    }
+    TODOIST_STORE.setPreviousSleepScreen(TodoistStore::NO_SLEEP_SCREEN);
+  }
+
+  if (!hadWallpaper) return;
+  GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
+  delay(1000);
 }
 
 void TodoistSettingsActivity::render(RenderLock&&) {

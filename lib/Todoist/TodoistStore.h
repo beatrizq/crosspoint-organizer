@@ -18,6 +18,10 @@ class TodoistStore : public PersistableStore<TodoistStore> {
   // Repaint /sleep.bmp from the Today screen after each successful sync, so the
   // sleeping device shows the task list.
   bool sleepScreenEnabled = true;
+  // The sleep screen mode in force before the task screenshot switched it to
+  // CUSTOM, so switching the option off can put it back. NO_SLEEP_SCREEN until
+  // something has been replaced.
+  uint8_t previousSleepScreen = 0xFF;
 
   TodoistStore() = default;
   ~TodoistStore() = default;
@@ -38,8 +42,14 @@ class TodoistStore : public PersistableStore<TodoistStore> {
   bool hasToken() const { return !token.empty(); }
   void clearToken();
 
+  // No mode recorded: nothing has been replaced, so there is nothing to undo.
+  static constexpr uint8_t NO_SLEEP_SCREEN = 0xFF;
+
   void setSleepScreenEnabled(bool enabled) { sleepScreenEnabled = enabled; }
   bool getSleepScreenEnabled() const { return sleepScreenEnabled; }
+
+  void setPreviousSleepScreen(uint8_t mode) { previousSleepScreen = mode; }
+  uint8_t getPreviousSleepScreen() const { return previousSleepScreen; }
 };
 
 #define TODOIST_STORE TodoistStore::getInstance()

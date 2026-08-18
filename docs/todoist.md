@@ -21,7 +21,7 @@ decoded on another device or on a PC. If you would rather not type 40 characters
 
 | Button                 | Action                                                                       |
 | ---------------------- | ---------------------------------------------------------------------------- |
-| **Select** (press)     | Complete the highlighted task                                                |
+| **Select** (press)     | Complete the highlighted task, after a confirmation prompt                    |
 | **Select** (hold ~1 s) | On the tab bar: sync — push pending completions, then re-fetch the list       |
 | **Up / Down**          | Move the selection                                                           |
 | **Back**               | Home                                                                         |
@@ -35,9 +35,19 @@ stays queued.
 
 ## Sleep screen
 
-After every successful sync, the rendered task list is saved to `/sleep.bmp` and the sleep screen mode is switched to
-**Custom**, so the sleeping device shows your task list. This **overwrites any existing `/sleep.bmp`**. Turn it off
-with **Settings → Todoist → Sleep Screen**.
+Whenever the task list changes — after a successful sync, and after completing a task, which changes the list with
+the radio off — the rendered list is saved to `/sleep.bmp` and the sleep screen mode is switched to **Custom**, so the
+sleeping device shows your task list. Turn it off with **Settings → Organizer → Todoist → Sleep
+Screen**.
+
+`/sleep.bmp` is also where the image viewer's **Set Cover** action writes, so the first task screenshot would replace
+a wallpaper you had chosen. It doesn't: the file is copied to `/.crosspoint/sleep_backup.bmp` before the first
+replacement, and switching the option off puts it back — along with the sleep screen mode that was in force before
+(Cover, Dark, and so on). The copy is dropped once it has been restored, and also when you pick a new cover in the
+image viewer, since that is you saying what the wallpaper should be.
+
+If there was no `/sleep.bmp` to begin with, switching the option off restores the mode only; the last task screenshot
+stays on the card, unused, until something overwrites it.
 
 ## Notes and limits
 

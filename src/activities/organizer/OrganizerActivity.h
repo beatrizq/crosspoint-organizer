@@ -58,7 +58,9 @@ class OrganizerActivity final : public Activity {
   int selectedRow() const { return selectedIndex - 1; }
 
   // -- tasks tab ------------------------------------------------------------
+  // Asks first; performTaskCompletion() is what actually closes the task.
   void completeSelectedTask();
+  void performTaskCompletion(int row);
   void startTaskSync();
   void performTaskSync();
   bool resolveTodayDate(std::string& outDate) const;
@@ -83,6 +85,11 @@ class OrganizerActivity final : public Activity {
   // Takes the radio down after a sync, through the Arduino layer so its own
   // state goes down with it, and records that it happened.
   void tearDownRadio();
+
+  // The confirmation popup acts on the button going down, so the release lands
+  // back here - in a screen where Select completes a task. Set while that
+  // release is still owed, so it is dropped rather than acted on.
+  bool swallowConfirmRelease = false;
 
   State state = State::LIST;
   const char* statusMessage = nullptr;  // Translated; only read in FAILED state

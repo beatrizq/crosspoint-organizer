@@ -8,11 +8,13 @@
 void TodoistStore::toJson(JsonDocument& doc) const {
   doc["token_obf"] = obfuscation::obfuscateToBase64(token);
   doc["sleepScreen"] = sleepScreenEnabled;
+  doc["prevSleepScreen"] = previousSleepScreen;
 }
 
 bool TodoistStore::fromJson(JsonVariantConst doc) {
   token.clear();
   sleepScreenEnabled = doc["sleepScreen"] | true;
+  previousSleepScreen = doc["prevSleepScreen"] | NO_SLEEP_SCREEN;
 
   const char* obfuscated = doc["token_obf"] | "";
   if (obfuscated[0] != '\0') {
