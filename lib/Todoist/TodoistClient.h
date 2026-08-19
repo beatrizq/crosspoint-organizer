@@ -10,8 +10,8 @@
  * Base URL: https://api.todoist.com/api/v1
  *
  * Endpoints used:
- *   GET  /tasks/filter?query=today|overdue   - the Today screen's task list
- *   POST /tasks/{id}/close                   - mark a task complete
+ *   GET  /tasks/filter?query=overdue|due before:+N days  - the Tasks screen's list
+ *   POST /tasks/{id}/close                              - mark a task complete
  *
  * Authentication: Authorization: Bearer <personal API token>
  *
@@ -31,22 +31,26 @@ class TodoistClient {
   };
 
   /**
-   * Fetch the tasks due today plus everything overdue, in one filter query.
+   * Fetch everything overdue plus the next TODOIST_WINDOW_DAYS days, in one
+   * filter query. The Tasks screen splits the result into Overdue, Today and
+   * Upcoming against the date it settles on.
    *
    * @param outTasks Output: parsed tasks, capped at TODOIST_MAX_TASKS. Each
    *                 carries its due date packed as TodoistTask::dueDays; the
    *                 overdue flag is left for the cache to set once the caller
-   *                 has settled on today's date.
-   * @param outDerivedDate Output: the newest due date in the response, as
-   *                 "YYYY-MM-DD", or empty when no task carried a due date.
-   *                 Because the filter is "today | overdue" the server can only
-   *                 return dates up to and including today, so this *is* today
-   *                 whenever at least one task is due today - and it is today in
-   *                 the account's timezone, which is the one the filter used.
-   *                 It reads earlier than today for an all-overdue response, so
-   *                 the caller must not let the stored date move backwards.
+   *                 has settled on today's date. The window can hold more tasks
+   *                 than the cap, so the soonest are kept - see collectTask.
+   * @param outServerDate Output: today, as "YYYY-MM-DD", taken from the
+   *                 response's HTTP Date header, or empty when the header was
+   *                 missing or unparseable. The header is used rather than the
+   *                 newest due date in the body: this filter reaches into the
+   *                 future, so the body's newest date is a month out, and a
+   *                 header that cannot fail when the request succeeded is the
+   *                 more reliable clock on boards with no RTC. It is GMT, so a
+   *                 caller with a working NTP result and a configured UTC offset
+   *                 should prefer that and keep this as the fallback.
    */
-  static Error fetchTodayTasks(std::vector<TodoistTask>& outTasks, std::string& outDerivedDate);
+  static Error fetchTasks(std::vector<TodoistTask>& outTasks, std::string& outServerDate);
 
   /**
    * Complete a task. A 404 is reported as OK: the task is already gone from the

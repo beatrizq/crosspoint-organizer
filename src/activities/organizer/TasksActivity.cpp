@@ -63,19 +63,29 @@ const char* TasksActivity::tabLabel(const int index) const {
 bool TasksActivity::matchesTab(const size_t cacheIndex) const {
   const auto& tasks = TODOIST_TASKS.getTasks();
   if (cacheIndex >= tasks.size()) return false;
+  const TodoistTask& task = tasks[cacheIndex];
+
+  // Today, as the last sync settled it. DUE_NONE when nothing has synced or the
+  // date could not be established, which is why the three dated tabs check it:
+  // without today there is no before, on, or after to sort a task into, and
+  // guessing would file it under the wrong one.
+  const uint16_t today = todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
+  const bool dated = task.dueDays != todoist::DUE_NONE;
+  const bool knowToday = today != todoist::DUE_NONE;
+
   switch (static_cast<Tab>(tab())) {
     case Tab::ALL:
       return true;
     case Tab::OVERDUE:
-      return tasks[cacheIndex].overdue;
+      // The cache owns this flag, against the same date, so the tab agrees with
+      // the overdue count in the header by construction.
+      return task.overdue;
     case Tab::TODAY:
-      // The fetch returns overdue tasks and tasks due today, so everything not
-      // flagged overdue is today's.
-      return !tasks[cacheIndex].overdue;
+      return knowToday && dated && task.dueDays == today;
     case Tab::UPCOMING:
-      // Nothing dated past today is fetched yet, so this tab has nothing to
-      // match against; it stays empty until the window widens.
-      return false;
+      // Strictly after today, and dated: DUE_NONE is the maximum, so an undated
+      // task would otherwise read as the furthest-future one there is.
+      return knowToday && dated && task.dueDays > today;
   }
   return false;
 }
@@ -125,11 +135,6 @@ void TasksActivity::formatStatus(char* out, const size_t outSize) const {
 }
 
 const char* TasksActivity::emptyMessage() const {
-  if (static_cast<Tab>(tab()) == Tab::UPCOMING) {
-    // Not "no tasks": nothing is fetched for this window yet, so an empty list
-    // here says nothing about what is actually due later.
-    return tr(STR_ORGANIZER_NOTHING_YET);
-  }
   return TODOIST_TASKS.hasSynced() ? tr(STR_TODOIST_NO_TASKS) : tr(STR_TODOIST_NEVER_SYNCED);
 }
 
@@ -137,10 +142,7 @@ const char* TasksActivity::syncingMessage() const { return tr(STR_TODOIST_SYNCIN
 
 // -- completion -------------------------------------------------------------
 
-const char* TasksActivity::rowConfirmLabel() const {
-  // Upcoming has no rows to act on, and will not until it has its own fetch.
-  return static_cast<Tab>(tab()) == Tab::UPCOMING ? "" : tr(STR_COMPLETE_TASK);
-}
+const char* TasksActivity::rowConfirmLabel() const { return tr(STR_COMPLETE_TASK); }
 
 void TasksActivity::onRowConfirm() { completeSelectedTask(); }
 
@@ -261,20 +263,23 @@ void TasksActivity::performTaskSync() {
   }
 
   std::vector<TodoistTask> fetched;
-  std::string derivedDate;
+  std::string serverDate;
   if (error == TodoistClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::fetchTodayTasks(fetched, derivedDate);
+    error = TodoistClient::fetchTasks(fetched, serverDate);
     resetTaskWatchdogIfSubscribed();
   }
 
-  // Today is the newest of every source we have. The response date is exact
-  // whenever something is due today, but reads early for an all-overdue list, so
-  // NTP and the previous sync guard against the date going backwards.
-  std::string today = laterDate(derivedDate, ntpDate);
+  // NTP first when it worked: it is the only source that knows the configured UTC
+  // offset, so it gives the device's own local date. The response's Date header
+  // is the fallback - it cannot be blocked the way NTP can, but it is GMT, so it
+  // can read a day off either side of midnight. The previous sync then keeps the
+  // date from going backwards if both are unavailable or disagree downwards,
+  // because today never moves back.
+  std::string today = ntpDate.empty() ? serverDate : ntpDate;
   today = laterDate(today, TODOIST_TASKS.getSyncDate());
   if (today.empty()) {
-    LOG_ERR("TASKS", "Today unresolved: no dated tasks, no NTP, no previous sync");
+    LOG_ERR("TASKS", "Today unresolved: no NTP, no Date header, no previous sync");
   }
 
   // Drop the radio before touching the SD card and repainting; the full

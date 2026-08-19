@@ -14,10 +14,14 @@
  * of - All, Overdue, Today, Upcoming - rather than for switching to the calendar.
  *
  * All leads: it is the whole synced list, and the one tab that cannot be empty
- * while anything is synced. Overdue and Today then partition that list on the
- * cache's own overdue flag, so both are free - the fetch already returns exactly
- * those two groups together. Upcoming needs a wider window than
- * TodoistClient::fetchTodayTasks asks for, so it is an empty tab for now.
+ * while anything is synced. Overdue, Today and Upcoming then split it against
+ * the date the last sync settled on - before it, on it, after it. The fetch asks
+ * for everything overdue plus the next TODOIST_WINDOW_DAYS days, so all three
+ * have something to show.
+ *
+ * The three dated tabs are all empty until a sync establishes today: without it
+ * there is no before, on or after, and filing a task under a guessed date is
+ * worse than showing it only under All.
  *
  * Completing a task is queued locally and pushed on the next sync, so it works
  * with the radio off.
@@ -47,9 +51,8 @@ class TasksActivity final : public OrganizerScreenActivity {
   HomeMenuItem homeItem() const override { return HomeMenuItem::TASKS; }
 
  private:
-  // Whether a task belongs in the tab being shown. All takes everything, Overdue
-  // and Today partition it, and Upcoming matches nothing until the fetch window
-  // is widened.
+  // Whether a task belongs in the tab being shown. All takes everything; the
+  // other three split the list around today.
   bool matchesTab(size_t cacheIndex) const;
   // The cache index behind a visible row, or -1. Scanned rather than cached in a
   // vector: the list is capped at TODOIST_MAX_TASKS, and a stored mapping would
