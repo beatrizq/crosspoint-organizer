@@ -16,11 +16,9 @@
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
 #include "components/icons/bookmark.h"
-#include "components/icons/browse64.h"
 #include "components/icons/budget80.h"
 #include "components/icons/calendar.h"
 #include "components/icons/calendar80.h"
-#include "components/icons/catalog64.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
@@ -30,13 +28,11 @@
 #include "components/icons/library.h"
 #include "components/icons/read80.h"
 #include "components/icons/recent.h"
-#include "components/icons/recent64.h"
 #include "components/icons/settings2.h"
 #include "components/icons/tasks.h"
 #include "components/icons/tasks80.h"
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
-#include "components/icons/transfer64.h"
 #include "components/icons/wifi.h"
 #include "fontIds.h"
 
@@ -47,10 +43,7 @@ constexpr int cornerRadius = 6;
 constexpr int topHintButtonY = 345;
 constexpr int maxListValueWidth = 200;
 constexpr int mainMenuIconSize = 32;
-// The home menu is the one screen that is all destination and no content, so
-// it carries the artwork at twice the size the lists use.
-constexpr int homeMenuIconSize = 64;
-// The grid has a whole tile to fill, so its artwork is larger again.
+// The tile grid has a whole tile to fill, so its artwork is larger.
 constexpr int homeGridIconSize = 80;
 constexpr int listIconSize = 24;
 constexpr int mainMenuColumns = 2;
@@ -70,20 +63,6 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return Calendar80Icon;
       case UIIcon::Budget:
         return Budget80Icon;
-      default:
-        return nullptr;
-    }
-  } else if (size == 64) {
-    // The Read menu's rows. Only what that list shows exists at 64.
-    switch (icon) {
-      case UIIcon::Folder:
-        return Browse64Icon;
-      case UIIcon::Recent:
-        return Recent64Icon;
-      case UIIcon::Transfer:
-        return Transfer64Icon;
-      case UIIcon::Library:
-        return Catalog64Icon;
       default:
         return nullptr;
     }
@@ -679,13 +658,10 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
-      const uint8_t* iconBitmap = iconForName(icon, homeMenuIconSize);
+      const uint8_t* iconBitmap = iconForName(icon, mainMenuIconSize);
       if (iconBitmap != nullptr) {
-        // Centred on the row rather than aligned with the text: the icon is
-        // taller than the label now, so a shared top edge would hang it high.
-        const int iconY = tileRect.y + (LyraMetrics::values.menuRowHeight - homeMenuIconSize) / 2;
-        renderer.drawIcon(iconBitmap, textX, iconY, homeMenuIconSize);
-        textX += homeMenuIconSize + hPaddingInSelection + 2;
+        renderer.drawIcon(iconBitmap, textX, textY, mainMenuIconSize);
+        textX += mainMenuIconSize + hPaddingInSelection + 2;
       }
     }
 
