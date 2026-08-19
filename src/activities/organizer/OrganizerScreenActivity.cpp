@@ -317,7 +317,6 @@ void OrganizerScreenActivity::render(RenderLock&&) {
                  selectedIndex == 0);
 
   const int top = listTop();
-  const int height = listHeight();
   const int itemCount = rowCount();
 
   // One centered message per non-list state; the failure message covers the

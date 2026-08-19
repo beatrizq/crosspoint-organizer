@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -417,8 +418,7 @@ BaseTheme::TabWindow BaseTheme::tabWindow(const std::vector<int>& widths, int av
   const int count = static_cast<int>(widths.size());
   if (count == 0) return TabWindow{0, 0, false, false};
 
-  int total = 0;
-  for (const int width : widths) total += width;
+  const int total = std::accumulate(widths.begin(), widths.end(), 0);
   if (total <= available) return TabWindow{0, count, false, false};
 
   // Markers are only paid for once the tabs are known not to fit.
