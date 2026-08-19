@@ -17,7 +17,20 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, ORGANIZER, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+// ORGANIZER is the Tasks tile; the calendar and budget tiles open the same
+// screen on their own tab.
+enum class HomeMenuItem {
+  NONE,
+  READ_MENU,
+  FILE_BROWSER,
+  RECENTS,
+  ORGANIZER,
+  ORGANIZER_CALENDAR,
+  ORGANIZER_BUDGET,
+  OPDS_BROWSER,
+  FILE_TRANSFER,
+  SETTINGS_MENU
+};
 
 /**
  * ActivityManager
@@ -85,7 +98,10 @@ class ActivityManager {
   void goToSettings();
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
-  void goToOrganizer();
+  // initialTab indexes OrganizerActivity::Tab; the header cannot name that type
+  // without pulling the activity in.
+  void goToOrganizer(uint8_t initialTab = 0);
+  void goToReadMenu();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);

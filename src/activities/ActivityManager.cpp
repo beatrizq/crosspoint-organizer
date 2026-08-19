@@ -12,6 +12,7 @@
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "home/ReadMenuActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "organizer/OrganizerActivity.h"
@@ -199,7 +200,12 @@ void ActivityManager::goToRecentBooks() {
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
 }
 
-void ActivityManager::goToOrganizer() { replaceActivity(std::make_unique<OrganizerActivity>(renderer, mappedInput)); }
+void ActivityManager::goToOrganizer(const uint8_t initialTab) {
+  replaceActivity(
+      std::make_unique<OrganizerActivity>(renderer, mappedInput, static_cast<OrganizerActivity::Tab>(initialTab)));
+}
+
+void ActivityManager::goToReadMenu() { replaceActivity(std::make_unique<ReadMenuActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToBrowser() {
   const auto& servers = OPDS_STORE.getServers();

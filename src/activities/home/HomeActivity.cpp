@@ -43,17 +43,18 @@ void HomeActivity::buildEntries() {
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
     // Themes without a cover tile carry reading as the first entry instead.
     entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::NONE, 0});
+  } else {
+    // Read leads the tiles: the card above opens the last book, and this opens
+    // everything else about books - browse, recent, transfer - in one screen,
+    // so the tiles beside it stay one subject each.
+    entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::READ_MENU, -1});
   }
 
-  entries.push_back({tr(STR_MENU_BROWSE), Folder, HomeMenuItem::FILE_BROWSER, -1});
-  entries.push_back({tr(STR_MENU_RECENT), Recent, HomeMenuItem::RECENTS, -1});
-  if (hasOpdsServers) {
-    entries.push_back({tr(STR_MENU_OPDS), Library, HomeMenuItem::OPDS_BROWSER, -1});
-  }
-  entries.push_back({tr(STR_MENU_TRANSFER), Transfer, HomeMenuItem::FILE_TRANSFER, -1});
-  // Organize sits at the end: the cover card above owns the top of the screen,
-  // and the entries read as books-first, then the rest.
-  entries.push_back({tr(STR_MENU_ORGANIZE), Tasks, HomeMenuItem::ORGANIZER, -1});
+  // The organizer's three tabs, each its own tile: they are separate things to
+  // check, and a tile that lands on the wrong tab is a tile you have to fix.
+  entries.push_back({tr(STR_ORGANIZER_TAB_TASKS), Tasks, HomeMenuItem::ORGANIZER, -1});
+  entries.push_back({tr(STR_ORGANIZER_TAB_CALENDAR), Calendar, HomeMenuItem::ORGANIZER_CALENDAR, -1});
+  entries.push_back({tr(STR_ORGANIZER_TAB_BUDGET), Budget, HomeMenuItem::ORGANIZER_BUDGET, -1});
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -213,14 +214,23 @@ void HomeActivity::loop() {
       return;
     }
     switch (entry.item) {
+      case HomeMenuItem::READ_MENU:
+        activityManager.goToReadMenu();
+        break;
+      case HomeMenuItem::ORGANIZER:
+        activityManager.goToOrganizer(0);
+        break;
+      case HomeMenuItem::ORGANIZER_CALENDAR:
+        activityManager.goToOrganizer(1);
+        break;
+      case HomeMenuItem::ORGANIZER_BUDGET:
+        activityManager.goToOrganizer(2);
+        break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
       case HomeMenuItem::RECENTS:
         onRecentsOpen();
-        break;
-      case HomeMenuItem::ORGANIZER:
-        onOrganizerOpen();
         break;
       case HomeMenuItem::OPDS_BROWSER:
         onOpdsBrowserOpen();
@@ -380,7 +390,7 @@ void HomeActivity::render(RenderLock&&) {
       },
       [&rows, leadingRecents](int index) { return rows[index + leadingRecents].icon; });
 
-  const auto labels = mappedInput.mapLabels(tr(STR_SETTINGS_TITLE), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_SETTINGS_TITLE), tr(STR_SELECT), tr(STR_DIR_PREV), tr(STR_DIR_NEXT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

@@ -15,31 +15,28 @@
 #include "components/UITheme.h"
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
-#include "components/icons/book64.h"
 #include "components/icons/bookmark.h"
-#include "components/icons/browse80.h"
+#include "components/icons/browse64.h"
+#include "components/icons/budget80.h"
 #include "components/icons/calendar.h"
-#include "components/icons/catalog80.h"
+#include "components/icons/calendar80.h"
+#include "components/icons/catalog64.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
 #include "components/icons/folder24.h"
-#include "components/icons/folder64.h"
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
-#include "components/icons/library64.h"
-#include "components/icons/organize80.h"
+#include "components/icons/read80.h"
 #include "components/icons/recent.h"
 #include "components/icons/recent64.h"
-#include "components/icons/recent80.h"
 #include "components/icons/settings2.h"
 #include "components/icons/tasks.h"
-#include "components/icons/tasks64.h"
+#include "components/icons/tasks80.h"
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/transfer64.h"
-#include "components/icons/transfer80.h"
 #include "components/icons/wifi.h"
 #include "fontIds.h"
 
@@ -65,34 +62,28 @@ const uint8_t* iconForName(UIIcon icon, int size) {
     // freeink-sdk/libs/assets/Icons/lucide) rather than the upscaled 32px set:
     // a tile this size shows every jagged edge of a doubled bitmap.
     switch (icon) {
-      case UIIcon::Folder:
-        return Browse80Icon;
-      case UIIcon::Recent:
-        return Recent80Icon;
-      case UIIcon::Transfer:
-        return Transfer80Icon;
+      case UIIcon::Book:
+        return Read80Icon;
       case UIIcon::Tasks:
-        return Organize80Icon;
-      case UIIcon::Library:
-        return Catalog80Icon;
+        return Tasks80Icon;
+      case UIIcon::Calendar:
+        return Calendar80Icon;
+      case UIIcon::Budget:
+        return Budget80Icon;
       default:
         return nullptr;
     }
   } else if (size == 64) {
-    // The home menu's own size. Only the entries that menu uses exist at 64.
+    // The Read menu's rows. Only what that list shows exists at 64.
     switch (icon) {
-      case UIIcon::Book:
-        return Book64Icon;
-      case UIIcon::Tasks:
-        return Tasks64Icon;
       case UIIcon::Folder:
-        return Folder64Icon;
+        return Browse64Icon;
       case UIIcon::Recent:
         return Recent64Icon;
       case UIIcon::Transfer:
         return Transfer64Icon;
       case UIIcon::Library:
-        return Library64Icon;
+        return Catalog64Icon;
       default:
         return nullptr;
     }
