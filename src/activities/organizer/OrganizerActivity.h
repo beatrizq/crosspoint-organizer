@@ -25,10 +25,10 @@
  */
 class OrganizerActivity final : public Activity {
  public:
-  explicit OrganizerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
-
   enum class Tab : uint8_t { TASKS = 0, CALENDAR = 1, BUDGET = 2 };
   static constexpr int TAB_COUNT = 3;
+
+  explicit OrganizerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, Tab initialTab = Tab::TASKS);
 
   void onEnter() override;
   void onExit() override;
@@ -79,7 +79,7 @@ class OrganizerActivity final : public Activity {
   static const char* budgetErrorText(YnabClient::Error error);
 
   ButtonNavigator buttonNavigator;
-  Tab tab = Tab::TASKS;
+  Tab tab;  // Set from the constructor's initialTab
   int selectedIndex = 0;
 
   // Takes the radio down after a sync, through the Arduino layer so its own

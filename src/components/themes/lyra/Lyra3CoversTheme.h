@@ -11,6 +11,8 @@ constexpr ThemeMetrics values = [] {
   ThemeMetrics v = LyraMetrics::values;
   v.homeCoverTileHeight = 300;
   v.homeRecentBooksCount = 3;
+  // No height for a grid under 300px of cover, so this variant keeps rows.
+  v.homeGridColumns = 0;
   return v;
 }();
 }  // namespace Lyra3CoversMetrics

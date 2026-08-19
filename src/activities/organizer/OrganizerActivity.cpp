@@ -123,8 +123,8 @@ std::vector<TabInfo> buildTabs(const OrganizerActivity::Tab current) {
 const std::string& laterDate(const std::string& a, const std::string& b) { return b > a ? b : a; }
 }  // namespace
 
-OrganizerActivity::OrganizerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : Activity("Organizer", renderer, mappedInput) {}
+OrganizerActivity::OrganizerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const Tab initialTab)
+    : Activity("Organizer", renderer, mappedInput), tab(initialTab) {}
 
 void OrganizerActivity::onEnter() {
   Activity::onEnter();

@@ -20,17 +20,17 @@ jobs:
         with:
           python-version: '3.14'
 
-      - name: Install clang-format-21
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get update
-          sudo apt-get install -y clang-format-21
+      # The pip wheel rather than apt.llvm.org: adding that repository runs a
+      # full apt-get update against the runner's Ubuntu mirrors, which hangs
+      # often enough to be the most common reason this job never finishes. The
+      # wheel is ~2MB, installs in seconds, and pins the exact version instead
+      # of whatever the channel currently holds.
+      - name: Install clang-format 21
+        run: pip install clang-format==21.1.0
 
       - name: Run clang-format
         run: |
-          PATH="/usr/lib/llvm-21/bin:$PATH" ./bin/clang-format-fix
+          ./bin/clang-format-fix
           git diff --exit-code || (echo "Please run 'bin/clang-format-fix' to fix formatting issues" && exit 1)
 
   cppcheck:

@@ -16,7 +16,9 @@
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
 #include "components/icons/bookmark.h"
+#include "components/icons/budget80.h"
 #include "components/icons/calendar.h"
+#include "components/icons/calendar80.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
@@ -24,9 +26,11 @@
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
+#include "components/icons/read80.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
 #include "components/icons/tasks.h"
+#include "components/icons/tasks80.h"
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/wifi.h"
@@ -39,12 +43,30 @@ constexpr int cornerRadius = 6;
 constexpr int topHintButtonY = 345;
 constexpr int maxListValueWidth = 200;
 constexpr int mainMenuIconSize = 32;
+// The tile grid has a whole tile to fill, so its artwork is larger.
+constexpr int homeGridIconSize = 80;
 constexpr int listIconSize = 24;
 constexpr int mainMenuColumns = 2;
 int coverWidth = 0;
 
 const uint8_t* iconForName(UIIcon icon, int size) {
-  if (size == 24) {
+  if (size == 80) {
+    // The home grid's own size, drawn from Lucide line art (ISC, vendored in
+    // freeink-sdk/libs/assets/Icons/lucide) rather than the upscaled 32px set:
+    // a tile this size shows every jagged edge of a doubled bitmap.
+    switch (icon) {
+      case UIIcon::Book:
+        return Read80Icon;
+      case UIIcon::Tasks:
+        return Tasks80Icon;
+      case UIIcon::Calendar:
+        return Calendar80Icon;
+      case UIIcon::Budget:
+        return Budget80Icon;
+      default:
+        return nullptr;
+    }
+  } else if (size == 24) {
     switch (icon) {
       case UIIcon::Folder:
         return Folder24Icon;
@@ -550,6 +572,67 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
                     rect.y + rect.height / 2 - renderer.getLineHeight(UI_12_FONT_ID) - 2, tr(STR_NO_OPEN_BOOK), true,
                     EpdFontFamily::BOLD);
   renderer.drawText(UI_10_FONT_ID, rect.x + padding, rect.y + rect.height / 2 + 2, tr(STR_START_READING), true);
+}
+
+int LyraTheme::getGridRowStep(int contentHeight, int buttonCount) const {
+  const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
+  const int rows = (buttonCount + columns - 1) / columns;
+  if (rows <= 0 || contentHeight <= 0) return LyraMetrics::values.homeGridTileHeight;
+  // Share the height between the rows, never dropping below the tile the
+  // artwork and its label need.
+  return std::max(LyraMetrics::values.homeGridTileHeight, contentHeight / rows);
+}
+
+void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                               const std::function<std::string(int index)>& buttonLabel,
+                               const std::function<UIIcon(int index)>& rowIcon) const {
+  const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
+  const int tileHeight = getGridRowStep(rect.height, buttonCount);
+  const int tileWidth = rect.width / columns;
+  // Breathing room between the artwork and its label, and between the label and
+  // the box that marks the selection.
+  constexpr int labelGap = 10;
+  constexpr int selectionPadding = 8;
+  constexpr int selectionLineWidth = 2;
+
+  const int labelHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  const int contentHeight = homeGridIconSize + labelGap + labelHeight;
+
+  for (int i = 0; i < buttonCount; i++) {
+    const int column = i % columns;
+    const int row = i / columns;
+    const int tileX = rect.x + column * tileWidth;
+    const int tileY = rect.y + row * tileHeight;
+    const bool selected = i == selectedIndex;
+
+    // The tile's content is centred as a block, so a short label and a tall
+    // icon stay visually anchored to each other rather than to the cell edges.
+    const int contentTop = tileY + (tileHeight - contentHeight) / 2;
+
+    const std::string labelStr = buttonLabel(i);
+    const auto style = selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+    const std::string label = renderer.truncatedText(UI_12_FONT_ID, labelStr.c_str(), tileWidth - 16, style);
+    const int labelWidth = renderer.getTextWidth(UI_12_FONT_ID, label.c_str(), style);
+
+    if (selected) {
+      // An outline, not a fill: the artwork is line work, and inverting a tile
+      // this size is a lot of ink to move on every selection change.
+      const int boxWidth = std::max(homeGridIconSize, labelWidth) + selectionPadding * 4;
+      const int boxHeight = contentHeight + selectionPadding * 2;
+      renderer.drawRoundedRect(tileX + (tileWidth - boxWidth) / 2, contentTop - selectionPadding, boxWidth, boxHeight,
+                               selectionLineWidth, cornerRadius, true);
+    }
+
+    if (rowIcon != nullptr) {
+      const uint8_t* iconBitmap = iconForName(rowIcon(i), homeGridIconSize);
+      if (iconBitmap != nullptr) {
+        renderer.drawIcon(iconBitmap, tileX + (tileWidth - homeGridIconSize) / 2, contentTop, homeGridIconSize);
+      }
+    }
+
+    renderer.drawText(UI_12_FONT_ID, tileX + (tileWidth - labelWidth) / 2, contentTop + homeGridIconSize + labelGap,
+                      label.c_str(), true, style);
+  }
 }
 
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,

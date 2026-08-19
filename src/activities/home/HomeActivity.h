@@ -4,6 +4,7 @@
 
 #include "./FileBrowserActivity.h"
 #include "activities/Activity.h"
+#include "components/themes/BaseTheme.h"
 #include "util/ButtonNavigator.h"
 
 struct RecentBook;
@@ -33,42 +34,28 @@ class HomeActivity final : public Activity {
   std::vector<RecentBook> recentBooks;
   const HomeMenuItem initialMenuItem;
 
-  // Menu entries always present: Organizer, File Browser, Recents,
-  // File Transfer, Settings. OPDS is conditional and counted separately.
+  // One row of the home screen, in the order it is drawn.
   //
-  // Kept next to the two index helpers below because all three encode the same
-  // list and must be changed together: getMenuItemCount() bounds navigation, so
-  // a stale count leaves the last entry drawn but unreachable.
-  static constexpr int BASE_MENU_ITEMS = 5;
+  // This replaces the index arithmetic that used to be spelled out in three
+  // places - a count, a menu-item-to-index map and its inverse - which had to
+  // be kept in step by hand, and which fixed the recent books at the front.
+  // Order is now whatever buildEntries() appends.
+  struct HomeEntry {
+    const char* label;  // Translated; unused for cover-tile entries
+    UIIcon icon;
+    HomeMenuItem item;  // NONE when the entry opens a book
+    int recentIndex;    // >= 0 when the entry opens recentBooks[recentIndex]
+  };
 
-  // Convert HomeMenuItem to menu index (used in onEnter)
-  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
-    int i = 0;
-    if (item == HomeMenuItem::ORGANIZER) return i;
-    ++i;
-    if (item == HomeMenuItem::FILE_BROWSER) return i;
-    ++i;
-    if (item == HomeMenuItem::RECENTS) return i;
-    ++i;
-    if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
-    if (hasOpdsUrl) ++i;
-    if (item == HomeMenuItem::FILE_TRANSFER) return i;
-    ++i;
-    if (item == HomeMenuItem::SETTINGS_MENU) return i;
-    return 0;
-  }
+  std::vector<HomeEntry> entries;
 
-  // Convert menu index to HomeMenuItem (used in loop)
-  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
-    int i = 0;
-    if (idx == i++) return HomeMenuItem::ORGANIZER;
-    if (idx == i++) return HomeMenuItem::FILE_BROWSER;
-    if (idx == i++) return HomeMenuItem::RECENTS;
-    if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
-    if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
-    if (idx == i) return HomeMenuItem::SETTINGS_MENU;
-    return HomeMenuItem::NONE;
-  }
+  // Rebuilt in onEnter, once the recent books and the OPDS check are in: the
+  // list is walked every loop() and must not allocate there.
+  void buildEntries();
+  // Rows the cover tile owns, which the menu below it does not draw. Zero on
+  // themes that carry reading as a menu entry instead.
+  int leadingRecentCount() const;
+
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onRecentsOpen();
