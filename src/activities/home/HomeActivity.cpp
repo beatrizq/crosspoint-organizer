@@ -45,12 +45,12 @@ void HomeActivity::buildEntries() {
     entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::NONE, 0});
   }
 
-  entries.push_back({tr(STR_BROWSE_FILES), Folder, HomeMenuItem::FILE_BROWSER, -1});
-  entries.push_back({tr(STR_MENU_RECENT_BOOKS), Recent, HomeMenuItem::RECENTS, -1});
+  entries.push_back({tr(STR_MENU_BROWSE), Folder, HomeMenuItem::FILE_BROWSER, -1});
+  entries.push_back({tr(STR_MENU_RECENT), Recent, HomeMenuItem::RECENTS, -1});
   if (hasOpdsServers) {
-    entries.push_back({tr(STR_OPDS_BROWSER), Library, HomeMenuItem::OPDS_BROWSER, -1});
+    entries.push_back({tr(STR_MENU_OPDS), Library, HomeMenuItem::OPDS_BROWSER, -1});
   }
-  entries.push_back({tr(STR_FILE_TRANSFER), Transfer, HomeMenuItem::FILE_TRANSFER, -1});
+  entries.push_back({tr(STR_MENU_TRANSFER), Transfer, HomeMenuItem::FILE_TRANSFER, -1});
   // Organize sits at the end: the cover card above owns the top of the screen,
   // and the entries read as books-first, then the rest.
   entries.push_back({tr(STR_MENU_ORGANIZE), Tasks, HomeMenuItem::ORGANIZER, -1});
@@ -287,21 +287,48 @@ void HomeActivity::loop() {
   const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
   const int leadingRecents = leadingRecentCount();
   const int renderedMenuCount = menuCount - leadingRecents;
-  int menuRow = -1;
-  const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, metrics.menuRowHeight + metrics.menuSpacing,
-                                              renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
-  if (menuTouch != MappedInputManager::RowTouch::None) {
-    const int touchedIndex = menuRow + leadingRecents;
-    if (menuTouch == MappedInputManager::RowTouch::Down) {
+
+  // Down highlights the entry under the finger, a tap opens it. Shared by both
+  // layouts so the grid and the list behave identically to the touch.
+  auto handleMenuTouch = [this, leadingRecents, &activateSelection](MappedInputManager::RowTouch touch,
+                                                                    int renderedIndex) {
+    const int touchedIndex = renderedIndex + leadingRecents;
+    if (touch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
         requestUpdate();
       }
-    } else {
-      selectorIndex = touchedIndex;
-      activateSelection();
+      return;
     }
-    return;
+    selectorIndex = touchedIndex;
+    activateSelection();
+  };
+
+  if (metrics.homeGridColumns > 0) {
+    // Tiles: one hit-test per column band, since the shared helper walks rows.
+    const int columns = metrics.homeGridColumns;
+    const int tileWidth = renderer.getScreenWidth() / columns;
+    const int gridRows = (renderedMenuCount + columns - 1) / columns;
+    for (int column = 0; column < columns; column++) {
+      int gridRow = -1;
+      const auto tileTouch =
+          mappedInput.rowTouch(gridRow, menuTop, metrics.homeGridTileHeight, gridRows, column * tileWidth,
+                               (column + 1) * tileWidth, metrics.homeGridTileHeight);
+      if (tileTouch == MappedInputManager::RowTouch::None) continue;
+      const int renderedIndex = gridRow * columns + column;
+      // The last row can be short; its empty cells are not entries.
+      if (renderedIndex >= renderedMenuCount) return;
+      handleMenuTouch(tileTouch, renderedIndex);
+      return;
+    }
+  } else {
+    int menuRow = -1;
+    const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, metrics.menuRowHeight + metrics.menuSpacing,
+                                                renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
+    if (menuTouch != MappedInputManager::RowTouch::None) {
+      handleMenuTouch(menuTouch, menuRow);
+      return;
+    }
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -337,7 +364,7 @@ void HomeActivity::render(RenderLock&&) {
   const int renderedCount = static_cast<int>(entries.size()) - leadingRecents;
   const auto& rows = entries;
 
-  GUI.drawButtonMenu(
+  GUI.drawButtonGrid(
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
            pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +

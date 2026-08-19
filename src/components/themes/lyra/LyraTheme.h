@@ -29,6 +29,8 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .homeRecentBooksCount = 1,
                                  .homeContinueReadingInMenu = false,
                                  .homeMenuTopOffset = 16,
+                                 .homeGridColumns = 2,
+                                 .homeGridTileHeight = 130,
                                  .buttonHintsHeight = 40,
                                  .sideButtonHintsWidth = 30,
                                  .progressBarHeight = 16,
@@ -94,6 +96,9 @@ class LyraTheme : public BaseTheme {
                        const char* btn4) const override;
   void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const override;
   void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                      const std::function<std::string(int index)>& buttonLabel,
+                      const std::function<UIIcon(int index)>& rowIcon) const override;
+  void drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                       const std::function<std::string(int index)>& buttonLabel,
                       const std::function<UIIcon(int index)>& rowIcon) const override;
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,

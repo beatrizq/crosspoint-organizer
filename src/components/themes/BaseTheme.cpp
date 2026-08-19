@@ -723,6 +723,14 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
   }
 }
 
+void BaseTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                               const std::function<std::string(int index)>& buttonLabel,
+                               const std::function<UIIcon(int index)>& rowIcon) const {
+  // A theme only draws tiles if it has artwork sized for them; the rest keep
+  // the rows they already had.
+  drawButtonMenu(renderer, rect, buttonCount, selectedIndex, buttonLabel, rowIcon);
+}
+
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int marginX = metrics.popupMarginX;

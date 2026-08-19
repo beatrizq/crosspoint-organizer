@@ -579,6 +579,58 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
   renderer.drawText(UI_10_FONT_ID, rect.x + padding, rect.y + rect.height / 2 + 2, tr(STR_START_READING), true);
 }
 
+void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                               const std::function<std::string(int index)>& buttonLabel,
+                               const std::function<UIIcon(int index)>& rowIcon) const {
+  const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
+  const int tileHeight = LyraMetrics::values.homeGridTileHeight;
+  const int tileWidth = rect.width / columns;
+  // Breathing room between the artwork and its label, and between the label and
+  // the box that marks the selection.
+  constexpr int labelGap = 10;
+  constexpr int selectionPadding = 8;
+  constexpr int selectionLineWidth = 2;
+
+  const int labelHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  const int contentHeight = homeMenuIconSize + labelGap + labelHeight;
+
+  for (int i = 0; i < buttonCount; i++) {
+    const int column = i % columns;
+    const int row = i / columns;
+    const int tileX = rect.x + column * tileWidth;
+    const int tileY = rect.y + row * tileHeight;
+    const bool selected = i == selectedIndex;
+
+    // The tile's content is centred as a block, so a short label and a tall
+    // icon stay visually anchored to each other rather than to the cell edges.
+    const int contentTop = tileY + (tileHeight - contentHeight) / 2;
+
+    const std::string labelStr = buttonLabel(i);
+    const auto style = selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+    const std::string label = renderer.truncatedText(UI_12_FONT_ID, labelStr.c_str(), tileWidth - 16, style);
+    const int labelWidth = renderer.getTextWidth(UI_12_FONT_ID, label.c_str(), style);
+
+    if (selected) {
+      // An outline, not a fill: the artwork is line work, and inverting a tile
+      // this size is a lot of ink to move on every selection change.
+      const int boxWidth = std::max(homeMenuIconSize, labelWidth) + selectionPadding * 4;
+      const int boxHeight = contentHeight + selectionPadding * 2;
+      renderer.drawRoundedRect(tileX + (tileWidth - boxWidth) / 2, contentTop - selectionPadding, boxWidth, boxHeight,
+                               selectionLineWidth, cornerRadius, true);
+    }
+
+    if (rowIcon != nullptr) {
+      const uint8_t* iconBitmap = iconForName(rowIcon(i), homeMenuIconSize);
+      if (iconBitmap != nullptr) {
+        renderer.drawIcon(iconBitmap, tileX + (tileWidth - homeMenuIconSize) / 2, contentTop, homeMenuIconSize);
+      }
+    }
+
+    renderer.drawText(UI_12_FONT_ID, tileX + (tileWidth - labelWidth) / 2, contentTop + homeMenuIconSize + labelGap,
+                      label.c_str(), true, style);
+  }
+}
+
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {

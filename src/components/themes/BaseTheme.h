@@ -53,6 +53,10 @@ struct ThemeMetrics {
   int homeRecentBooksCount;
   bool homeContinueReadingInMenu;
   int homeMenuTopOffset;
+  // Home menu as tiles rather than rows: columns across, and the height of one
+  // tile including its label. Zero columns keeps the list.
+  int homeGridColumns;
+  int homeGridTileHeight;
 
   int buttonHintsHeight;
   int sideButtonHintsWidth;
@@ -223,6 +227,11 @@ class BaseTheme {
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
+                              const std::function<std::string(int index)>& buttonLabel,
+                              const std::function<UIIcon(int index)>& rowIcon) const;
+  // The same entries as tiles: artwork above a centred label, the selected one
+  // boxed. Themes that do not draw a grid inherit the list instead.
+  virtual void drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
