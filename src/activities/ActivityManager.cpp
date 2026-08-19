@@ -15,7 +15,9 @@
 #include "home/ReadMenuActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
-#include "organizer/OrganizerActivity.h"
+#include "organizer/BudgetActivity.h"
+#include "organizer/CalendarActivity.h"
+#include "organizer/TasksActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
@@ -200,9 +202,15 @@ void ActivityManager::goToRecentBooks() {
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
 }
 
-void ActivityManager::goToOrganizer(const uint8_t initialTab) {
+void ActivityManager::goToTasks(const uint8_t initialTab) {
+  replaceActivity(std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<TasksActivity::Tab>(initialTab)));
+}
+
+void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }
+
+void ActivityManager::goToBudget(const uint8_t initialTab) {
   replaceActivity(
-      std::make_unique<OrganizerActivity>(renderer, mappedInput, static_cast<OrganizerActivity::Tab>(initialTab)));
+      std::make_unique<BudgetActivity>(renderer, mappedInput, static_cast<BudgetActivity::Tab>(initialTab)));
 }
 
 void ActivityManager::goToReadMenu() { replaceActivity(std::make_unique<ReadMenuActivity>(renderer, mappedInput)); }

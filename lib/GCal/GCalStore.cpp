@@ -19,8 +19,10 @@ void GCalStore::toJson(JsonDocument& doc) const {
   doc["refreshToken_obf"] = obfuscation::obfuscateToBase64(refreshToken);
 
   JsonArray cals = doc["calendars"].to<JsonArray>();
-  for (const auto& id : selectedCalendars) {
-    cals.add(id);
+  for (const auto& calendar : selectedCalendars) {
+    JsonObject entry = cals.add<JsonObject>();
+    entry["id"] = calendar.id;
+    entry["name"] = calendar.name;
   }
 }
 
@@ -71,11 +73,29 @@ bool GCalStore::fromJson(JsonVariantConst doc) {
 
   JsonArrayConst cals = doc["calendars"].as<JsonArrayConst>();
   selectedCalendars.reserve(std::min(cals.size(), MAX_CALENDARS));
+  // Entries are {id, name} objects. A bare string is the pre-name format, and is
+  // also the easiest thing to hand-edit in, so it is still accepted: the id is
+  // taken and the name left empty, which falls back to showing the id until the
+  // picker records one. Reading one asks for a resave so the file converges on
+  // the object form.
+  bool migratedCalendars = false;
   for (JsonVariantConst value : cals) {
     if (selectedCalendars.size() >= MAX_CALENDARS) break;
+    if (value.is<JsonObjectConst>()) {
+      const char* id = value["id"] | "";
+      if (id[0] == '\0') continue;
+      selectedCalendars.push_back(
+          SelectedCalendar{clamped(id, MAX_CALENDAR_ID_LEN), clamped(value["name"] | "", MAX_CALENDAR_NAME_LEN)});
+      continue;
+    }
     const char* id = value | "";
     if (id[0] == '\0') continue;
-    selectedCalendars.emplace_back(clamped(id, MAX_CALENDAR_ID_LEN));
+    selectedCalendars.push_back(SelectedCalendar{clamped(id, MAX_CALENDAR_ID_LEN), std::string()});
+    migratedCalendars = true;
+  }
+  if (migratedCalendars) {
+    LOG_DBG("GCS", "Calendar ids without names found, resaving in the object form");
+    requestResave();
   }
 
   LOG_DBG("GCS", "Loaded: client %s, linked %s, %zu calendars", clientId.empty() ? "no" : "yes",
@@ -95,11 +115,13 @@ void GCalStore::unlink() {
 }
 
 bool GCalStore::isCalendarSelected(const std::string& id) const {
-  return std::find(selectedCalendars.begin(), selectedCalendars.end(), id) != selectedCalendars.end();
+  return std::find_if(selectedCalendars.begin(), selectedCalendars.end(),
+                      [&id](const SelectedCalendar& calendar) { return calendar.id == id; }) != selectedCalendars.end();
 }
 
-void GCalStore::toggleCalendar(const std::string& id) {
-  const auto found = std::find(selectedCalendars.begin(), selectedCalendars.end(), id);
+void GCalStore::toggleCalendar(const std::string& id, const std::string& name) {
+  const auto found = std::find_if(selectedCalendars.begin(), selectedCalendars.end(),
+                                  [&id](const SelectedCalendar& calendar) { return calendar.id == id; });
   if (found != selectedCalendars.end()) {
     selectedCalendars.erase(found);
     return;
@@ -108,5 +130,5 @@ void GCalStore::toggleCalendar(const std::string& id) {
     LOG_ERR("GCS", "Calendar selection full (%zu), ignoring %s", MAX_CALENDARS, id.c_str());
     return;
   }
-  selectedCalendars.emplace_back(clamped(id, MAX_CALENDAR_ID_LEN));
+  selectedCalendars.push_back(SelectedCalendar{clamped(id, MAX_CALENDAR_ID_LEN), clamped(name, MAX_CALENDAR_NAME_LEN)});
 }

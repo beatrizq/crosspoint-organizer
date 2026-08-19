@@ -1,0 +1,407 @@
+#include "OrganizerScreenActivity.h"
+
+#include <GfxRenderer.h>
+#include <I18n.h>
+#include <Logging.h>
+#include <WiFi.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "CrossPointSettings.h"
+#include "MappedInputManager.h"
+#include "SilentRestart.h"
+#include "activities/network/WifiSelectionActivity.h"
+#include "components/UITheme.h"
+#include "fontIds.h"
+
+namespace {
+// Hold threshold for "sync now" on the Select button (firmware convention).
+constexpr unsigned long LONG_PRESS_MS = 1000;
+
+// The dither patterns have period 2 in logical space, so a 1px rule lands on
+// either an "on" or an "off" phase depending on its y parity - with an odd row
+// height that made the separator appear on every other row. Two pixels covers
+// both phases whatever the parity.
+constexpr int SEPARATOR_HEIGHT = 2;
+}  // namespace
+
+OrganizerScreenActivity::OrganizerScreenActivity(std::string name, GfxRenderer& renderer,
+                                                 MappedInputManager& mappedInput, const int initialTab)
+    : Activity(std::move(name), renderer, mappedInput), activeTab(initialTab) {}
+
+void OrganizerScreenActivity::onEnter() {
+  Activity::onEnter();
+  loadCaches();
+  // Clamped here rather than trusted: initialTab arrives as a plain int from the
+  // home tile, and a tab out of range would index the label array.
+  if (activeTab < 0 || activeTab >= tabCount()) activeTab = 0;
+  selectedIndex = 0;
+  requestUpdate();
+}
+
+void OrganizerScreenActivity::onExit() {
+  Activity::onExit();
+  // Same teardown as the KOReader sync screen: drop the association, then
+  // reboot silently to home so the WiFi/TLS heap fragmentation goes with it.
+  // The mode check keeps a cancelled Wi-Fi picker (radio never brought up)
+  // from costing a reboot; a sync that already took the radio down reports
+  // WIFI_MODE_NULL by then, so it says so itself.
+  if (wifiActivated && (radioTornDown || WiFi.getMode() != WIFI_MODE_NULL)) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
+}
+
+// -- metrics ----------------------------------------------------------------
+
+int OrganizerScreenActivity::titleFontId() const {
+  // Small is the size these screens always drew at; Large is the only larger UI
+  // font there is. The default arm also absorbs a stale persisted value from
+  // when this setting had three options.
+  return SETTINGS.organizerFontSize == CrossPointSettings::ORGANIZER_FONT_SMALL ? UI_10_FONT_ID : UI_12_FONT_ID;
+}
+
+int OrganizerScreenActivity::subtitleFontId() const {
+  // One step below the title, so the date stays subordinate to the event.
+  return SETTINGS.organizerFontSize == CrossPointSettings::ORGANIZER_FONT_SMALL ? SMALL_FONT_ID : UI_10_FONT_ID;
+}
+
+int OrganizerScreenActivity::rowPadding() const {
+  // Proportional to the text: a fixed gap that suits 10pt leaves the rows
+  // looking cramped once the font grows, which is the point of the setting.
+  return std::max(6, renderer.getLineHeight(titleFontId()) * 2 / 5);
+}
+
+int OrganizerScreenActivity::listRowHeight() const {
+  const int titleH = renderer.getLineHeight(titleFontId());
+  const int subH = rowsHaveSubtitle() ? renderer.getLineHeight(subtitleFontId()) : 0;
+  return titleH + subH + rowPadding();
+}
+
+int OrganizerScreenActivity::listTop() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  return metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
+}
+
+int OrganizerScreenActivity::listHeight() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  return renderer.getScreenHeight() - listTop() - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+}
+
+int OrganizerScreenActivity::pageItems() const { return std::max(1, listHeight() / std::max(1, listRowHeight())); }
+
+// -- tabs -------------------------------------------------------------------
+
+void OrganizerScreenActivity::switchTab(const int next) {
+  if (activeTab == next || next < 0 || next >= tabCount()) return;
+  activeTab = next;
+  // Row indices mean different things per tab; start at the top of the new one.
+  selectedIndex = 0;
+  state = State::LIST;
+  statusMessage = nullptr;
+  onTabChanged();
+}
+
+// -- sync -------------------------------------------------------------------
+
+void OrganizerScreenActivity::tearDownRadio() {
+  // Through WiFi.mode(WIFI_OFF) rather than by stopping the driver directly.
+  // A bare stop leaves the Arduino layer believing the radio is still running:
+  // the flag it gates esp_wifi_start() on stays set, and WiFi.mode() then sees
+  // the mode it was asked for and returns early. The next sync in the same
+  // session scans and connects against a stopped driver - the saved network
+  // fails, no networks are found - and only a reboot clears it. Going through
+  // WiFi.mode() stops and deinitialises the driver, which hands back more heap
+  // than a bare stop, and lets the next sync bring it up from scratch.
+  WiFi.mode(WIFI_OFF);
+  radioTornDown = true;
+}
+
+void OrganizerScreenActivity::failSync(const char* message) {
+  {
+    RenderLock lock(*this);
+    state = State::FAILED;
+    statusMessage = message;
+  }
+  requestUpdate(true);
+}
+
+void OrganizerScreenActivity::runSync(std::function<void()> work) {
+  {
+    RenderLock lock(*this);
+    state = State::SYNCING;
+  }
+  requestUpdate();
+
+  // Past this point every path uses WiFi, so onExit() owes a teardown.
+  wifiActivated = true;
+  if (WiFi.status() == WL_CONNECTED) {
+    work();
+    return;
+  }
+
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this, work = std::move(work)](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             failSync(tr(STR_WIFI_CONN_FAILED));
+                             return;
+                           }
+                           work();
+                         });
+}
+
+void OrganizerScreenActivity::finishSync(const char* failureMessage) {
+  {
+    RenderLock lock(*this);
+    if (failureMessage == nullptr) {
+      state = State::LIST;
+      statusMessage = nullptr;
+      selectedIndex = rowCount() > 0 ? 1 : 0;
+    } else {
+      state = State::FAILED;
+      statusMessage = failureMessage;
+    }
+  }
+  requestUpdate(true);
+}
+
+// -- input ------------------------------------------------------------------
+
+void OrganizerScreenActivity::loop() {
+  if (state == State::SYNCING) return;  // ignore input while the sync blocks
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    onGoHome(homeItem());
+    return;
+  }
+
+  // A press seen here is a fresh one, so nothing is owed any more.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      // The tail of the press that answered the confirmation prompt. Acting on
+      // it would reopen the prompt, and cancelling would reopen it again.
+      swallowConfirmRelease = false;
+      return;
+    }
+    if (state == State::FAILED) {
+      // Dismiss the failure message and fall back to whatever is cached.
+      {
+        RenderLock lock(*this);
+        state = State::LIST;
+        statusMessage = nullptr;
+      }
+      requestUpdate(true);
+      return;
+    }
+    if (selectedIndex == 0) {
+      // Tabs focused: a press cycles them, a hold syncs the tab being shown.
+      //
+      // The hold is the only way in to a tab that has never synced. An empty
+      // list has no rows, so the tab bar is the only navigable index, and the
+      // row gestures below cannot be reached at all until something is on
+      // screen.
+      //
+      // A one-tab screen has nothing to cycle, so there the short press syncs
+      // too rather than leaving the button dead.
+      if (mappedInput.getHeldTime() >= LONG_PRESS_MS || tabCount() <= 1) {
+        startSync();
+        return;
+      }
+      {
+        RenderLock lock(*this);
+        switchTab(nextTab());
+      }
+      requestUpdate(true);
+      return;
+    }
+    // A press acts on the row, if the screen has an action for it. A hold does
+    // nothing: syncing belongs to the tab bar alone, and letting the same
+    // gesture act on a row one place lower would make a misplaced hold
+    // destructive.
+    if (mappedInput.getHeldTime() < LONG_PRESS_MS) onRowConfirm();
+    return;
+  }
+
+  if (state != State::LIST) return;
+
+  // Index 0 is the tab bar, so the navigable range is one longer than the list.
+  const int navCount = rowCount() + 1;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int top = listTop();
+  const int height = listHeight();
+  const int rowHeight = std::max(1, listRowHeight());
+  const int perPage = pageItems();
+
+  int tx = 0;
+  int ty = 0;
+  if (mappedInput.wasScreenTapped(tx, ty)) {
+    // Tabs first: they sit above the list and share the same tap stream.
+    std::vector<TabInfo> tabs;
+    tabs.reserve(tabCount());
+    for (int i = 0; i < tabCount(); i++) tabs.push_back(TabInfo{tabLabel(i), i == activeTab});
+    int tappedTab = -1;
+    const int tabTop = metrics.topPadding + metrics.headerHeight;
+    if (GUI.tabIndexFromPoint(renderer, Rect{0, tabTop, renderer.getScreenWidth(), metrics.tabBarHeight}, tabs, tx, ty,
+                              tappedTab)) {
+      {
+        RenderLock lock(*this);
+        switchTab(tappedTab);
+      }
+      requestUpdate(true);
+      return;
+    }
+    // Rows are hit-tested against this screen's own row height, not the theme's:
+    // the list is drawn here so the font size can follow the setting.
+    if (ty >= top && ty < top + height && rowCount() > 0) {
+      const int pageStart = selectedRow() < 0 ? 0 : (selectedRow() / perPage) * perPage;
+      const int tapped = pageStart + (ty - top) / rowHeight;
+      if (tapped >= 0 && tapped < rowCount()) {
+        selectedIndex = tapped + 1;
+        requestUpdate();
+      }
+      return;
+    }
+  }
+
+  const auto swipe = mappedInput.wasSwipe();
+  if (swipe == MappedInputManager::SwipeDir::Up) {
+    selectedIndex = selectedIndex == 0 ? std::min(1, navCount - 1)
+                                       : ButtonNavigator::nextPageIndex(selectedIndex, navCount, perPage);
+    requestUpdate();
+    return;
+  }
+  if (swipe == MappedInputManager::SwipeDir::Down) {
+    selectedIndex = ButtonNavigator::previousPageIndex(selectedIndex, navCount, perPage);
+    requestUpdate();
+    return;
+  }
+
+  buttonNavigator.onNext([this, navCount] {
+    selectedIndex = ButtonNavigator::nextIndex(selectedIndex, navCount);
+    requestUpdate();
+  });
+
+  buttonNavigator.onPrevious([this, navCount] {
+    selectedIndex = ButtonNavigator::previousIndex(selectedIndex, navCount);
+    requestUpdate();
+  });
+}
+
+// -- render -----------------------------------------------------------------
+
+void OrganizerScreenActivity::render(RenderLock&&) {
+  renderer.clearScreen();
+
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto pageWidth = renderer.getScreenWidth();
+  const auto pageHeight = renderer.getScreenHeight();
+
+  // Header: the screen's name, with the active tab's own summary on the right.
+  char status[64];
+  status[0] = '\0';
+  formatStatus(status, sizeof(status));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, screenTitle(),
+                 status[0] == '\0' ? nullptr : status);
+
+  std::vector<TabInfo> tabs;
+  tabs.reserve(tabCount());
+  for (int i = 0; i < tabCount(); i++) tabs.push_back(TabInfo{tabLabel(i), i == activeTab});
+  GUI.drawTabBar(renderer, Rect{0, metrics.topPadding + metrics.headerHeight, pageWidth, metrics.tabBarHeight}, tabs,
+                 selectedIndex == 0);
+
+  const int top = listTop();
+  const int height = listHeight();
+  const int itemCount = rowCount();
+
+  // One centered message per non-list state; the failure message covers the
+  // list until dismissed.
+  if (state == State::SYNCING) {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, syncingMessage());
+  } else if (state == State::FAILED) {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, statusMessage);
+  } else if (itemCount == 0) {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, emptyMessage());
+    // An empty list has no rows, so the tab bar is the only thing that can be
+    // focused and the hold is the only gesture that reaches a sync. Spelling it
+    // out here is the only place it can be discovered: the Select hint is
+    // already spoken for by the tab it switches to. A one-tab screen syncs on a
+    // plain press, so there the hint would be wrong and is left out.
+    if (tabCount() > 1) {
+      renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2,
+                                tr(STR_ORGANIZER_HOLD_TO_SYNC));
+    }
+  } else {
+    // Drawn by the subclass rather than through GUI.drawList so the row font
+    // follows SETTINGS.organizerFontSize; the theme's list draws at a fixed
+    // size. The base owns the band, the fill and the separator; the subclass
+    // owns what goes inside.
+    const int rowHeight = std::max(1, listRowHeight());
+    const int rowPad = rowPadding();
+    const int perPage = pageItems();
+    const int pageStart = selectedRow() < 0 ? 0 : (selectedRow() / perPage) * perPage;
+    const int textX = metrics.contentSidePadding;
+    const int textWidth = pageWidth - metrics.contentSidePadding * 2;
+
+    for (int row = 0; row < perPage; row++) {
+      const int index = pageStart + row;
+      if (index >= itemCount) break;
+      const int rowY = top + row * rowHeight;
+      const bool selected = index == selectedRow();
+
+      if (selected) {
+        renderer.fillRect(0, rowY, pageWidth, rowHeight);
+      }
+
+      drawRow(RowLayout{index, textX, rowY, textWidth, rowHeight, rowY + rowPad / 2, titleFontId(), subtitleFontId(),
+                        // Selected rows invert: the fill is black, so the text
+                        // has to be white.
+                        !selected});
+
+      // Soft rule between entries, so a wrapped title cannot be mistaken for the
+      // start of the next one. Dithered rather than solid: a black hairline
+      // carries more weight on e-ink than the text it is separating.
+      //
+      // Skipped either side of the selected row, whose fill already bounds it,
+      // and after the last row on the page, where it would underline nothing.
+      const bool nextSelected = (index + 1) == selectedRow();
+      const bool lastOnPage = row + 1 >= perPage || index + 1 >= itemCount;
+      if (!selected && !nextSelected && !lastOnPage) {
+        renderer.fillRectDither(textX, rowY + rowHeight - SEPARATOR_HEIGHT, textWidth, SEPARATOR_HEIGHT,
+                                Color::LightGray);
+      }
+    }
+  }
+
+  // Select is context-dependent: it cycles tabs when they are focused - or syncs,
+  // on a screen with only one - and otherwise does whatever the screen offers on
+  // a row. Syncing on a multi-tab screen is a hold on the tab bar, and lives
+  // nowhere else.
+  const char* confirmLabel;
+  if (state == State::SYNCING) {
+    confirmLabel = "";
+  } else if (state == State::FAILED) {
+    confirmLabel = tr(STR_OK_BUTTON);
+  } else if (selectedIndex == 0) {
+    // With the tabs focused, Select moves to the next one - so it is labelled
+    // with where it goes rather than with what it is. With nowhere to go it
+    // syncs, and says so.
+    confirmLabel = tabCount() > 1 ? tabLabel(nextTab()) : tr(STR_ORGANIZER_SYNC_NOW);
+  } else if (itemCount > 0) {
+    confirmLabel = rowConfirmLabel();
+  } else {
+    confirmLabel = "";
+  }
+  const bool navigable = state == State::LIST;
+  const auto labels = mappedInput.mapLabels(tr(STR_HOME), confirmLabel, navigable ? tr(STR_DIR_UP) : "",
+                                            navigable ? tr(STR_DIR_DOWN) : "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+
+  renderer.displayBuffer();
+}
