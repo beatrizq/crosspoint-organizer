@@ -17,38 +17,21 @@
 #include "fontIds.h"
 #include "util/TaskWatchdog.h"
 
-void CalendarActivity::loadCaches() {
-  GCAL_EVENTS.loadFromFile();
-  // The store is loaded by the settings screen, and may not have been read at
-  // all this boot if the user came straight to this tile from home.
-  GCAL_STORE.loadFromFile();
-  rebuildTabs();
-}
-
-void CalendarActivity::rebuildTabs() {
-  tabCalendars.clear();
-  const auto& selected = GCAL_STORE.getSelectedCalendars();
-  tabCalendars.reserve(selected.size());
-  for (const auto& calendar : selected) tabCalendars.push_back(calendar.label());
-}
+void CalendarActivity::loadCaches() { GCAL_EVENTS.loadFromFile(); }
 
 const char* CalendarActivity::screenTitle() const { return tr(STR_ORGANIZER_TAB_CALENDAR); }
 
 const char* CalendarActivity::tabLabel(const int index) const {
-  if (index == ALL_TAB) return tr(STR_CALENDAR_TAB_ALL);
-  const int calendar = index - 1;
-  if (calendar < 0 || static_cast<size_t>(calendar) >= tabCalendars.size()) return "";
-  return tabCalendars[static_cast<size_t>(calendar)].c_str();
+  switch (static_cast<Tab>(index)) {
+    case Tab::ALL:
+      return tr(STR_CALENDAR_TAB_ALL);
+  }
+  return "";
 }
 
 // -- rows -------------------------------------------------------------------
 
-int CalendarActivity::rowCount() const {
-  // Events are merged across calendars by the fetch and carry no attribution, so
-  // only All can list anything; a per-calendar tab has nothing to filter on yet.
-  if (tab() != ALL_TAB) return 0;
-  return static_cast<int>(GCAL_EVENTS.getEvents().size());
-}
+int CalendarActivity::rowCount() const { return static_cast<int>(GCAL_EVENTS.getEvents().size()); }
 
 void CalendarActivity::drawRow(const RowLayout& layout) const {
   const auto& events = GCAL_EVENTS.getEvents();
@@ -66,12 +49,6 @@ void CalendarActivity::drawRow(const RowLayout& layout) const {
 }
 
 void CalendarActivity::formatStatus(char* out, const size_t outSize) const {
-  if (tab() != ALL_TAB) {
-    // Nothing is fetched per calendar yet, so there is no count to stamp this
-    // tab with and a date would imply otherwise.
-    out[0] = '\0';
-    return;
-  }
   if (!GCAL_EVENTS.hasSynced()) {
     snprintf(out, outSize, "%s", tr(STR_GCAL_NEVER_SYNCED));
     return;
@@ -82,11 +59,6 @@ void CalendarActivity::formatStatus(char* out, const size_t outSize) const {
 }
 
 const char* CalendarActivity::emptyMessage() const {
-  if (tab() != ALL_TAB) {
-    // Not "no events": the events for this calendar are in the All list, just
-    // not separable yet, so an empty tab says nothing about the calendar.
-    return tr(STR_ORGANIZER_NOTHING_YET);
-  }
   return GCAL_EVENTS.hasSynced() ? tr(STR_GCAL_NO_EVENTS) : tr(STR_GCAL_NEVER_SYNCED);
 }
 

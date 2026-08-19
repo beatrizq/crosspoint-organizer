@@ -2,38 +2,39 @@
 #include <GCalClient.h>
 
 #include <cstddef>
-#include <string>
-#include <vector>
 
 #include "OrganizerScreenActivity.h"
 
 /**
- * The Calendar screen: the synced Google Calendar window, tabbed by calendar.
+ * The Calendar screen: the synced Google Calendar window under a single All tab.
  *
- * Calendar was one tab of the Organizer screen. It is now its own screen, and
- * the tab bar it inherited names the calendars the events came from: All leads,
- * then one tab per calendar ticked in Settings -> Organizer -> Calendar.
+ * Calendar was one tab of the Organizer screen and is now its own, and it keeps
+ * the one tab so it reads as a sibling of Tasks and Budget rather than as a bare
+ * list.
  *
- * The tab count therefore follows the selection rather than being fixed, from 1
- * (All alone, nothing ticked) to MAX_CALENDARS + 1. Labels come from the names
- * GCalStore records at pick time, so the bar reads correctly with the radio off;
- * a calendar stored before names were kept shows its id until it is re-ticked.
+ * It briefly drew a tab per selected calendar. Google returns a calendar's own
+ * summary as its display name, and for the primary calendar that summary is the
+ * account's email address - so the first tab came out as a wrapped email while
+ * the rest were ordinary words, and the bar read as broken rather than as a
+ * choice. The events cannot be split per calendar anyway: the fetch merges every
+ * calendar into one sorted list and GCalEvent carries no attribution. Doing this
+ * properly needs both a label worth reading and an event that knows where it came
+ * from, so the tabs are gone until it has them.
  *
- * Only All has rows for now. GCalEvent carries no calendar attribution - the
- * fetch merges every calendar into one sorted list - so a per-calendar tab has
- * nothing to filter on until the event carries the calendar it came from.
+ * A single tab has nothing to cycle to, so the base class lets a plain Select on
+ * the tab bar sync here instead of asking for a hold.
  */
 class CalendarActivity final : public OrganizerScreenActivity {
  public:
-  // Tab 0 is All; tab 1..n is selectedCalendars[n - 1].
-  static constexpr int ALL_TAB = 0;
+  enum class Tab : uint8_t { ALL = 0 };
+  static constexpr int TAB_COUNT = 1;
 
   explicit CalendarActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : OrganizerScreenActivity("Calendar", renderer, mappedInput, ALL_TAB) {}
+      : OrganizerScreenActivity("Calendar", renderer, mappedInput, static_cast<int>(Tab::ALL)) {}
 
  protected:
   const char* screenTitle() const override;
-  int tabCount() const override { return 1 + static_cast<int>(tabCalendars.size()); }
+  int tabCount() const override { return TAB_COUNT; }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;
   int rowCount() const override;
@@ -51,12 +52,4 @@ class CalendarActivity final : public OrganizerScreenActivity {
   void performCalendarSync();
   void formatEventWhen(int index, char* out, size_t outSize) const;
   static const char* calendarErrorText(GCalClient::Error error);
-
-  // The per-calendar tab labels, snapshotted from GCalStore when the screen
-  // opens and after a sync. Held as strings rather than read through the store
-  // on demand because tabLabel() hands out a const char* that has to outlive the
-  // call, and because the tab count must not change under the selection model
-  // mid-screen.
-  void rebuildTabs();
-  std::vector<std::string> tabCalendars;
 };
