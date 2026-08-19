@@ -117,6 +117,18 @@ void TasksActivity::drawRow(const RowLayout& layout) const {
   const auto& task = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)];
   const auto shown = renderer.truncatedText(layout.titleFont, task.content.c_str(), layout.width);
   renderer.drawText(layout.titleFont, layout.x, layout.textY, shown.c_str(), layout.ink);
+
+  if (!rowsHaveSubtitle()) return;
+  // The due date under the task, as the Calendar screen dates an event - same
+  // format, because a date reads the same wherever it appears on these screens.
+  // Undated tasks draw nothing rather than "--": the row keeps its height, so the
+  // list stays even, and an empty line says "no date" more quietly than a dash.
+  if (task.dueDays == todoist::DUE_NONE) return;
+  char when[16];
+  organizer::formatDayLabel(task.dueDays, when, sizeof(when));
+  const auto shownWhen = renderer.truncatedText(layout.subtitleFont, when, layout.width);
+  renderer.drawText(layout.subtitleFont, layout.x, layout.textY + renderer.getLineHeight(layout.titleFont),
+                    shownWhen.c_str(), layout.ink);
 }
 
 void TasksActivity::formatStatus(char* out, const size_t outSize) const {

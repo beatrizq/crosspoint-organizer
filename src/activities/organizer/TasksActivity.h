@@ -45,6 +45,9 @@ class TasksActivity final : public OrganizerScreenActivity {
   const char* syncingMessage() const override;
   void startSync() override;
 
+  // Every tab but Today carries the due date on a second line. On Today it would
+  // repeat the tab name on every row, so the rows stay single-line there.
+  bool rowsHaveSubtitle() const override { return static_cast<Tab>(tab()) != Tab::TODAY; }
   const char* rowConfirmLabel() const override;
   void onRowConfirm() override;
   void loadCaches() override;
