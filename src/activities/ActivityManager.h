@@ -98,12 +98,13 @@ class ActivityManager {
   void goToSettings();
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
-  // initialTab indexes the target screen's own Tab enum; the header cannot name
-  // those types without pulling the activities in. Out-of-range values are
-  // clamped to the first tab by OrganizerScreenActivity::onEnter().
+  // initialTab is an index into the target screen's tab bar; the header cannot
+  // name those types without pulling the activities in. Out-of-range values are
+  // clamped to the first tab by OrganizerScreenActivity::onEnter(), which matters
+  // for Budget: its tab count follows how many accounts are cached.
   void goToTasks(uint8_t initialTab = 0);  // 0 = All
   void goToCalendar();
-  void goToBudget(uint8_t initialTab = 0);
+  void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
   void goToReadMenu();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);

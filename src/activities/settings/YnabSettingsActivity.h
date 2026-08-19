@@ -7,8 +7,9 @@
  * Settings submenu for the YNAB integration.
  *
  * Holds the one-time setup: the personal access token generated in the owner's
- * own YNAB account, the budget (plan) id to read, and which categories feed the
- * Organizer's Budget tab. Syncing itself happens on that screen, not here.
+ * own YNAB account, the budget (plan) id to read, which categories feed the
+ * Budget screen's Plan tab, and the short labels for its account tabs. Syncing
+ * itself happens on that screen, not here.
  *
  * There is no pairing flow to run: YNAB issues long-lived personal access
  * tokens, so "connecting" is just entering the token and the budget id, after
@@ -19,8 +20,9 @@ class YnabSettingsActivity final : public Activity {
   explicit YnabSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("YnabSettings", renderer, mappedInput) {}
 
-  // Access Token, Budget ID, Categories, Clear Token, and the sync hint row.
-  static constexpr int MENU_ITEMS = 5;
+  // Access Token, Budget ID, Categories, Accounts, Clear Token, and the sync
+  // hint row.
+  static constexpr int MENU_ITEMS = 6;
 
   void onEnter() override;
   void onExit() override;

@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <YnabAccountCache.h>
 #include <YnabCategoryCache.h>
 #include <YnabStore.h>
 
@@ -11,6 +12,7 @@
 #include <string>
 
 #include "MappedInputManager.h"
+#include "activities/settings/YnabAccountsActivity.h"
 #include "activities/settings/YnabCategoryPickerActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -20,8 +22,9 @@ namespace {
 constexpr int ROW_TOKEN = 0;
 constexpr int ROW_BUDGET_ID = 1;
 constexpr int ROW_CATEGORIES = 2;
-constexpr int ROW_CLEAR = 3;
-constexpr int ROW_HINT = 4;
+constexpr int ROW_ACCOUNTS = 3;
+constexpr int ROW_CLEAR = 4;
+constexpr int ROW_HINT = 5;
 }  // namespace
 
 void YnabSettingsActivity::onEnter() {
@@ -137,6 +140,21 @@ void YnabSettingsActivity::handleSelection() {
     return;
   }
 
+  if (selectedIndex == ROW_ACCOUNTS) {
+    if (!YNAB_STORE.isConfigured()) {
+      // Same as the categories row: the screen fetches live, so it has nothing to
+      // show until both halves are set.
+      RenderLock lock(*this);
+      state = State::FAILED;
+      statusMessage = tr(STR_YNAB_NEED_TOKEN);
+      requestUpdate(true);
+      return;
+    }
+    startActivityForResult(std::make_unique<YnabAccountsActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) { requestUpdate(true); });
+    return;
+  }
+
   if (selectedIndex == ROW_CLEAR) {
     // Clearing the credential drops the cached balances with it: they came from
     // an account this device can no longer reach, so leaving them would show a
@@ -146,6 +164,10 @@ void YnabSettingsActivity::handleSelection() {
     YNAB_STORE.saveToFile();
     YNAB_CATEGORIES.clear();
     YNAB_CATEGORIES.saveToFile();
+    // The accounts and their transactions go the same way, and for the same
+    // reason: they came from a plan this device can no longer reach.
+    YNAB_ACCOUNTS.clear();
+    YNAB_ACCOUNTS.saveToFile();
     LOG_DBG("YNS", "Access token cleared");
     requestUpdate(true);
   }
@@ -175,6 +197,8 @@ void YnabSettingsActivity::render(RenderLock&&) {
     const std::string budgetValue = YNAB_STORE.hasBudgetId() ? YNAB_STORE.getBudgetId() : std::string(tr(STR_NOT_SET));
     char categoryValue[24];
     snprintf(categoryValue, sizeof(categoryValue), "%zu", YNAB_STORE.getSelectedCategories().size());
+    char accountValue[24];
+    snprintf(accountValue, sizeof(accountValue), "%zu", YNAB_ACCOUNTS.getAccounts().size());
 
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
@@ -186,6 +210,8 @@ void YnabSettingsActivity::render(RenderLock&&) {
               return std::string(tr(STR_YNAB_BUDGET_ID));
             case ROW_CATEGORIES:
               return std::string(tr(STR_YNAB_CATEGORIES));
+            case ROW_ACCOUNTS:
+              return std::string(tr(STR_YNAB_ACCOUNTS));
             case ROW_CLEAR:
               return std::string(tr(STR_CLEAR_BUTTON));
             default:
@@ -193,10 +219,11 @@ void YnabSettingsActivity::render(RenderLock&&) {
           }
         },
         nullptr, nullptr,
-        [&tokenValue, &budgetValue, &categoryValue](int index) -> std::string {
+        [&tokenValue, &budgetValue, &categoryValue, &accountValue](int index) -> std::string {
           if (index == ROW_TOKEN) return tokenValue;
           if (index == ROW_BUDGET_ID) return budgetValue;
           if (index == ROW_CATEGORIES) return std::string(categoryValue);
+          if (index == ROW_ACCOUNTS) return std::string(accountValue);
           return std::string("");
         },
         false, [](int index) -> bool { return index == ROW_HINT; });

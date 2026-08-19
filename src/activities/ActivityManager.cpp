@@ -209,8 +209,7 @@ void ActivityManager::goToTasks(const uint8_t initialTab) {
 void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToBudget(const uint8_t initialTab) {
-  replaceActivity(
-      std::make_unique<BudgetActivity>(renderer, mappedInput, static_cast<BudgetActivity::Tab>(initialTab)));
+  replaceActivity(std::make_unique<BudgetActivity>(renderer, mappedInput, static_cast<int>(initialTab)));
 }
 
 void ActivityManager::goToReadMenu() { replaceActivity(std::make_unique<ReadMenuActivity>(renderer, mappedInput)); }
