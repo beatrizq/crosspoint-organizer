@@ -723,6 +723,17 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
   }
 }
 
+int BaseTheme::getGridRowStep(int contentHeight, int buttonCount) const {
+  const int columns = BaseMetrics::values.homeGridColumns > 0 ? BaseMetrics::values.homeGridColumns : 1;
+  const int rows = (buttonCount + columns - 1) / columns;
+  if (rows <= 0) return contentHeight;
+  // The rows share the height rather than each taking a fixed slice of it, so
+  // two rows in a tall gap are spaced out instead of huddled at the top with
+  // room left for a row that does not exist.
+  const int step = contentHeight / rows;
+  return step > 0 ? step : contentHeight;
+}
+
 void BaseTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {

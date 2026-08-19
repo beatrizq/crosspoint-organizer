@@ -309,11 +309,13 @@ void HomeActivity::loop() {
     const int columns = metrics.homeGridColumns;
     const int tileWidth = renderer.getScreenWidth() / columns;
     const int gridRows = (renderedMenuCount + columns - 1) / columns;
+    const int menuHeight = renderer.getScreenHeight() - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+    // The same step the theme drew with: the rows share whatever height is left.
+    const int tileStep = GUI.getGridRowStep(menuHeight, renderedMenuCount);
     for (int column = 0; column < columns; column++) {
       int gridRow = -1;
-      const auto tileTouch =
-          mappedInput.rowTouch(gridRow, menuTop, metrics.homeGridTileHeight, gridRows, column * tileWidth,
-                               (column + 1) * tileWidth, metrics.homeGridTileHeight);
+      const auto tileTouch = mappedInput.rowTouch(gridRow, menuTop, tileStep, gridRows, column * tileWidth,
+                                                  (column + 1) * tileWidth, tileStep);
       if (tileTouch == MappedInputManager::RowTouch::None) continue;
       const int renderedIndex = gridRow * columns + column;
       // The last row can be short; its empty cells are not entries.
@@ -364,12 +366,14 @@ void HomeActivity::render(RenderLock&&) {
   const int renderedCount = static_cast<int>(entries.size()) - leadingRecents;
   const auto& rows = entries;
 
+  // The cover card's height was missing from this sum, so the menu was handed a
+  // taller rect than the screen has under the card - the tiles bunched at the
+  // top of it with a phantom row's worth of space below.
+  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
+  const int menuHeight = pageHeight - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+
   GUI.drawButtonGrid(
-      renderer,
-      Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
-                         metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
-      renderedCount, selectorIndex - leadingRecents,
+      renderer, Rect{0, menuTop, pageWidth, menuHeight}, renderedCount, selectorIndex - leadingRecents,
       [&rows, leadingRecents](int index) {
         const char* label = rows[index + leadingRecents].label;
         return std::string(label != nullptr ? label : "");

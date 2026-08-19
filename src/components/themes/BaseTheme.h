@@ -231,6 +231,9 @@ class BaseTheme {
                               const std::function<UIIcon(int index)>& rowIcon) const;
   // The same entries as tiles: artwork above a centred label, the selected one
   // boxed. Themes that do not draw a grid inherit the list instead.
+  // Vertical step between tile rows, given the height the grid has to fill and
+  // how many tiles go in it. The activity hit-tests with this too.
+  virtual int getGridRowStep(int contentHeight, int buttonCount) const;
   virtual void drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon) const;

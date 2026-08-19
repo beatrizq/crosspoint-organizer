@@ -604,11 +604,20 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
   renderer.drawText(UI_10_FONT_ID, rect.x + padding, rect.y + rect.height / 2 + 2, tr(STR_START_READING), true);
 }
 
+int LyraTheme::getGridRowStep(int contentHeight, int buttonCount) const {
+  const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
+  const int rows = (buttonCount + columns - 1) / columns;
+  if (rows <= 0 || contentHeight <= 0) return LyraMetrics::values.homeGridTileHeight;
+  // Share the height between the rows, never dropping below the tile the
+  // artwork and its label need.
+  return std::max(LyraMetrics::values.homeGridTileHeight, contentHeight / rows);
+}
+
 void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
   const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
-  const int tileHeight = LyraMetrics::values.homeGridTileHeight;
+  const int tileHeight = getGridRowStep(rect.height, buttonCount);
   const int tileWidth = rect.width / columns;
   // Breathing room between the artwork and its label, and between the label and
   // the box that marks the selection.
