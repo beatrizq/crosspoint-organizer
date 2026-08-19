@@ -83,30 +83,66 @@ void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const 
                    showBatteryPercentage);
 }
 
+namespace {
+// This bar divides its width into equal slots rather than sizing each tab to its
+// label, so overflow shows up as slots too narrow to read rather than as tabs
+// past the screen edge. A slot narrower than this cannot hold a word, so it sets
+// how many tabs the bar will take before it starts windowing.
+constexpr int MIN_SLOT_WIDTH = 96;
+// Room at each end for an overflow marker.
+constexpr int MARKER_WIDTH = 22;
+}  // namespace
+
 void RoundedRaffTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
                                   bool selected) const {
   if (tabs.empty()) {
     return;
   }
 
-  const int slotWidth = rect.width / static_cast<int>(tabs.size());
+  // The Calendar screen draws a tab per selected calendar, so the bar can be
+  // handed more tabs than it has readable slots for; only the window around the
+  // active one is drawn.
+  int active = 0;
+  for (size_t i = 0; i < tabs.size(); i++) {
+    if (tabs[i].selected) active = static_cast<int>(i);
+  }
+  const std::vector<int> widths(tabs.size(), MIN_SLOT_WIDTH);
+  const TabWindow window = tabWindow(widths, rect.width, MARKER_WIDTH * 2, active);
+
   const int tabY = rect.y + 4;
   const int tabHeight = rect.height - 12;
+  const int leftMarker = window.moreBefore ? MARKER_WIDTH : 0;
+  const int rightMarker = window.moreAfter ? MARKER_WIDTH : 0;
+  const int tabsX = rect.x + leftMarker;
+  const int slotWidth = std::max(1, (rect.width - leftMarker - rightMarker) / std::max(1, window.count));
+  const int markerY = tabY + (tabHeight - renderer.getLineHeight(kTitleFontId)) / 2;
 
-  for (size_t i = 0; i < tabs.size(); i++) {
-    const int slotX = rect.x + static_cast<int>(i) * slotWidth;
+  if (window.moreBefore) {
+    renderer.drawText(kTitleFontId, rect.x + 4, markerY, TAB_MORE_BEFORE, true, EpdFontFamily::BOLD);
+  }
+
+  for (int i = 0; i < window.count; i++) {
+    const int slotX = tabsX + i * slotWidth;
     const int tabX = slotX + 4;
     const int tabWidth = slotWidth - 8;
-    const auto& tab = tabs[i];
+    const auto& tab = tabs[static_cast<size_t>(window.first + i)];
 
     if (tab.selected) {
       renderer.fillRoundedRect(tabX, tabY, tabWidth, tabHeight, 18, selected ? Color::Black : Color::DarkGray);
     }
 
-    const int textWidth = renderer.getTextWidth(kTitleFontId, tab.label, EpdFontFamily::BOLD);
+    // Truncated to its slot: the slots are equal, so a long calendar name would
+    // otherwise run into its neighbours.
+    const auto shown = renderer.truncatedText(kTitleFontId, tab.label, tabWidth, EpdFontFamily::BOLD);
+    const int textWidth = renderer.getTextWidth(kTitleFontId, shown.c_str(), EpdFontFamily::BOLD);
     const int textX = slotX + (slotWidth - textWidth) / 2;
     const int textY = tabY + (tabHeight - renderer.getLineHeight(kTitleFontId)) / 2;
-    renderer.drawText(kTitleFontId, textX, textY, tab.label, !(tab.selected), EpdFontFamily::BOLD);
+    renderer.drawText(kTitleFontId, textX, textY, shown.c_str(), !(tab.selected), EpdFontFamily::BOLD);
+  }
+
+  if (window.moreAfter) {
+    renderer.drawText(kTitleFontId, rect.x + rect.width - MARKER_WIDTH + 4, markerY, TAB_MORE_AFTER, true,
+                      EpdFontFamily::BOLD);
   }
 
   // Full-width divider between tabs and setting rows.
@@ -120,8 +156,32 @@ bool RoundedRaffTheme::tabIndexFromPoint(const GfxRenderer& renderer, const Rect
     return false;
   }
 
-  const int slotWidth = std::max(1, rect.width / static_cast<int>(tabs.size()));
-  index = std::min(static_cast<int>(tabs.size()) - 1, (x - rect.x) / slotWidth);
+  // Windowed exactly as drawTabBar does, so a tap lands on the tab that is
+  // actually under it once the bar is scrolled.
+  int active = 0;
+  for (size_t i = 0; i < tabs.size(); i++) {
+    if (tabs[i].selected) active = static_cast<int>(i);
+  }
+  const std::vector<int> widths(tabs.size(), MIN_SLOT_WIDTH);
+  const TabWindow window = tabWindow(widths, rect.width, MARKER_WIDTH * 2, active);
+
+  const int leftMarker = window.moreBefore ? MARKER_WIDTH : 0;
+  const int rightMarker = window.moreAfter ? MARKER_WIDTH : 0;
+
+  // The markers step the window one tab that way, so they are controls rather
+  // than dead space.
+  if (window.moreBefore && x < rect.x + leftMarker) {
+    index = window.first - 1;
+    return true;
+  }
+  if (window.moreAfter && x >= rect.x + rect.width - rightMarker) {
+    index = window.first + window.count;
+    return true;
+  }
+
+  const int slotWidth = std::max(1, (rect.width - leftMarker - rightMarker) / std::max(1, window.count));
+  const int slot = std::min(window.count - 1, (x - rect.x - leftMarker) / slotWidth);
+  index = window.first + std::max(0, slot);
   return true;
 }
 

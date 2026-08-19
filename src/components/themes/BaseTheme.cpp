@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "I18n.h"
 #include "RecentBooksStore.h"
@@ -411,16 +412,84 @@ void BaseTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char
   renderer.drawText(UI_12_FONT_ID, currentX, rect.y, truncatedLabel.c_str(), true, EpdFontFamily::REGULAR);
 }
 
+BaseTheme::TabWindow BaseTheme::tabWindow(const std::vector<int>& widths, int available, const int reserve,
+                                          const int active) {
+  const int count = static_cast<int>(widths.size());
+  if (count == 0) return TabWindow{0, 0, false, false};
+
+  int total = 0;
+  for (const int width : widths) total += width;
+  if (total <= available) return TabWindow{0, count, false, false};
+
+  // Markers are only paid for once the tabs are known not to fit.
+  available -= reserve;
+
+  const int from = active < 0 ? 0 : (active >= count ? count - 1 : active);
+  int first = from;
+  int last = from;
+  // The active tab is in the window whether or not it fits on its own; a bar that
+  // dropped it would leave nothing highlighted.
+  int used = widths[static_cast<size_t>(from)];
+
+  for (bool grew = true; grew;) {
+    grew = false;
+    if (last + 1 < count && used + widths[static_cast<size_t>(last + 1)] <= available) {
+      used += widths[static_cast<size_t>(++last)];
+      grew = true;
+    }
+    if (first > 0 && used + widths[static_cast<size_t>(first - 1)] <= available) {
+      used += widths[static_cast<size_t>(--first)];
+      grew = true;
+    }
+  }
+
+  return TabWindow{first, last - first + 1, first > 0, last + 1 < count};
+}
+
+namespace {
+// Advance of one tab in the base bar: its label plus the gap that follows it.
+int baseTabAdvance(const GfxRenderer& renderer, const TabInfo& tab) {
+  return renderer.getTextWidth(UI_12_FONT_ID, tab.label, tab.selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR) +
+         BaseMetrics::values.tabSpacing;
+}
+
+// Room the two overflow markers need, so the window math and the drawing agree.
+int baseMarkerReserve(const GfxRenderer& renderer) {
+  return renderer.getTextWidth(UI_12_FONT_ID, BaseTheme::TAB_MORE_BEFORE, EpdFontFamily::REGULAR) +
+         renderer.getTextWidth(UI_12_FONT_ID, BaseTheme::TAB_MORE_AFTER, EpdFontFamily::REGULAR) +
+         BaseMetrics::values.tabSpacing * 2;
+}
+}  // namespace
+
 void BaseTheme::drawTabBar(const GfxRenderer& renderer, const Rect rect, const std::vector<TabInfo>& tabs,
                            bool selected) const {
   constexpr int underlineHeight = 2;  // Height of selection underline
   constexpr int underlineGap = 4;     // Gap between text and underline
 
+  if (tabs.empty()) return;
+
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+
+  std::vector<int> widths;
+  widths.reserve(tabs.size());
+  int active = 0;
+  for (size_t i = 0; i < tabs.size(); i++) {
+    widths.push_back(baseTabAdvance(renderer, tabs[i]));
+    if (tabs[i].selected) active = static_cast<int>(i);
+  }
+  const int available = rect.width - BaseMetrics::values.contentSidePadding * 2;
+  const TabWindow window = tabWindow(widths, available, baseMarkerReserve(renderer), active);
 
   int currentX = rect.x + BaseMetrics::values.contentSidePadding;
 
-  for (const auto& tab : tabs) {
+  if (window.moreBefore) {
+    renderer.drawText(UI_12_FONT_ID, currentX, rect.y, TAB_MORE_BEFORE, true, EpdFontFamily::REGULAR);
+    currentX +=
+        renderer.getTextWidth(UI_12_FONT_ID, TAB_MORE_BEFORE, EpdFontFamily::REGULAR) + BaseMetrics::values.tabSpacing;
+  }
+
+  for (int i = window.first; i < window.first + window.count; i++) {
+    const auto& tab = tabs[static_cast<size_t>(i)];
     const int textWidth =
         renderer.getTextWidth(UI_12_FONT_ID, tab.label, tab.selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
 
@@ -439,6 +508,10 @@ void BaseTheme::drawTabBar(const GfxRenderer& renderer, const Rect rect, const s
 
     currentX += textWidth + BaseMetrics::values.tabSpacing;
   }
+
+  if (window.moreAfter) {
+    renderer.drawText(UI_12_FONT_ID, currentX, rect.y, TAB_MORE_AFTER, true, EpdFontFamily::REGULAR);
+  }
 }
 
 bool BaseTheme::tabIndexFromPoint(const GfxRenderer& renderer, const Rect rect, const std::vector<TabInfo>& tabs,
@@ -447,18 +520,47 @@ bool BaseTheme::tabIndexFromPoint(const GfxRenderer& renderer, const Rect rect, 
     return false;
   }
 
-  int currentX = rect.x + BaseMetrics::values.contentSidePadding;
+  // Measured and windowed exactly as drawTabBar does, so a tap lands on the tab
+  // that is actually under it once the bar is scrolled.
+  std::vector<int> widths;
+  widths.reserve(tabs.size());
+  int active = 0;
   for (size_t i = 0; i < tabs.size(); i++) {
-    const auto& tab = tabs[i];
+    widths.push_back(baseTabAdvance(renderer, tabs[i]));
+    if (tabs[i].selected) active = static_cast<int>(i);
+  }
+  const int available = rect.width - BaseMetrics::values.contentSidePadding * 2;
+  const TabWindow window = tabWindow(widths, available, baseMarkerReserve(renderer), active);
+
+  int currentX = rect.x + BaseMetrics::values.contentSidePadding;
+
+  if (window.moreBefore) {
+    const int markerWidth = renderer.getTextWidth(UI_12_FONT_ID, TAB_MORE_BEFORE, EpdFontFamily::REGULAR);
+    // The marker steps the window one tab that way, so it is a control rather
+    // than dead space.
+    if (x >= rect.x && x < currentX + markerWidth) {
+      index = window.first - 1;
+      return true;
+    }
+    currentX += markerWidth + BaseMetrics::values.tabSpacing;
+  }
+
+  for (int i = window.first; i < window.first + window.count; i++) {
+    const auto& tab = tabs[static_cast<size_t>(i)];
     const int textWidth =
         renderer.getTextWidth(UI_12_FONT_ID, tab.label, tab.selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
-    const int left = (i == 0) ? rect.x : currentX - BaseMetrics::values.tabSpacing / 2;
+    const int left = (i == window.first && !window.moreBefore) ? rect.x : currentX - BaseMetrics::values.tabSpacing / 2;
     const int right = currentX + textWidth + BaseMetrics::values.tabSpacing / 2;
     if (x >= left && x < right) {
-      index = static_cast<int>(i);
+      index = i;
       return true;
     }
     currentX += textWidth + BaseMetrics::values.tabSpacing;
+  }
+
+  if (window.moreAfter && x >= currentX) {
+    index = window.first + window.count;
+    return true;
   }
 
   return false;
