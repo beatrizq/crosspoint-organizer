@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "YnabAccount.h"
 #include "YnabCategory.h"
 
 /**
@@ -22,6 +23,18 @@
  * The plan (budget) id is not a secret and is stored in the clear, so a
  * mistyped id can be corrected from a PC without retyping the token.
  */
+/**
+ * A short label the user typed for one account.
+ *
+ * YNAB has no short-name field - an account is named whatever the owner typed in
+ * the app, which is routinely too long for a tab ("Barclays Current Account") -
+ * so the label is entered on the device and stored against the account id.
+ */
+struct AccountNickname {
+  std::string id;
+  std::string nickname;
+};
+
 class YnabStore : public PersistableStore<YnabStore> {
  private:
   std::string accessToken;
@@ -31,6 +44,10 @@ class YnabStore : public PersistableStore<YnabStore> {
   // Category ids the user ticked. Empty means "not chosen yet"; the sync treats
   // that as nothing to fetch rather than silently showing every category.
   std::vector<std::string> selectedCategories;
+  // Short labels for the Budget screen's account tabs, keyed by account id. User
+  // config, so they live here beside the credentials rather than in the account
+  // cache: a cache clear must not lose a label the user typed.
+  std::vector<AccountNickname> accountNicknames;
 
   YnabStore() = default;
   ~YnabStore() = default;
@@ -70,6 +87,16 @@ class YnabStore : public PersistableStore<YnabStore> {
   // Adds or removes the id, capped at MAX_CATEGORIES. No-op past the cap.
   void toggleCategory(const std::string& id);
   void clearCategories() { selectedCategories.clear(); }
+
+  static constexpr size_t MAX_ACCOUNT_ID_LEN = YNAB_ACCOUNT_ID_MAX_LEN;
+  static constexpr size_t MAX_NICKNAME_LEN = YNAB_ACCOUNT_NICKNAME_MAX_LEN;
+
+  // The label typed for this account, or "" when none was. Callers fall back to
+  // the account's own name.
+  const std::string& getAccountNickname(const std::string& id) const;
+  // Sets or, with an empty value, clears the label. Capped at MAX_ACCOUNTS, which
+  // is also what the tab bar and the cache hold.
+  void setAccountNickname(const std::string& id, const std::string& nickname);
 };
 
 #define YNAB_STORE YnabStore::getInstance()
