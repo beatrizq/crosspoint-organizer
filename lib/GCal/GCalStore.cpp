@@ -19,10 +19,8 @@ void GCalStore::toJson(JsonDocument& doc) const {
   doc["refreshToken_obf"] = obfuscation::obfuscateToBase64(refreshToken);
 
   JsonArray cals = doc["calendars"].to<JsonArray>();
-  for (const auto& calendar : selectedCalendars) {
-    JsonObject entry = cals.add<JsonObject>();
-    entry["id"] = calendar.id;
-    entry["name"] = calendar.name;
+  for (const auto& id : selectedCalendars) {
+    cals.add(id);
   }
 }
 
@@ -73,28 +71,23 @@ bool GCalStore::fromJson(JsonVariantConst doc) {
 
   JsonArrayConst cals = doc["calendars"].as<JsonArrayConst>();
   selectedCalendars.reserve(std::min(cals.size(), MAX_CALENDARS));
-  // Entries are {id, name} objects. A bare string is the pre-name format, and is
-  // also the easiest thing to hand-edit in, so it is still accepted: the id is
-  // taken and the name left empty, which falls back to showing the id until the
-  // picker records one. Reading one asks for a resave so the file converges on
-  // the object form.
-  bool migratedCalendars = false;
+  // Entries are plain id strings. An {id, name} object is also accepted: builds
+  // between the Calendar screen growing a tab per calendar and losing them again
+  // stored the display name alongside, and a card written by one of those would
+  // otherwise read as an empty selection - silently unticking every calendar the
+  // user had chosen. The name is dropped and a resave asked for, so the file
+  // converges back on the plain form.
+  bool objectCalendars = false;
   for (JsonVariantConst value : cals) {
     if (selectedCalendars.size() >= MAX_CALENDARS) break;
-    if (value.is<JsonObjectConst>()) {
-      const char* id = value["id"] | "";
-      if (id[0] == '\0') continue;
-      selectedCalendars.push_back(
-          SelectedCalendar{clamped(id, MAX_CALENDAR_ID_LEN), clamped(value["name"] | "", MAX_CALENDAR_NAME_LEN)});
-      continue;
-    }
-    const char* id = value | "";
+    const bool isObject = value.is<JsonObjectConst>();
+    const char* id = isObject ? (value["id"] | "") : (value | "");
     if (id[0] == '\0') continue;
-    selectedCalendars.push_back(SelectedCalendar{clamped(id, MAX_CALENDAR_ID_LEN), std::string()});
-    migratedCalendars = true;
+    if (isObject) objectCalendars = true;
+    selectedCalendars.emplace_back(clamped(id, MAX_CALENDAR_ID_LEN));
   }
-  if (migratedCalendars) {
-    LOG_DBG("GCS", "Calendar ids without names found, resaving in the object form");
+  if (objectCalendars) {
+    LOG_DBG("GCS", "Calendar entries stored as objects, resaving as plain ids");
     requestResave();
   }
 
@@ -115,13 +108,11 @@ void GCalStore::unlink() {
 }
 
 bool GCalStore::isCalendarSelected(const std::string& id) const {
-  return std::find_if(selectedCalendars.begin(), selectedCalendars.end(),
-                      [&id](const SelectedCalendar& calendar) { return calendar.id == id; }) != selectedCalendars.end();
+  return std::find(selectedCalendars.begin(), selectedCalendars.end(), id) != selectedCalendars.end();
 }
 
-void GCalStore::toggleCalendar(const std::string& id, const std::string& name) {
-  const auto found = std::find_if(selectedCalendars.begin(), selectedCalendars.end(),
-                                  [&id](const SelectedCalendar& calendar) { return calendar.id == id; });
+void GCalStore::toggleCalendar(const std::string& id) {
+  const auto found = std::find(selectedCalendars.begin(), selectedCalendars.end(), id);
   if (found != selectedCalendars.end()) {
     selectedCalendars.erase(found);
     return;
@@ -130,5 +121,5 @@ void GCalStore::toggleCalendar(const std::string& id, const std::string& name) {
     LOG_ERR("GCS", "Calendar selection full (%zu), ignoring %s", MAX_CALENDARS, id.c_str());
     return;
   }
-  selectedCalendars.push_back(SelectedCalendar{clamped(id, MAX_CALENDAR_ID_LEN), clamped(name, MAX_CALENDAR_NAME_LEN)});
+  selectedCalendars.emplace_back(clamped(id, MAX_CALENDAR_ID_LEN));
 }

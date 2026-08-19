@@ -101,12 +101,12 @@ void CalendarActivity::performCalendarSync() {
   } else {
     const uint16_t lastDay = static_cast<uint16_t>(today + GCAL_WINDOW_DAYS - 1);
     fetched.reserve(GCAL_MAX_EVENTS);
-    for (const auto& calendar : GCAL_STORE.getSelectedCalendars()) {
+    for (const auto& calendarId : GCAL_STORE.getSelectedCalendars()) {
       resetTaskWatchdogIfSubscribed();
-      error = GCalClient::fetchEvents(accessToken, calendar.id, today, lastDay, fetched);
+      error = GCalClient::fetchEvents(accessToken, calendarId, today, lastDay, fetched);
       resetTaskWatchdogIfSubscribed();
       if (error != GCalClient::OK) {
-        LOG_ERR("CAL", "Fetch failed for %s: %s", calendar.id.c_str(), GCalClient::errorString(error));
+        LOG_ERR("CAL", "Fetch failed for %s: %s", calendarId.c_str(), GCalClient::errorString(error));
         break;
       }
       if (fetched.size() >= GCAL_MAX_EVENTS) {

@@ -79,10 +79,7 @@ void GCalCalendarPickerActivity::fetchCalendars() {
 
 void GCalCalendarPickerActivity::toggleSelected() {
   if (selectedIndex < 0 || static_cast<size_t>(selectedIndex) >= calendars.size()) return;
-  // The summary goes in with the id: it is only available here, while the
-  // account listing is in memory, and the Calendar screen needs it offline to
-  // label the tab for this calendar.
-  GCAL_STORE.toggleCalendar(calendars[selectedIndex].id, calendars[selectedIndex].summary);
+  GCAL_STORE.toggleCalendar(calendars[selectedIndex].id);
   dirty = true;
   requestUpdate(true);
 }
