@@ -13,8 +13,21 @@
  * that is routinely mounted on a PC, and it cannot be decoded on another chip.
  */
 class TodoistStore : public PersistableStore<TodoistStore> {
+ public:
+  // The filter a fresh install syncs with, before anything is typed.
+  //
+  // "view all" is Todoist's documented universal query: every task, dated and
+  // undated, so a first sync fills all five tabs including No date. Deliberately
+  // not "#All" - "#" is the *project* prefix, so that would match only a project
+  // literally named "All" and return nothing on most accounts.
+  static constexpr const char* DEFAULT_FILTER = "view all";
+
  private:
   std::string token;
+  // The Todoist filter query the sync asks for, in the app's own filter syntax.
+  // What the Tasks screen holds is whatever this matches; the tabs only split it
+  // afterwards. Defaults to DEFAULT_FILTER on a card that has never had one.
+  std::string filter = DEFAULT_FILTER;
   // Repaint /sleep.bmp from the Today screen after each successful sync, so the
   // sleeping device shows the task list.
   bool sleepScreenEnabled = true;
@@ -33,6 +46,10 @@ class TodoistStore : public PersistableStore<TodoistStore> {
   // longer OAuth access tokens without letting a corrupt file allocate freely.
   static constexpr size_t MAX_TOKEN_LEN = 128;
 
+  // Todoist caps a filter query at 1,024 characters, so anything longer would be
+  // rejected by the API anyway.
+  static constexpr size_t MAX_FILTER_LEN = 1024;
+
   static const char* getFilePath() { return "/.crosspoint/todoist.json"; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
@@ -41,6 +58,9 @@ class TodoistStore : public PersistableStore<TodoistStore> {
   const std::string& getToken() const { return token; }
   bool hasToken() const { return !token.empty(); }
   void clearToken();
+
+  void setFilter(const std::string& value);
+  const std::string& getFilter() const { return filter; }
 
   // No mode recorded: nothing has been replaced, so there is nothing to undo.
   static constexpr uint8_t NO_SLEEP_SCREEN = 0xFF;

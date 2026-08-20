@@ -16,18 +16,37 @@ int TodoistClient::lastHttpCode = 0;
 namespace {
 constexpr char API_BASE[] = "https://api.todoist.com/api/v1";
 
-// "overdue | due before: +N days", percent-encoded, where N is
-// TODOIST_WINDOW_DAYS - so the window is today through today+N-1, counting today
-// as day one, the same way GCAL_WINDOW_DAYS reads. Overdue is named explicitly
-// even though "due before" already covers it: the two halves are what the Overdue
-// and Upcoming tabs are made of, and spelling both out keeps the query readable
-// against the screen it feeds.
+// The filter endpoint. The query itself is whatever the user put in the Filter
+// setting, in Todoist's own filter syntax, percent-encoded onto the end.
 //
-// Built from the constant rather than hardcoded so the window has one definition.
-// The %% are snprintf escapes for the literal percent signs of the encoding.
-constexpr char FILTER_URL_FORMAT[] =
-    "https://api.todoist.com/api/v1/tasks/filter"
-    "?query=overdue%%20%%7C%%20due%%20before%%3A%%20%%2B%u%%20days&limit=200";
+// It used to be hardcoded to "overdue | due before: +30 days". That decided in
+// firmware what the screen was for; the setting moves the decision to the user,
+// and the Tasks tabs now split whatever comes back rather than defining it.
+constexpr char FILTER_URL_BASE[] = "https://api.todoist.com/api/v1/tasks/filter?limit=200&query=";
+
+// Percent-encodes everything outside the unreserved set. The filter is typed by
+// hand and Todoist's syntax is built from characters that mean something else in
+// a URL: "&" separates parameters, spaces and "|" and "!" are not legal in a
+// query as-is, and "#" would truncate the URL at a fragment and silently send no
+// query at all.
+std::string urlEncode(const std::string& value) {
+  // Not named HEX: Arduino's Print.h defines that as a macro (`#define HEX 16`).
+  static constexpr char HEX_DIGITS[] = "0123456789ABCDEF";
+  std::string out;
+  out.reserve(value.size() * 3);
+  for (const unsigned char c : value) {
+    const bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                            c == '_' || c == '.' || c == '~';
+    if (unreserved) {
+      out.push_back(static_cast<char>(c));
+    } else {
+      out.push_back('%');
+      out.push_back(HEX_DIGITS[c >> 4]);
+      out.push_back(HEX_DIGITS[c & 0x0F]);
+    }
+  }
+  return out;
+}
 
 // Same TLS heap gate as KOReaderSyncClient: the wolfSSL handshake needs working
 // heap, and a doomed attempt costs ~15s before it gives up. Free heap and the
@@ -57,6 +76,10 @@ TodoistClient::Error errorForStatus(const int httpCode) {
   if (httpCode <= 0) return TodoistClient::NETWORK_ERROR;
   if (httpCode >= 200 && httpCode < 300) return TodoistClient::OK;
   if (httpCode == 401 || httpCode == 403) return TodoistClient::AUTH_FAILED;
+  // A filter Todoist cannot parse comes back as a 400. Reported separately from a
+  // server error because it is the one failure here the user can actually fix,
+  // and "invalid filter" points straight at the setting that caused it.
+  if (httpCode == 400) return TodoistClient::INVALID_FILTER;
   return TodoistClient::SERVER_ERROR;
 }
 
@@ -81,15 +104,32 @@ void collectTask(void* ctx, const char* id, const char* content, const char* due
     return;
   }
 
-  // At the cap. A month-wide window can match more tasks than the cap holds and
-  // the API does not promise an order, so dropping whatever arrives last could
-  // discard today's tasks to keep next month's. The latest-due task held so far
-  // is evicted instead, which leaves the soonest TODOIST_MAX_TASKS whatever
-  // order they arrived in. Linear per task past the cap, over at most 60
-  // entries - nothing next to the TLS read that delivered them.
-  const auto latest = std::max_element(
-      out.begin(), out.end(), [](const TodoistTask& a, const TodoistTask& b) { return a.dueDays < b.dueDays; });
-  if (latest != out.end() && task.dueDays < latest->dueDays) *latest = std::move(task);
+  // At the cap. A filter can match far more tasks than the cap holds and the API
+  // does not promise an order, so dropping whatever arrives last could discard
+  // today's tasks to keep next year's. The least useful task held so far is
+  // evicted instead. Linear per task past the cap, over at most 60 entries -
+  // nothing next to the TLS read that delivered them.
+  //
+  // "Least useful" ranks a dated task by how far out it is, and puts every
+  // undated task behind all of them. That is deliberately not what DUE_NONE's
+  // sentinel value would give: as the numeric maximum it would make undated tasks
+  // the *first* thing evicted, emptying the No date tab on exactly the accounts
+  // big enough to need it. Ordering them last instead keeps some of them while
+  // still preferring a dated task when the cap forces a choice.
+  const auto worst = std::max_element(out.begin(), out.end(), [](const TodoistTask& a, const TodoistTask& b) {
+    const bool aDated = a.dueDays != todoist::DUE_NONE;
+    const bool bDated = b.dueDays != todoist::DUE_NONE;
+    if (aDated != bDated) return aDated;  // undated sorts after every dated task
+    if (!aDated) return false;            // two undated tasks are equally droppable
+    return a.dueDays < b.dueDays;
+  });
+  if (worst == out.end()) return;
+
+  // Swap in only if the arrival is worth more than what it displaces.
+  const bool newDated = task.dueDays != todoist::DUE_NONE;
+  const bool worstDated = worst->dueDays != todoist::DUE_NONE;
+  const bool preferNew = newDated ? (!worstDated || task.dueDays < worst->dueDays) : false;
+  if (preferNew) *worst = std::move(task);
 }
 }  // namespace
 
@@ -107,8 +147,10 @@ TodoistClient::Error TodoistClient::fetchTasks(std::vector<TodoistTask>& outTask
   TaskCollector collector{&outTasks};
   TodoistTasksParser parser(collectTask, &collector);
 
-  char url[160];
-  snprintf(url, sizeof(url), FILTER_URL_FORMAT, static_cast<unsigned>(TODOIST_WINDOW_DAYS));
+  // std::string rather than a stack buffer: a filter is allowed 1,024 characters
+  // and encoding can triple that, far past what belongs on this stack.
+  const std::string url = std::string(FILTER_URL_BASE) + urlEncode(TODOIST_STORE.getFilter());
+  LOG_DBG("TDA", "Filter query: %s", TODOIST_STORE.getFilter().c_str());
 
   freeink::SecureHttpClient http;
   http.setInsecure();
@@ -198,6 +240,8 @@ const char* TodoistClient::errorString(const Error error) {
       return "Invalid API token";
     case SERVER_ERROR:
       return "Todoist server error";
+    case INVALID_FILTER:
+      return "Todoist rejected the filter";
     case PARSE_ERROR:
       return "Unexpected response";
     case LOW_MEMORY:

@@ -99,6 +99,15 @@ class OrganizerScreenActivity : public Activity {
   // -- state a subclass reads and writes ------------------------------------
 
   int tab() const { return activeTab; }
+  /**
+   * Points the screen at a tab index, without the reset switchTab() does.
+   *
+   * For a screen whose tab set is rebuilt from its data - Tasks hides a tab with
+   * no rows - where the tab already selected can change index without the user
+   * having navigated anywhere. The caller owns the selection in that case, so
+   * this deliberately leaves selectedIndex, the state and onTabChanged() alone.
+   */
+  void setTab(int index);
   // selectedIndex 0 is the tab bar, so a row is selectedIndex - 1.
   int selectedRow() const { return selectedIndex - 1; }
   State getState() const { return state; }

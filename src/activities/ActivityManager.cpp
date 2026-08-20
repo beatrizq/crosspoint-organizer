@@ -203,7 +203,7 @@ void ActivityManager::goToRecentBooks() {
 }
 
 void ActivityManager::goToTasks(const uint8_t initialTab) {
-  replaceActivity(std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<TasksActivity::Tab>(initialTab)));
+  replaceActivity(std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<int>(initialTab)));
 }
 
 void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }

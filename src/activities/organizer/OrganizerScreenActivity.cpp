@@ -109,6 +109,11 @@ int OrganizerScreenActivity::pageItems() const { return std::max(1, listHeight()
 
 // -- tabs -------------------------------------------------------------------
 
+void OrganizerScreenActivity::setTab(const int index) {
+  if (index < 0 || index >= tabCount()) return;
+  activeTab = index;
+}
+
 void OrganizerScreenActivity::switchTab(const int next) {
   if (activeTab == next || next < 0 || next >= tabCount()) return;
   activeTab = next;
