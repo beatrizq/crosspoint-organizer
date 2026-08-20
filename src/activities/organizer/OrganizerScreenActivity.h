@@ -116,6 +116,22 @@ class OrganizerScreenActivity : public Activity {
   // state goes down with it, and records that it happened.
   void tearDownRadio();
 
+  /**
+   * Greys out a run of text that has already been drawn, by knocking every other
+   * pixel back out of it.
+   *
+   * The panel is 1-bit: there is no lighter ink to draw with, and the grayscale
+   * render modes need a whole second overlay pass over the frame, which is far
+   * too much for a list row. A checkerboard at the pixel level reads as grey at
+   * this size, and is what the themes already use to dim a list row - see
+   * BaseTheme::drawList's rowDimmed handling.
+   *
+   * No-op on a selected row (`ink` false), whose fill is black and whose text is
+   * already white: knocking white pixels out of white text would do nothing, and
+   * the inversion is contrast enough on its own.
+   */
+  void dimText(int x, int y, int fontId, const char* text, bool ink) const;
+
   int titleFontId() const;
   int subtitleFontId() const;
   // Vertical breathing room in a row; scales with the chosen font.

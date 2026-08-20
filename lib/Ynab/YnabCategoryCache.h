@@ -45,6 +45,10 @@ class YnabCategoryCache : public PersistableStore<YnabCategoryCache> {
   void setCategories(std::vector<YnabCategory>&& fetched, uint16_t month);
 
   void clear();
+
+ private:
+  // Moves YNAB's inflow category to the front, if it was ticked at all.
+  void sortInflowFirst();
 };
 
 #define YNAB_CATEGORIES YnabCategoryCache::getInstance()

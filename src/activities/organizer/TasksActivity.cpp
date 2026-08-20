@@ -127,8 +127,11 @@ void TasksActivity::drawRow(const RowLayout& layout) const {
   char when[16];
   organizer::formatDayLabel(task.dueDays, when, sizeof(when));
   const auto shownWhen = renderer.truncatedText(layout.subtitleFont, when, layout.width);
-  renderer.drawText(layout.subtitleFont, layout.x, layout.textY + renderer.getLineHeight(layout.titleFont),
-                    shownWhen.c_str(), layout.ink);
+  const int whenY = layout.textY + renderer.getLineHeight(layout.titleFont);
+  renderer.drawText(layout.subtitleFont, layout.x, whenY, shownWhen.c_str(), layout.ink);
+  // Greyed, so the date stays subordinate to the task rather than competing with
+  // it. The smaller font alone was not enough separation.
+  dimText(layout.x, whenY, layout.subtitleFont, shownWhen.c_str(), layout.ink);
 }
 
 void TasksActivity::formatStatus(char* out, const size_t outSize) const {

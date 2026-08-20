@@ -65,12 +65,18 @@ void BudgetActivity::drawRow(const RowLayout& layout) const {
   const char* amountText = nullptr;
   char when[16];
   when[0] = '\0';
+  // Inflow is the money not yet assigned anywhere, so it is the total the rows
+  // under it draw down. The cache sorts it to the front when it is ticked; bold
+  // is what marks it as the summary rather than another category.
+  EpdFontFamily::Style style = EpdFontFamily::REGULAR;
 
   if (tab() == PLAN_TAB) {
     const auto& categories = YNAB_CATEGORIES.getCategories();
     if (layout.index < 0 || static_cast<size_t>(layout.index) >= categories.size()) return;
-    labelText = categories[static_cast<size_t>(layout.index)].name.c_str();
-    amountText = categories[static_cast<size_t>(layout.index)].balance.c_str();
+    const YnabCategory& category = categories[static_cast<size_t>(layout.index)];
+    labelText = category.name.c_str();
+    amountText = category.balance.c_str();
+    if (isYnabInflowCategory(category.name)) style = EpdFontFamily::BOLD;
   } else {
     const YnabAccount* account = currentAccount();
     if (account == nullptr) return;
@@ -81,16 +87,19 @@ void BudgetActivity::drawRow(const RowLayout& layout) const {
     organizer::formatDayLabel(transaction.date, when, sizeof(when));
   }
 
-  const int amountWidth = renderer.getTextWidth(layout.titleFont, amountText);
+  const int amountWidth = renderer.getTextWidth(layout.titleFont, amountText, style);
   const int labelWidth = std::max(0, layout.width - amountWidth - amountGap);
 
-  const auto shownLabel = renderer.truncatedText(layout.titleFont, labelText, labelWidth);
-  renderer.drawText(layout.titleFont, layout.x, layout.textY, shownLabel.c_str(), layout.ink);
-  renderer.drawText(layout.titleFont, layout.x + layout.width - amountWidth, layout.textY, amountText, layout.ink);
+  const auto shownLabel = renderer.truncatedText(layout.titleFont, labelText, labelWidth, style);
+  renderer.drawText(layout.titleFont, layout.x, layout.textY, shownLabel.c_str(), layout.ink, style);
+  renderer.drawText(layout.titleFont, layout.x + layout.width - amountWidth, layout.textY, amountText, layout.ink,
+                    style);
 
   if (when[0] != '\0') {
-    renderer.drawText(layout.subtitleFont, layout.x, layout.textY + renderer.getLineHeight(layout.titleFont), when,
-                      layout.ink);
+    const int whenY = layout.textY + renderer.getLineHeight(layout.titleFont);
+    renderer.drawText(layout.subtitleFont, layout.x, whenY, when, layout.ink);
+    // Greyed, so the date stays subordinate to the payee and the amount.
+    dimText(layout.x, whenY, layout.subtitleFont, when, layout.ink);
   }
 }
 

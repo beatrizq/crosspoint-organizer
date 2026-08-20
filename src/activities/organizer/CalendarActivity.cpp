@@ -44,8 +44,10 @@ void CalendarActivity::drawRow(const RowLayout& layout) const {
   char when[48];
   formatEventWhen(layout.index, when, sizeof(when));
   const auto shownWhen = renderer.truncatedText(layout.subtitleFont, when, layout.width);
-  renderer.drawText(layout.subtitleFont, layout.x, layout.textY + renderer.getLineHeight(layout.titleFont),
-                    shownWhen.c_str(), layout.ink);
+  const int whenY = layout.textY + renderer.getLineHeight(layout.titleFont);
+  renderer.drawText(layout.subtitleFont, layout.x, whenY, shownWhen.c_str(), layout.ink);
+  // Greyed, so the date stays subordinate to the event.
+  dimText(layout.x, whenY, layout.subtitleFont, shownWhen.c_str(), layout.ink);
 }
 
 void CalendarActivity::formatStatus(char* out, const size_t outSize) const {

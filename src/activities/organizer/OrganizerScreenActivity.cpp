@@ -59,6 +59,18 @@ void OrganizerScreenActivity::onExit() {
 
 // -- metrics ----------------------------------------------------------------
 
+void OrganizerScreenActivity::dimText(const int x, const int y, const int fontId, const char* text,
+                                      const bool ink) const {
+  if (!ink || text == nullptr || text[0] == '\0') return;
+  const int width = renderer.getTextWidth(fontId, text);
+  const int height = renderer.getLineHeight(fontId);
+  for (int py = y; py < y + height; py++) {
+    for (int px = x; px < x + width; px++) {
+      if ((px + py) % 2 == 0) renderer.drawPixel(px, py, false);
+    }
+  }
+}
+
 int OrganizerScreenActivity::titleFontId() const {
   // Small is the size these screens always drew at; Large is the only larger UI
   // font there is. The default arm also absorbs a stale persisted value from
