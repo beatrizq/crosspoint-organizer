@@ -224,6 +224,34 @@ class BaseTheme {
                           bool selected) const;
   virtual bool tabIndexFromPoint(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs, int x, int y,
                                  int& index) const;
+
+  // The run of tabs a bar can actually show. The Calendar screen draws one tab
+  // per selected calendar, so a bar can be asked for more tabs than fit across
+  // the screen; rather than clipping the overflow silently, each theme draws a
+  // window around the active tab and marks the directions it has more in.
+  struct TabWindow {
+    int first;        // Index of the first tab to draw
+    int count;        // How many to draw, starting at first
+    bool moreBefore;  // Tabs exist to the left of the window
+    bool moreAfter;   // Tabs exist to the right of the window
+  };
+
+  // Marker drawn where the window has more tabs beyond it. ASCII, because the UI
+  // fonts are subset and cannot be relied on for the typographic guillemets.
+  static constexpr const char* TAB_MORE_BEFORE = "<";
+  static constexpr const char* TAB_MORE_AFTER = ">";
+
+  /**
+   * Picks the window to draw. `widths` holds each tab's full advance - its own
+   * width plus the spacing that follows it - because only the theme knows how it
+   * lays a tab out. `available` is the room the bar has for tabs, and `reserve`
+   * the room the two markers need, taken off only when the tabs do not all fit.
+   *
+   * The window grows outward from `active`, right first so the bar reads
+   * left-to-right, and always contains the active tab even when that one tab is
+   * wider than the bar.
+   */
+  static TabWindow tabWindow(const std::vector<int>& widths, int available, int reserve, int active);
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;

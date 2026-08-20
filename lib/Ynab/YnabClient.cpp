@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "YnabMonthParser.h"
+#include "YnabRecordParser.h"
 #include "YnabStore.h"
 
 int YnabClient::lastHttpCode = 0;
@@ -202,6 +203,158 @@ YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, 
   return YnabClient::OK;
 }
 
+// -- accounts and transactions ----------------------------------------------
+
+// Slot numbering for the two record tables. Mirrored by
+// test/ynab_record_parser, which is what stops a table and its reader drifting.
+enum AccountSlot : uint8_t { ACC_ID = 0, ACC_NAME = 1, ACC_BALANCE_TEXT = 2 };
+enum AccountBool : uint8_t { ACC_ON_BUDGET = 0, ACC_CLOSED = 1, ACC_DELETED = 2 };
+
+constexpr YnabFieldSpec ACCOUNT_FIELDS[] = {
+    {"id", YnabFieldKind::String, ACC_ID},
+    {"name", YnabFieldKind::String, ACC_NAME},
+    {"balance_formatted", YnabFieldKind::String, ACC_BALANCE_TEXT},
+    {"balance", YnabFieldKind::Number, 0},
+    {"on_budget", YnabFieldKind::Bool, ACC_ON_BUDGET},
+    {"closed", YnabFieldKind::Bool, ACC_CLOSED},
+    {"deleted", YnabFieldKind::Bool, ACC_DELETED},
+};
+
+enum TxSlot : uint8_t { TX_DATE = 0, TX_PAYEE = 1, TX_MEMO = 2, TX_AMOUNT_TEXT = 3 };
+
+constexpr YnabFieldSpec TRANSACTION_FIELDS[] = {
+    {"date", YnabFieldKind::String, TX_DATE}, {"payee_name", YnabFieldKind::String, TX_PAYEE},
+    {"memo", YnabFieldKind::String, TX_MEMO}, {"amount_formatted", YnabFieldKind::String, TX_AMOUNT_TEXT},
+    {"amount", YnabFieldKind::Number, 0},     {"deleted", YnabFieldKind::Bool, 0},
+};
+
+// Reuses the category path's fallback: prefer what the API rendered, and only
+// format milliunits when the response predates the formatted fields.
+void assignAmountText(const char* formatted, const int64_t milli, std::string& out) {
+  if (formatted[0] != '\0') {
+    out = formatted;
+    return;
+  }
+  char fallback[24];
+  formatMilliunits(milli, fallback, sizeof(fallback));
+  out = fallback;
+}
+
+struct AccountCollector {
+  std::vector<YnabAccount>* out;
+};
+
+void collectAccount(void* ctx, const YnabParsedRecord& record) {
+  auto* collector = static_cast<AccountCollector*>(ctx);
+  if (collector->out->size() >= YNAB_MAX_ACCOUNTS) return;
+  if (record.strings[ACC_ID][0] == '\0') return;
+  // Closed accounts are archived and deleted ones are tombstones; off-budget
+  // accounts are YNAB's tracking accounts, which are not what a tab bar of
+  // accounts-you-check is for.
+  if (record.bools[ACC_CLOSED] || record.bools[ACC_DELETED] || !record.bools[ACC_ON_BUDGET]) return;
+
+  YnabAccount account;
+  account.id = record.strings[ACC_ID];
+  // An unnamed account would draw a blank row in the label editor, so the id
+  // stands in - it is at least selectable.
+  account.name = record.strings[ACC_NAME][0] != '\0' ? record.strings[ACC_NAME] : record.strings[ACC_ID];
+  assignAmountText(record.strings[ACC_BALANCE_TEXT], record.numbers[0], account.balance);
+  collector->out->push_back(std::move(account));
+}
+
+struct TransactionCollector {
+  std::vector<YnabTransaction>* out;
+};
+
+void collectTransaction(void* ctx, const YnabParsedRecord& record) {
+  auto* collector = static_cast<TransactionCollector*>(ctx);
+  if (record.bools[0]) return;  // deleted: a tombstone, not a row
+
+  YnabTransaction transaction;
+  // A transaction with no payee is normally a manual entry, where the memo is
+  // what the user wrote to identify it. Neither being set leaves the row named
+  // by its amount alone, which is still a row worth showing.
+  transaction.payee = record.strings[TX_PAYEE][0] != '\0' ? record.strings[TX_PAYEE] : record.strings[TX_MEMO];
+  assignAmountText(record.strings[TX_AMOUNT_TEXT], record.numbers[0], transaction.amount);
+  transaction.date = civil::dateFromIso(record.strings[TX_DATE]);
+
+  // Held to twice what is kept, dropping from the front when full. The API
+  // returns oldest-first, so the newest rows arrive last: cutting at the cap
+  // would keep exactly the wrong end. Twice YNAB_MAX_TRANSACTIONS leaves the
+  // cache a tail worth sorting without a month of rows ever being in RAM. The
+  // eviction is after the row is built, so a deleted entry cannot displace a
+  // real one.
+  auto& out = *collector->out;
+  if (out.size() >= YNAB_MAX_TRANSACTIONS * 2) out.erase(out.begin());
+  out.push_back(std::move(transaction));
+}
+
+/**
+ * Runs a plan-scoped GET, feeding the body through a record parser as it arrives.
+ *
+ * `path` is appended to /plans/{plan_id}, already encoded.
+ */
+YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, const YnabFieldSpec* fields,
+                                 const size_t fieldCount, YnabRecordParser::RecordSink sink, void* sinkCtx,
+                                 uint16_t* outDate) {
+  YnabClient::lastHttpCode = 0;
+  if (!YNAB_STORE.hasToken()) {
+    LOG_DBG("YNC", "No access token configured");
+    return YnabClient::NO_TOKEN;
+  }
+  if (!YNAB_STORE.hasBudgetId()) {
+    LOG_DBG("YNC", "No budget id configured");
+    return YnabClient::NO_BUDGET;
+  }
+  if (insufficientHeap()) return YnabClient::LOW_MEMORY;
+
+  // On the heap, not the stack: the parser embeds the streaming tokenizer's
+  // 512-byte buffer plus its string slots, well past what a task stack here
+  // should carry.
+  auto parser = makeUniqueNoThrow<YnabRecordParser>(arrayKey, fields, fieldCount, sink, sinkCtx);
+  if (!parser) {
+    LOG_ERR("YNC", "OOM: YnabRecordParser");
+    return YnabClient::LOW_MEMORY;
+  }
+
+  std::string url = API_BASE;
+  url += "/plans/";
+  url += urlEncode(YNAB_STORE.getBudgetId());
+  url += path;
+
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  if (!http.begin(url)) {
+    LOG_ERR("YNC", "Bad %s URL", arrayKey);
+    return YnabClient::NETWORK_ERROR;
+  }
+  http.addHeader("Authorization", "Bearer " + YNAB_STORE.getAccessToken());
+  http.addHeader("Accept", "application/json");
+
+  const int httpCode = http.GET([&parser](const uint8_t* data, const size_t len) {
+    parser->feed(reinterpret_cast<const char*>(data), len);
+    return true;
+  });
+
+  // Read before end(): the parsed headers belong to this connection.
+  const std::string dateHeader = outDate != nullptr ? http.getHeader("date") : std::string();
+  http.end();
+  YnabClient::lastHttpCode = httpCode;
+  LOG_DBG("YNC", "%s: %d (%zu records)", arrayKey, httpCode, parser->recordCount());
+
+  const YnabClient::Error status = errorForStatus(httpCode);
+  if (status != YnabClient::OK) return status;
+  if (parser->hasError()) {
+    LOG_ERR("YNC", "Malformed %s JSON", arrayKey);
+    return YnabClient::PARSE_ERROR;
+  }
+  if (outDate != nullptr && !dateHeader.empty()) {
+    const uint16_t date = civil::dateFromHttpHeader(dateHeader.c_str());
+    if (date != civil::NO_DATE) *outDate = date;
+  }
+  return YnabClient::OK;
+}
+
 }  // namespace
 
 YnabClient::Error YnabClient::fetchCategoryList(std::vector<CategoryInfo>& outCategories) {
@@ -218,6 +371,31 @@ YnabClient::Error YnabClient::fetchSelectedCategories(std::vector<YnabCategory>&
   BalanceCollector collector{&outCategories};
   const Error error = requestCurrentMonth(collectSelected, &collector, &outMonth);
   if (error != OK) outCategories.clear();
+  return error;
+}
+
+YnabClient::Error YnabClient::fetchAccounts(std::vector<YnabAccount>& outAccounts) {
+  outAccounts.clear();
+  outAccounts.reserve(YNAB_MAX_ACCOUNTS);
+  AccountCollector collector{&outAccounts};
+  const Error error =
+      requestRecords("/accounts", "accounts", ACCOUNT_FIELDS, sizeof(ACCOUNT_FIELDS) / sizeof(ACCOUNT_FIELDS[0]),
+                     collectAccount, &collector, nullptr);
+  if (error != OK) outAccounts.clear();
+  return error;
+}
+
+YnabClient::Error YnabClient::fetchTransactions(const std::string& accountId,
+                                                std::vector<YnabTransaction>& outTransactions, uint16_t& outDate) {
+  outTransactions.clear();
+  if (accountId.empty()) return NOT_FOUND;
+  outTransactions.reserve(YNAB_MAX_TRANSACTIONS * 2);
+  TransactionCollector collector{&outTransactions};
+  const std::string path = "/accounts/" + urlEncode(accountId) + "/transactions";
+  const Error error = requestRecords(path, "transactions", TRANSACTION_FIELDS,
+                                     sizeof(TRANSACTION_FIELDS) / sizeof(TRANSACTION_FIELDS[0]), collectTransaction,
+                                     &collector, &outDate);
+  if (error != OK) outTransactions.clear();
   return error;
 }
 

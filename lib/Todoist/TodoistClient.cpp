@@ -1,8 +1,11 @@
 #include "TodoistClient.h"
 
+#include <CivilTime.h>
 #include <Logging.h>
 #include <SecureHttpClient.h>
 
+#include <algorithm>
+#include <cstdio>
 #include <utility>
 
 #include "TodoistStore.h"
@@ -13,9 +16,37 @@ int TodoistClient::lastHttpCode = 0;
 namespace {
 constexpr char API_BASE[] = "https://api.todoist.com/api/v1";
 
-// "today | overdue", percent-encoded. Overdue tasks are wanted in the list
-// itself (sorted to the top by the cache), not just in the header count.
-constexpr char TODAY_FILTER_URL[] = "https://api.todoist.com/api/v1/tasks/filter?query=today%20%7C%20overdue&limit=200";
+// The filter endpoint. The query itself is whatever the user put in the Filter
+// setting, in Todoist's own filter syntax, percent-encoded onto the end.
+//
+// It used to be hardcoded to "overdue | due before: +30 days". That decided in
+// firmware what the screen was for; the setting moves the decision to the user,
+// and the Tasks tabs now split whatever comes back rather than defining it.
+constexpr char FILTER_URL_BASE[] = "https://api.todoist.com/api/v1/tasks/filter?limit=200&query=";
+
+// Percent-encodes everything outside the unreserved set. The filter is typed by
+// hand and Todoist's syntax is built from characters that mean something else in
+// a URL: "&" separates parameters, spaces and "|" and "!" are not legal in a
+// query as-is, and "#" would truncate the URL at a fragment and silently send no
+// query at all.
+std::string urlEncode(const std::string& value) {
+  // Not named HEX: Arduino's Print.h defines that as a macro (`#define HEX 16`).
+  static constexpr char HEX_DIGITS[] = "0123456789ABCDEF";
+  std::string out;
+  out.reserve(value.size() * 3);
+  for (const unsigned char c : value) {
+    const bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                            c == '_' || c == '.' || c == '~';
+    if (unreserved) {
+      out.push_back(static_cast<char>(c));
+    } else {
+      out.push_back('%');
+      out.push_back(HEX_DIGITS[c >> 4]);
+      out.push_back(HEX_DIGITS[c & 0x0F]);
+    }
+  }
+  return out;
+}
 
 // Same TLS heap gate as KOReaderSyncClient: the wolfSSL handshake needs working
 // heap, and a doomed attempt costs ~15s before it gives up. Free heap and the
@@ -45,37 +76,66 @@ TodoistClient::Error errorForStatus(const int httpCode) {
   if (httpCode <= 0) return TodoistClient::NETWORK_ERROR;
   if (httpCode >= 200 && httpCode < 300) return TodoistClient::OK;
   if (httpCode == 401 || httpCode == 403) return TodoistClient::AUTH_FAILED;
+  // A filter Todoist cannot parse comes back as a 400. Reported separately from a
+  // server error because it is the one failure here the user can actually fix,
+  // and "invalid filter" points straight at the setting that caused it.
+  if (httpCode == 400) return TodoistClient::INVALID_FILTER;
   return TodoistClient::SERVER_ERROR;
 }
 
-// Sink context for TodoistTasksParser: appends parsed tasks until the cache cap
-// is reached, packing each due date and tracking the newest one seen.
+// Sink context for TodoistTasksParser: collects parsed tasks, packing each due
+// date. Overdue is decided by the cache, which needs today - only settled once
+// the whole response has been seen.
 struct TaskCollector {
   std::vector<TodoistTask>* out;
-  uint16_t newestDue = todoist::DUE_NONE;  // DUE_NONE until a dated task arrives
 };
 
 void collectTask(void* ctx, const char* id, const char* content, const char* dueDate) {
   auto* collector = static_cast<TaskCollector*>(ctx);
-  if (collector->out->size() >= TODOIST_MAX_TASKS) return;
+  auto& out = *collector->out;
 
   TodoistTask task;
   task.id = id;
   task.content = content;
   task.dueDays = todoist::dueDaysFromIso(dueDate);
-  // Overdue is decided by the cache: it needs today, which is only known once
-  // the whole response has been seen.
-  if (task.dueDays != todoist::DUE_NONE &&
-      (collector->newestDue == todoist::DUE_NONE || task.dueDays > collector->newestDue)) {
-    collector->newestDue = task.dueDays;
+
+  if (out.size() < TODOIST_MAX_TASKS) {
+    out.push_back(std::move(task));
+    return;
   }
-  collector->out->push_back(std::move(task));
+
+  // At the cap. A filter can match far more tasks than the cap holds and the API
+  // does not promise an order, so dropping whatever arrives last could discard
+  // today's tasks to keep next year's. The least useful task held so far is
+  // evicted instead. Linear per task past the cap, over at most 60 entries -
+  // nothing next to the TLS read that delivered them.
+  //
+  // "Least useful" ranks a dated task by how far out it is, and puts every
+  // undated task behind all of them. That is deliberately not what DUE_NONE's
+  // sentinel value would give: as the numeric maximum it would make undated tasks
+  // the *first* thing evicted, emptying the No date tab on exactly the accounts
+  // big enough to need it. Ordering them last instead keeps some of them while
+  // still preferring a dated task when the cap forces a choice.
+  const auto worst = std::max_element(out.begin(), out.end(), [](const TodoistTask& a, const TodoistTask& b) {
+    const bool aDated = a.dueDays != todoist::DUE_NONE;
+    const bool bDated = b.dueDays != todoist::DUE_NONE;
+    if (aDated != bDated) return aDated;  // undated sorts after every dated task
+    if (!aDated) return false;            // two undated tasks are equally droppable
+    return a.dueDays < b.dueDays;
+  });
+  if (worst == out.end()) return;
+
+  // Swap in only if the arrival is worth more than what it displaces.
+  const bool newDated = task.dueDays != todoist::DUE_NONE;
+  const bool worstDated = worst->dueDays != todoist::DUE_NONE;
+  const bool preferNew = newDated ? (!worstDated || task.dueDays < worst->dueDays) : false;
+  if (preferNew) *worst = std::move(task);
 }
 }  // namespace
 
-TodoistClient::Error TodoistClient::fetchTodayTasks(std::vector<TodoistTask>& outTasks, std::string& outDerivedDate) {
+TodoistClient::Error TodoistClient::fetchTasks(std::vector<TodoistTask>& outTasks, std::string& outServerDate) {
   lastHttpCode = 0;
-  outDerivedDate.clear();
+  outServerDate.clear();
   if (!TODOIST_STORE.hasToken()) {
     LOG_DBG("TDA", "No API token configured");
     return NO_TOKEN;
@@ -87,9 +147,14 @@ TodoistClient::Error TodoistClient::fetchTodayTasks(std::vector<TodoistTask>& ou
   TaskCollector collector{&outTasks};
   TodoistTasksParser parser(collectTask, &collector);
 
+  // std::string rather than a stack buffer: a filter is allowed 1,024 characters
+  // and encoding can triple that, far past what belongs on this stack.
+  const std::string url = std::string(FILTER_URL_BASE) + urlEncode(TODOIST_STORE.getFilter());
+  LOG_DBG("TDA", "Filter query: %s", TODOIST_STORE.getFilter().c_str());
+
   freeink::SecureHttpClient http;
   http.setInsecure();
-  if (!http.begin(TODAY_FILTER_URL)) {
+  if (!http.begin(url)) {
     LOG_ERR("TDA", "Bad filter URL");
     return NETWORK_ERROR;
   }
@@ -101,6 +166,9 @@ TodoistClient::Error TodoistClient::fetchTodayTasks(std::vector<TodoistTask>& ou
     parser.feed(reinterpret_cast<const char*>(data), len);
     return true;
   });
+
+  // Read before end(): the parsed headers belong to this connection.
+  const std::string dateHeader = http.getHeader("date");
   http.end();
   lastHttpCode = httpCode;
   LOG_DBG("TDA", "Filter response: %d (%zu tasks parsed)", httpCode, parser.taskCount());
@@ -116,15 +184,18 @@ TodoistClient::Error TodoistClient::fetchTodayTasks(std::vector<TodoistTask>& ou
     return PARSE_ERROR;
   }
 
-  // The filter caps the response at today, so its newest due date is today
-  // whenever anything is due today. Stack buffer, no allocation.
-  if (collector.newestDue != todoist::DUE_NONE) {
+  // Today comes off the Date header. Unlike the newest due date this filter can
+  // no longer stand in for it - the window reaches a month ahead - and a header
+  // present on every successful response beats a body that has to contain
+  // something due today to say anything at all.
+  const uint16_t serverDate = dateHeader.empty() ? civil::NO_DATE : civil::dateFromHttpHeader(dateHeader.c_str());
+  if (serverDate != civil::NO_DATE) {
     char iso[11];
-    todoist::isoFromDueDays(collector.newestDue, iso, sizeof(iso));
-    outDerivedDate = iso;
-    LOG_DBG("TDA", "Newest due date in response: %s", iso);
+    civil::isoFromDate(serverDate, iso, sizeof(iso));
+    outServerDate = iso;
+    LOG_DBG("TDA", "Server date: %s", iso);
   } else {
-    LOG_DBG("TDA", "No dated tasks in response; today not derivable");
+    LOG_DBG("TDA", "No usable Date header; today not derivable from the response");
   }
   return OK;
 }
@@ -169,6 +240,8 @@ const char* TodoistClient::errorString(const Error error) {
       return "Invalid API token";
     case SERVER_ERROR:
       return "Todoist server error";
+    case INVALID_FILTER:
+      return "Todoist rejected the filter";
     case PARSE_ERROR:
       return "Unexpected response";
     case LOW_MEMORY:

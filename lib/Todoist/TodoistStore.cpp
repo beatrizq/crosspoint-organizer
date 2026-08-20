@@ -7,12 +7,21 @@
 
 void TodoistStore::toJson(JsonDocument& doc) const {
   doc["token_obf"] = obfuscation::obfuscateToBase64(token);
+  // In the clear: a filter query is not a secret, and it is the one setting worth
+  // being able to fix from a PC without retyping it on a touch keyboard.
+  doc["filter"] = filter;
   doc["sleepScreen"] = sleepScreenEnabled;
   doc["prevSleepScreen"] = previousSleepScreen;
 }
 
 bool TodoistStore::fromJson(JsonVariantConst doc) {
   token.clear();
+  // An absent key is a card written before the filter existed, and takes the
+  // default. An empty string is a filter the user cleared, which the API would
+  // reject, so it takes the default too - there is no useful "no filter".
+  filter = doc["filter"] | DEFAULT_FILTER;
+  if (filter.empty()) filter = DEFAULT_FILTER;
+  if (filter.size() > MAX_FILTER_LEN) filter.resize(MAX_FILTER_LEN);
   sleepScreenEnabled = doc["sleepScreen"] | true;
   previousSleepScreen = doc["prevSleepScreen"] | NO_SLEEP_SCREEN;
 
@@ -46,3 +55,14 @@ void TodoistStore::setToken(const std::string& value) {
 }
 
 void TodoistStore::clearToken() { token.clear(); }
+
+void TodoistStore::setFilter(const std::string& value) {
+  // Clearing the filter falls back to the default rather than being stored: an
+  // empty query is a 400 from the API, so it would only ever look like a broken
+  // sync.
+  if (value.empty()) {
+    filter = DEFAULT_FILTER;
+    return;
+  }
+  filter = value.size() > MAX_FILTER_LEN ? value.substr(0, MAX_FILTER_LEN) : value;
+}

@@ -17,16 +17,16 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-// ORGANIZER is the Tasks tile; the calendar and budget tiles open the same
-// screen on their own tab.
+// TASKS, CALENDAR and BUDGET are a tile and a screen each. They shared one
+// screen with a three-way tab bar until each grew tabs of its own.
 enum class HomeMenuItem {
   NONE,
   READ_MENU,
   FILE_BROWSER,
   RECENTS,
-  ORGANIZER,
-  ORGANIZER_CALENDAR,
-  ORGANIZER_BUDGET,
+  TASKS,
+  CALENDAR,
+  BUDGET,
   OPDS_BROWSER,
   FILE_TRANSFER,
   SETTINGS_MENU
@@ -98,9 +98,13 @@ class ActivityManager {
   void goToSettings();
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
-  // initialTab indexes OrganizerActivity::Tab; the header cannot name that type
-  // without pulling the activity in.
-  void goToOrganizer(uint8_t initialTab = 0);
+  // initialTab is an index into the target screen's tab bar; the header cannot
+  // name those types without pulling the activities in. Out-of-range values are
+  // clamped to the first tab by OrganizerScreenActivity::onEnter(), which matters
+  // for Budget: its tab count follows how many accounts are cached.
+  void goToTasks(uint8_t initialTab = 0);  // 0 = All
+  void goToCalendar();
+  void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
   void goToReadMenu();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);

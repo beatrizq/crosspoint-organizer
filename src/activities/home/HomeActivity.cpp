@@ -50,11 +50,12 @@ void HomeActivity::buildEntries() {
     entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::READ_MENU, -1});
   }
 
-  // The organizer's three tabs, each its own tile: they are separate things to
-  // check, and a tile that lands on the wrong tab is a tile you have to fix.
-  entries.push_back({tr(STR_ORGANIZER_TAB_TASKS), Tasks, HomeMenuItem::ORGANIZER, -1});
-  entries.push_back({tr(STR_ORGANIZER_TAB_CALENDAR), Calendar, HomeMenuItem::ORGANIZER_CALENDAR, -1});
-  entries.push_back({tr(STR_ORGANIZER_TAB_BUDGET), Budget, HomeMenuItem::ORGANIZER_BUDGET, -1});
+  // Tasks, Calendar and Budget: a tile and a screen each. They were tabs of one
+  // Organizer screen, and each now spends its own tab bar on its own views -
+  // Overdue/Today/Upcoming, Schedule, Plan/Account.
+  entries.push_back({tr(STR_ORGANIZER_TAB_TASKS), Tasks, HomeMenuItem::TASKS, -1});
+  entries.push_back({tr(STR_ORGANIZER_TAB_CALENDAR), Calendar, HomeMenuItem::CALENDAR, -1});
+  entries.push_back({tr(STR_ORGANIZER_TAB_BUDGET), Budget, HomeMenuItem::BUDGET, -1});
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -217,14 +218,14 @@ void HomeActivity::loop() {
       case HomeMenuItem::READ_MENU:
         activityManager.goToReadMenu();
         break;
-      case HomeMenuItem::ORGANIZER:
-        activityManager.goToOrganizer(0);
+      case HomeMenuItem::TASKS:
+        activityManager.goToTasks();
         break;
-      case HomeMenuItem::ORGANIZER_CALENDAR:
-        activityManager.goToOrganizer(1);
+      case HomeMenuItem::CALENDAR:
+        activityManager.goToCalendar();
         break;
-      case HomeMenuItem::ORGANIZER_BUDGET:
-        activityManager.goToOrganizer(2);
+      case HomeMenuItem::BUDGET:
+        activityManager.goToBudget();
         break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
@@ -409,8 +410,6 @@ void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToR
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
-
-void HomeActivity::onOrganizerOpen() { activityManager.goToOrganizer(); }
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 

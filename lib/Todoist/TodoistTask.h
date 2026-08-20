@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 
 #include "TodoistDate.h"
@@ -17,6 +18,7 @@ struct TodoistTask {
   static constexpr size_t CONTENT_MAX_LEN = 120;
 };
 
-// A Today list longer than this is not readable on a 480px screen anyway; the
-// cap bounds the fetch buffer, the SD file, and the completion queue alike.
+// A task list longer than this is not readable on a 480px screen anyway; the
+// cap bounds the fetch buffer, the SD file, and the completion queue alike. A
+// filter can match more than this, so the fetch keeps the soonest.
 static constexpr size_t TODOIST_MAX_TASKS = 60;

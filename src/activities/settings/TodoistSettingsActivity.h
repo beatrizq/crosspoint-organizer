@@ -13,7 +13,7 @@ class TodoistSettingsActivity final : public Activity {
       : Activity("TodoistSettings", renderer, mappedInput) {}
 
   // API Token, Sleep Screen, Clear Token, and the non-interactive sync hint row.
-  static constexpr int MENU_ITEMS = 4;
+  static constexpr int MENU_ITEMS = 5;
 
   void onEnter() override;
   void onExit() override;

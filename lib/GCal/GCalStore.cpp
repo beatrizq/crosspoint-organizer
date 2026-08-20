@@ -71,11 +71,24 @@ bool GCalStore::fromJson(JsonVariantConst doc) {
 
   JsonArrayConst cals = doc["calendars"].as<JsonArrayConst>();
   selectedCalendars.reserve(std::min(cals.size(), MAX_CALENDARS));
+  // Entries are plain id strings. An {id, name} object is also accepted: builds
+  // between the Calendar screen growing a tab per calendar and losing them again
+  // stored the display name alongside, and a card written by one of those would
+  // otherwise read as an empty selection - silently unticking every calendar the
+  // user had chosen. The name is dropped and a resave asked for, so the file
+  // converges back on the plain form.
+  bool objectCalendars = false;
   for (JsonVariantConst value : cals) {
     if (selectedCalendars.size() >= MAX_CALENDARS) break;
-    const char* id = value | "";
+    const bool isObject = value.is<JsonObjectConst>();
+    const char* id = isObject ? (value["id"] | "") : (value | "");
     if (id[0] == '\0') continue;
+    if (isObject) objectCalendars = true;
     selectedCalendars.emplace_back(clamped(id, MAX_CALENDAR_ID_LEN));
+  }
+  if (objectCalendars) {
+    LOG_DBG("GCS", "Calendar entries stored as objects, resaving as plain ids");
+    requestResave();
   }
 
   LOG_DBG("GCS", "Loaded: client %s, linked %s, %zu calendars", clientId.empty() ? "no" : "yes",

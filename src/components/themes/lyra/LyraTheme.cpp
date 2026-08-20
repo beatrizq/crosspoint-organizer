@@ -202,6 +202,21 @@ void LyraTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char
   renderer.drawLine(rect.x, rect.y + rect.height - 1, rect.x + rect.width - 1, rect.y + rect.height - 1, true);
 }
 
+namespace {
+// Advance of one Lyra tab: the label, the pill padding either side, and the gap
+// that follows it.
+int lyraTabAdvance(const GfxRenderer& renderer, const TabInfo& tab, const int hPadding) {
+  return renderer.getTextWidth(UI_10_FONT_ID, tab.label, EpdFontFamily::REGULAR) + 2 * hPadding +
+         LyraMetrics::values.tabSpacing;
+}
+
+int lyraMarkerReserve(const GfxRenderer& renderer) {
+  return renderer.getTextWidth(UI_10_FONT_ID, BaseTheme::TAB_MORE_BEFORE, EpdFontFamily::REGULAR) +
+         renderer.getTextWidth(UI_10_FONT_ID, BaseTheme::TAB_MORE_AFTER, EpdFontFamily::REGULAR) +
+         LyraMetrics::values.tabSpacing * 2;
+}
+}  // namespace
+
 void LyraTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
                            bool selected) const {
   int currentX = rect.x + LyraMetrics::values.contentSidePadding;
@@ -210,7 +225,31 @@ void LyraTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::ve
     renderer.fillRectDither(rect.x, rect.y, rect.width, rect.height, Color::LightGray);
   }
 
-  for (const auto& tab : tabs) {
+  if (tabs.empty()) {
+    renderer.drawLine(rect.x, rect.y + rect.height - 1, rect.x + rect.width - 1, rect.y + rect.height - 1, true);
+    return;
+  }
+
+  // The Calendar screen draws a tab per selected calendar, so the bar can be
+  // handed more tabs than fit; only the window around the active one is drawn.
+  std::vector<int> widths;
+  widths.reserve(tabs.size());
+  int active = 0;
+  for (size_t i = 0; i < tabs.size(); i++) {
+    widths.push_back(lyraTabAdvance(renderer, tabs[i], hPaddingInSelection));
+    if (tabs[i].selected) active = static_cast<int>(i);
+  }
+  const TabWindow window =
+      tabWindow(widths, rect.width - LyraMetrics::values.contentSidePadding * 2, lyraMarkerReserve(renderer), active);
+
+  if (window.moreBefore) {
+    renderer.drawText(UI_10_FONT_ID, currentX, rect.y + 6, TAB_MORE_BEFORE, true, EpdFontFamily::REGULAR);
+    currentX +=
+        renderer.getTextWidth(UI_10_FONT_ID, TAB_MORE_BEFORE, EpdFontFamily::REGULAR) + LyraMetrics::values.tabSpacing;
+  }
+
+  for (int i = window.first; i < window.first + window.count; i++) {
+    const auto& tab = tabs[static_cast<size_t>(i)];
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, tab.label, EpdFontFamily::REGULAR);
 
     if (tab.selected) {
@@ -231,6 +270,10 @@ void LyraTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::ve
     currentX += textWidth + LyraMetrics::values.tabSpacing + 2 * hPaddingInSelection;
   }
 
+  if (window.moreAfter) {
+    renderer.drawText(UI_10_FONT_ID, currentX, rect.y + 6, TAB_MORE_AFTER, true, EpdFontFamily::REGULAR);
+  }
+
   renderer.drawLine(rect.x, rect.y + rect.height - 1, rect.x + rect.width - 1, rect.y + rect.height - 1, true);
 }
 
@@ -240,17 +283,47 @@ bool LyraTheme::tabIndexFromPoint(const GfxRenderer& renderer, const Rect rect, 
     return false;
   }
 
-  int currentX = rect.x + LyraMetrics::values.contentSidePadding;
+  // Measured and windowed exactly as drawTabBar does, so a tap lands on the tab
+  // that is actually under it once the bar is scrolled.
+  std::vector<int> widths;
+  widths.reserve(tabs.size());
+  int active = 0;
   for (size_t i = 0; i < tabs.size(); i++) {
-    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, tabs[i].label, EpdFontFamily::REGULAR);
+    widths.push_back(lyraTabAdvance(renderer, tabs[i], hPaddingInSelection));
+    if (tabs[i].selected) active = static_cast<int>(i);
+  }
+  const TabWindow window =
+      tabWindow(widths, rect.width - LyraMetrics::values.contentSidePadding * 2, lyraMarkerReserve(renderer), active);
+
+  int currentX = rect.x + LyraMetrics::values.contentSidePadding;
+
+  if (window.moreBefore) {
+    const int markerWidth = renderer.getTextWidth(UI_10_FONT_ID, TAB_MORE_BEFORE, EpdFontFamily::REGULAR);
+    // The marker steps the window one tab that way, so it is a control rather
+    // than dead space.
+    if (x >= rect.x && x < currentX + markerWidth) {
+      index = window.first - 1;
+      return true;
+    }
+    currentX += markerWidth + LyraMetrics::values.tabSpacing;
+  }
+
+  for (int i = window.first; i < window.first + window.count; i++) {
+    const int textWidth =
+        renderer.getTextWidth(UI_10_FONT_ID, tabs[static_cast<size_t>(i)].label, EpdFontFamily::REGULAR);
     const int tabWidth = textWidth + 2 * hPaddingInSelection;
-    const int left = (i == 0) ? rect.x : currentX - LyraMetrics::values.tabSpacing / 2;
+    const int left = (i == window.first && !window.moreBefore) ? rect.x : currentX - LyraMetrics::values.tabSpacing / 2;
     const int right = currentX + tabWidth + LyraMetrics::values.tabSpacing / 2;
     if (x >= left && x < right) {
-      index = static_cast<int>(i);
+      index = i;
       return true;
     }
     currentX += tabWidth + LyraMetrics::values.tabSpacing;
+  }
+
+  if (window.moreAfter && x >= currentX) {
+    index = window.first + window.count;
+    return true;
   }
 
   return false;

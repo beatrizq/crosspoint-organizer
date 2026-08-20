@@ -17,9 +17,10 @@
 
 namespace {
 constexpr int ROW_TOKEN = 0;
-constexpr int ROW_SLEEP_SCREEN = 1;
-constexpr int ROW_CLEAR = 2;
-constexpr int ROW_HINT = 3;
+constexpr int ROW_FILTER = 1;
+constexpr int ROW_SLEEP_SCREEN = 2;
+constexpr int ROW_CLEAR = 3;
+constexpr int ROW_HINT = 4;
 }  // namespace
 
 void TodoistSettingsActivity::onEnter() {
@@ -98,6 +99,25 @@ void TodoistSettingsActivity::handleSelection() {
     return;
   }
 
+  if (selectedIndex == ROW_FILTER) {
+    // Plain text, not a password: a filter is not a secret, and it is typed by
+    // hand so a mistyped one has to be visible to be fixable.
+    startActivityForResult(
+        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_TODOIST_ENTER_FILTER),
+                                                TODOIST_STORE.getFilter(), TodoistStore::MAX_FILTER_LEN),
+        [this](const ActivityResult& result) {
+          if (result.isCancelled) return;
+          TODOIST_STORE.setFilter(std::get<KeyboardResult>(result.data).text);
+          TODOIST_STORE.saveToFile();
+          // Only the next sync acts on this: the cached list is whatever the old
+          // filter matched, and clearing it here would leave the screen blank
+          // until the user found their way to a sync.
+          LOG_DBG("TDS", "Filter set to %s", TODOIST_STORE.getFilter().c_str());
+          requestUpdate();
+        });
+    return;
+  }
+
   if (selectedIndex == ROW_SLEEP_SCREEN) {
     const bool enabled = !TODOIST_STORE.getSleepScreenEnabled();
     TODOIST_STORE.setSleepScreenEnabled(enabled);
@@ -166,6 +186,8 @@ void TodoistSettingsActivity::render(RenderLock&&) {
         switch (index) {
           case ROW_TOKEN:
             return std::string(I18n::getInstance().get(StrId::STR_TODOIST_API_TOKEN));
+          case ROW_FILTER:
+            return std::string(I18n::getInstance().get(StrId::STR_TODOIST_FILTER));
           case ROW_SLEEP_SCREEN:
             return std::string(I18n::getInstance().get(StrId::STR_TODOIST_SLEEP_SCREEN));
           case ROW_CLEAR:
@@ -177,6 +199,10 @@ void TodoistSettingsActivity::render(RenderLock&&) {
       nullptr, nullptr,
       [&tokenValue, &sleepScreenValue](int index) -> std::string {
         if (index == ROW_TOKEN) return tokenValue;
+        // Shown rather than masked, and in full: the theme truncates it to the
+        // value column, which is the only hint that a long filter is longer than
+        // it looks.
+        if (index == ROW_FILTER) return TODOIST_STORE.getFilter();
         if (index == ROW_SLEEP_SCREEN) return sleepScreenValue;
         return std::string("");
       },

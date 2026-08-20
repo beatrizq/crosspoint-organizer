@@ -32,6 +32,10 @@ bool YnabCategoryCache::fromJson(JsonVariantConst doc) {
     categories.push_back(std::move(category));
   }
 
+  // Applied on load as well as on sync, so a file written before inflow led the
+  // list is reordered rather than staying in its old order until the next fetch.
+  sortInflowFirst();
+
   LOG_DBG("YCC", "Loaded %zu categories", categories.size());
   return true;
 }
@@ -39,7 +43,15 @@ bool YnabCategoryCache::fromJson(JsonVariantConst doc) {
 void YnabCategoryCache::setCategories(std::vector<YnabCategory>&& fetched, const uint16_t month) {
   categories = std::move(fetched);
   if (categories.size() > MAX_CATEGORIES) categories.resize(MAX_CATEGORIES);
+  sortInflowFirst();
   if (month != civil::NO_DATE) syncMonth = month;
+}
+
+void YnabCategoryCache::sortInflowFirst() {
+  // Stable, so everything else keeps the plan's own order - which is the order
+  // YNAB itself shows and the only ordering the rows have.
+  std::stable_partition(categories.begin(), categories.end(),
+                        [](const YnabCategory& category) { return isYnabInflowCategory(category.name); });
 }
 
 void YnabCategoryCache::clear() {

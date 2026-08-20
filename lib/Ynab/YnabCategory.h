@@ -1,4 +1,5 @@
 #pragma once
+#include <cctype>
 #include <cstddef>
 #include <string>
 
@@ -23,6 +24,31 @@ struct YnabCategory {
   static constexpr size_t NAME_MAX_LEN = 48;
   static constexpr size_t BALANCE_MAX_LEN = 24;
 };
+
+/**
+ * Whether this is YNAB's own inflow category: "Inflow: Ready to Assign", or
+ * "Inflow: To be Budgeted" on plans predating the rename.
+ *
+ * It is the money not yet assigned to anything, so when it is ticked it belongs
+ * above the categories it feeds rather than sorted in among them in plan order.
+ *
+ * Matched on the name rather than on an id or a category group, because the cache
+ * keeps neither - a row is a name and a balance. YNAB's own naming leads with
+ * "Inflow" in both spellings, and the category is internal so a user cannot
+ * rename it out from under this. The compare is case-insensitive anyway, since
+ * nothing here is worth breaking over capitalisation.
+ */
+inline bool isYnabInflowCategory(const std::string& name) {
+  static constexpr char PREFIX[] = "Inflow";
+  static constexpr size_t PREFIX_LEN = sizeof(PREFIX) - 1;
+  if (name.size() < PREFIX_LEN) return false;
+  for (size_t i = 0; i < PREFIX_LEN; i++) {
+    const auto lhs = std::tolower(static_cast<unsigned char>(name[i]));
+    const auto rhs = std::tolower(static_cast<unsigned char>(PREFIX[i]));
+    if (lhs != rhs) return false;
+  }
+  return true;
+}
 
 // A category id is a 36-character UUID. Ids are cut to this length everywhere -
 // the parser's buffer and the stored selection - so an id ticked in the picker
