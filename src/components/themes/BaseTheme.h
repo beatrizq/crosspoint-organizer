@@ -258,6 +258,19 @@ class BaseTheme {
    * wider than the bar.
    */
   static TabWindow tabWindow(const std::vector<int>& widths, int available, int reserve, int active);
+  /**
+   * Where the home screen's reading companion may draw, inside the cover card.
+   *
+   * On themes with a cover card that is the column the book's title and author
+   * used to occupy: the cover already says which book it is, so the words were
+   * the cheapest thing to give up for a companion. Returning an empty rect means
+   * this theme has no room, and the companion is simply not drawn.
+   *
+   * Bounded deliberately: the companion draws only inside what it is handed, so
+   * it can never reach across the cover.
+   */
+  virtual Rect getHomeCompanionRect(Rect coverCardRect) const;
+
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;

@@ -17,6 +17,9 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
+#include "companion/CompanionRenderer.h"
+#include "companion/CompanionState.h"
+#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
@@ -80,6 +83,129 @@ void HomeActivity::buildEntries() {
     // adding it again would draw it twice.
     if (resumeLeads && app.id == homeAppOrder::AppId::Read) continue;
     entries.push_back({homeAppOrder::displayName(app.id), app.icon, homeMenuItemFor(app.id), -1});
+  }
+}
+
+void HomeActivity::drawCompanion(const Rect region) const {
+  if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
+  if (region.width <= 0 || region.height <= 0) return;
+
+  // Ported from JoshuaMillerCode/crosspoint-reader-companion's
+  // drawCompanionColumn. Only the column form is kept: on this home screen the
+  // companion always gets the tall gap beside the cover, never a strip under a
+  // menu, so the fork's compact and side-by-side fallbacks have nothing to pick
+  // between.
+  constexpr int PAD = 6;  // bubble inner padding
+  constexpr int TAIL_LENGTH = 12;
+  constexpr int BUBBLE_GAP = 2;  // between the tail tip and the character's head
+  constexpr int LABEL_GAP = 2;
+  constexpr int SUBLABEL_GAP = 0;
+  // getTextHeight() reports the ascender only, but drawText() takes y as the top
+  // and descenders hang below it.
+  constexpr int DESCENDER_ALLOWANCE = 3;
+  constexpr int MARGIN = 4;
+  constexpr int WALK_STEPS = 6;
+  // Kept to roughly the tail's reach: the character has to pace clear of the
+  // bubble's tail.
+  constexpr int WALK_TRAVEL = 14;
+  constexpr int BOB_HEIGHT = 3;
+  constexpr int MAX_SCALE = 4;
+  constexpr int MIN_BUBBLE_W = 90;
+
+  const int colX = region.x + MARGIN;
+  const int colW = region.width - MARGIN * 2;
+  const int colTop = region.y + MARGIN;
+  const int colH = region.height - MARGIN * 2;
+  if (colW < MIN_BUBBLE_W) return;
+
+  const int labelH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
+  const int subH = renderer.getTextHeight(SMALL_FONT_ID) + DESCENDER_ALLOWANCE;
+  const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
+  const int textW = colW - PAD * 2;
+
+  // The mood label, and under it the line answering "why?" and "what next?". A
+  // reachable target beats a tally, so progress toward Thriving wins when there
+  // is progress to report.
+  const auto id = CompanionTracker::activeId();
+  const auto mood = COMPANION.currentMood();
+  const char* label = companion::moodLabel(mood);
+  char sub[40] = "";
+  const uint16_t minutes = COMPANION.minutesToday();
+  const companion::MoodThresholds thresholds;
+  if (minutes >= thresholds.contentMinutes && minutes < thresholds.thrivingMinutes) {
+    snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingMinutes - minutes);
+  } else if (COMPANION.hasValidClock() && COMPANION_STATE.ledger.streakDays > 0) {
+    snprintf(sub, sizeof(sub), tr(STR_COMPANION_STREAK_FORMAT), COMPANION_STATE.ledger.streakDays);
+  }
+
+  const char* quote = COMPANION_STATE.milestonePending ? companion::milestoneQuoteFor(id, companionQuoteIndex)
+                                                       : companion::quoteFor(id, mood, companionQuoteIndex);
+
+  // The bubble is measured before the character is sized: the quote needs however
+  // many lines it needs, and the character takes what is left.
+  std::vector<std::string> lines;
+  if (quote != nullptr) {
+    if (renderer.getTextWidth(UI_10_FONT_ID, quote) <= textW) {
+      lines.emplace_back(quote);
+    } else {
+      lines = renderer.wrappedText(UI_10_FONT_ID, quote, textW, 3);
+    }
+  }
+  const int bubbleH = lines.empty() ? 0 : static_cast<int>(lines.size()) * lineH + PAD * 2;
+  const int bubbleBlock = lines.empty() ? 0 : bubbleH + TAIL_LENGTH + BUBBLE_GAP;
+  const int statusBlock = LABEL_GAP + labelH + SUBLABEL_GAP + (sub[0] != '\0' ? subH : 0);
+
+  // Whole-pixel scales only: fractional scaling would smear the baked dither.
+  int scale = 0;
+  for (int candidate = MAX_SCALE; candidate >= 1; candidate--) {
+    if (companion::poseWidth(candidate) + WALK_TRAVEL > colW) continue;
+    if (bubbleBlock + companion::poseHeight(candidate) + BOB_HEIGHT + statusBlock <= colH) {
+      scale = candidate;
+      break;
+    }
+  }
+  // Nothing fits: better an empty column than a clipped character.
+  if (scale == 0) return;
+
+  const int spriteW = companion::poseWidth(scale);
+  const int spriteH = companion::poseHeight(scale);
+  const int blockH = bubbleBlock + spriteH + BOB_HEIGHT + statusBlock;
+  const int blockTop = colTop + (colH - blockH) / 2;
+
+  // Bubble across the column with its tail pointing down at the character below,
+  // so nothing reaches sideways toward the cover.
+  if (!lines.empty()) {
+    companion::drawSpeechBubble(renderer, colX, blockTop, colW, bubbleH, TAIL_LENGTH, companion::TailSide::Bottom);
+    const Rect textBounds{colX + PAD, blockTop, textW, bubbleH};
+    int textY = blockTop + PAD;
+    for (const auto& line : lines) {
+      UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, textY, line.c_str());
+      textY += lineH;
+    }
+  }
+
+  const uint32_t phase = companionFrame % (WALK_STEPS * 2);
+  const bool walkingBack = phase >= WALK_STEPS;
+  const uint32_t step = walkingBack ? (WALK_STEPS * 2 - 1 - phase) : phase;
+  const int walkX = static_cast<int>(step) * WALK_TRAVEL / (WALK_STEPS - 1);
+  const int bob = (companionFrame % 2) ? BOB_HEIGHT : 0;
+
+  // A neglected companion stops pacing, which is most of what says so.
+  const bool restless = mood != companion::Mood::Neglected;
+  // Centred on the range it walks rather than on its own width, so it does not
+  // appear to drift.
+  const int laneX = colX + (colW - spriteW - WALK_TRAVEL) / 2;
+  const int spriteTop = blockTop + bubbleBlock;
+  companion::drawPose(renderer, id, mood, laneX + (restless ? walkX : WALK_TRAVEL / 2),
+                      restless ? spriteTop + bob : spriteTop, scale, restless && walkingBack);
+
+  const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
+  const int subW = sub[0] != '\0' ? renderer.getTextWidth(SMALL_FONT_ID, sub) : 0;
+  const int labelY = spriteTop + spriteH + BOB_HEIGHT + LABEL_GAP;
+  const int centreX = colX + colW / 2;
+  renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
+  if (subW > 0) {
+    renderer.drawText(SMALL_FONT_ID, centreX - subW / 2, labelY + labelH + SUBLABEL_GAP, sub);
   }
 }
 
@@ -169,6 +295,13 @@ void HomeActivity::onEnter() {
   loadRecentBooks(metrics.homeRecentBooksCount);
 
   buildEntries();
+
+  // One I2C read to resolve the calendar day, so currentMood() is cheap from the
+  // render path. Here rather than in render() for exactly that reason.
+  COMPANION.refreshForDisplay();
+  // A different line each visit, stable while the cursor moves around the menu.
+  const uint8_t quoteCount = companion::quoteCountFor(CompanionTracker::activeId(), COMPANION.currentMood());
+  companionQuoteIndex = quoteCount > 0 ? (companionQuoteIndex + 1) % quoteCount : 0;
 
   selectorIndex = 0;
   if (initialMenuItem != HomeMenuItem::NONE) {
@@ -409,6 +542,19 @@ void HomeActivity::render(RenderLock&&) {
   GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
+
+  // After the card, deliberately: storeCoverBuffer() runs inside that call, so
+  // the cached snapshot holds the cover alone. Restoring it each paint is what
+  // erases the previous companion frame before this one is drawn.
+  drawCompanion(GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight}));
+  companionFrame++;
+
+  // A beaten personal best takes over the bubble once. Cleared after the paint
+  // that showed it, so a repaint mid-visit cannot swallow it unseen.
+  if (SETTINGS.companionEnabled && COMPANION_STATE.milestonePending) {
+    COMPANION_STATE.milestonePending = false;
+    COMPANION_STATE.saveToFile();
+  }
 
   // The menu draws the entries the cover tile does not own.
   const int leadingRecents = leadingRecentCount();

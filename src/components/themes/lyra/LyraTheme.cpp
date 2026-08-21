@@ -546,6 +546,18 @@ void LyraTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
   }
 }
 
+Rect LyraTheme::getHomeCompanionRect(const Rect coverCardRect) const {
+  // Same fallback drawRecentBookCover uses before a cover has been measured, so
+  // the two agree about where the cover ends on the very first paint.
+  if (coverWidth == 0) coverWidth = LyraMetrics::values.homeCoverHeight * 0.6;
+
+  const int coverRight = LyraMetrics::values.contentSidePadding + hPaddingInSelection + coverWidth;
+  const int x = coverRight + LyraMetrics::values.verticalSpacing;
+  const int right = coverCardRect.x + coverCardRect.width - LyraMetrics::values.contentSidePadding;
+  if (right - x <= 0) return Rect{};
+  return Rect{x, coverCardRect.y + hPaddingInSelection, right - x, LyraMetrics::values.homeCoverHeight};
+}
+
 void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                     const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                     bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
@@ -624,23 +636,11 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
           coverSelectionLineWidth, cornerRadius, true);
     }
 
-    auto titleLines = renderer.wrappedText(UI_12_FONT_ID, book.title.c_str(), textWidth, 3, EpdFontFamily::BOLD);
-
-    auto author = renderer.truncatedText(UI_10_FONT_ID, book.author.c_str(), textWidth);
-    const int titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int titleBlockHeight = titleLineHeight * static_cast<int>(titleLines.size());
-    const int authorHeight = book.author.empty() ? 0 : (renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2);
-    const int totalBlockHeight = titleBlockHeight + authorHeight;
-    int titleY = tileY + tileHeight / 2 - totalBlockHeight / 2;
-    const int textX = tileX + hPaddingInSelection + coverWidth + LyraMetrics::values.verticalSpacing;
-    for (const auto& line : titleLines) {
-      renderer.drawText(UI_12_FONT_ID, textX, titleY, line.c_str(), true, EpdFontFamily::BOLD);
-      titleY += titleLineHeight;
-    }
-    if (!book.author.empty()) {
-      titleY += renderer.getLineHeight(UI_10_FONT_ID) / 2;
-      renderer.drawText(UI_10_FONT_ID, textX, titleY, author.c_str(), true);
-    }
+    // The title and author used to be drawn here, beside the cover. They are not
+    // any more: the cover is what identifies the book at a glance, and the words
+    // were the cheapest thing to give up for the column the companion needs.
+    // getHomeCompanionRect() hands that column out; HomeActivity draws into it.
+    (void)tileHeight;
   } else {
     drawEmptyRecents(renderer, rect);
   }
