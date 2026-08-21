@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "AppOrderActivity.h"
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
@@ -85,6 +86,7 @@ void SettingsActivity::rebuildSettingsLists() {
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
   // A footnote, not an action: the hold on the home screen's Settings button is
   // the only way to reach a sync-everything, and nothing on that screen advertises
   // it. A None action draws the row and does nothing when it is selected, which is
@@ -399,6 +401,9 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::Habitify:
         startActivityForResult(std::make_unique<HabitifySettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::AppOrder:
+        startActivityForResult(std::make_unique<AppOrderActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::OPDSBrowser:
         startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);

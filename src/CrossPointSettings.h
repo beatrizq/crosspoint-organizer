@@ -144,6 +144,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
+  // Home grid app order: one digit per app id, left to right (see
+  // util/HomeAppOrder.h). Persisted via a category-less SettingInfo::String in
+  // SettingsList.h, so it stays out of the on-device Settings screen - it is
+  // edited from the App Order screen. An unreadable value falls back to the
+  // built-in order rather than emptying the home grid.
+  char homeAppOrder[16] = "01234";
   // Hide battery percentage
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
 

@@ -317,6 +317,11 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
                             "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM),
 
+        // Home grid app order: persisted + web-exposed, category-less so it is
+        // hidden from the on-device Settings screen (edited from App Order).
+        SettingInfo::String(StrId::STR_APP_ORDER, &SETTINGS.homeAppOrder[0], sizeof(SETTINGS.homeAppOrder),
+                            "homeAppOrder"),
+
         // OPDS download folder: persisted + web-exposed, but category-less so it
         // is hidden from the on-device Settings screen (edited via OPDS UI).
         SettingInfo::String(StrId::STR_OPDS_DOWNLOAD_FOLDER, &SETTINGS.opdsDownloadFolder[0],

@@ -21,6 +21,7 @@ enum class SettingAction {
   GoogleCalendar,
   Ynab,
   Habitify,
+  AppOrder,
   OPDSBrowser,
   Network,
   ClearCache,
