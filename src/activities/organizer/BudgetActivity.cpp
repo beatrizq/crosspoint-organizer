@@ -188,6 +188,10 @@ void BudgetActivity::performPlanSync() {
   // reboot in onExit().
   tearDownRadio();
   finishSync(failure);
+  // Only the Plan tab feeds the sleep screen, which updateSleepScreen enforces by
+  // checking the tab - an account tab's transactions are not what this app is
+  // recognised by.
+  if (failure == nullptr) updateSleepScreen();
 }
 
 void BudgetActivity::performTransactionSync(const std::string& accountId) {

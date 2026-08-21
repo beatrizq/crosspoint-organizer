@@ -13,7 +13,7 @@ class TodoistSettingsActivity final : public Activity {
       : Activity("TodoistSettings", renderer, mappedInput) {}
 
   // API Token, Sleep Screen, Clear Token, and the non-interactive sync hint row.
-  static constexpr int MENU_ITEMS = 6;
+  static constexpr int MENU_ITEMS = 5;
 
   void onEnter() override;
   void onExit() override;
@@ -26,6 +26,4 @@ class TodoistSettingsActivity final : public Activity {
 
   void handleSelection();
   // Puts the wallpaper and the sleep screen mode back as they were before the
-  // task screenshot took them over.
-  void restoreSleepScreen();
 };

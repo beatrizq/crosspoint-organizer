@@ -31,6 +31,7 @@
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/OrganizerSleepScreen.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
                                                               StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM,
@@ -87,6 +88,9 @@ void SettingsActivity::rebuildSettingsLists() {
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
+  // After App Order, as asked: it is a property of the set of apps rather than of
+  // any one of them, so it belongs with the other cross-app rows.
+  organizerSettings.push_back(buildOrganizerSleepAppSetting(StrId::STR_CAT_ORGANIZER));
   // A footnote, not an action: the hold on the home screen's Settings button is
   // the only way to reach a sync-everything, and nothing on that screen advertises
   // it. A None action draws the row and does nothing when it is selected, which is
@@ -321,6 +325,7 @@ void SettingsActivity::toggleCurrentSetting() {
 
   const auto& setting = (*currentSettings)[selectedSetting];
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
+  const bool sleepAppChanged = setting.valuePtr == &CrossPointSettings::organizerSleepApp;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
 
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
@@ -337,10 +342,14 @@ void SettingsActivity::toggleCurrentSetting() {
     if (setting.enumValues.size() > 2) {
       const auto valuePtr = setting.valuePtr;
       optionPopup.show(setting.nameId, setting.enumValues.data(), static_cast<int>(setting.enumValues.size()),
-                       currentValue, [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+                       currentValue,
+                       [this, valuePtr, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
                          SETTINGS.*valuePtr = idx;
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
                          SETTINGS.saveToFile();
+                         // After the save, because reverting writes settings of
+                         // its own and must not be undone by this one.
+                         if (sleepAppChanged) revertSleepScreenIfOff();
                          rebuildSettingsLists();
                        });
       requestUpdate();
@@ -354,10 +363,11 @@ void SettingsActivity::toggleCurrentSetting() {
     const uint8_t cur = setting.valueGetter();
     if (totalValues > 2) {
       const auto valueSetter = setting.valueSetter;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valueSetter, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
+        if (sleepAppChanged) revertSleepScreenIfOff();
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -449,8 +459,27 @@ void SettingsActivity::toggleCurrentSetting() {
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
+  // After the save, because reverting writes settings of its own. Reached by the
+  // inline-cycle path, which a two-value enum takes; the sleep-screen app has five
+  // and so goes through the popup above, but the flag is honoured either way.
+  if (sleepAppChanged) revertSleepScreenIfOff();
   rebuildSettingsLists();
   selectedSettingIndex = std::min(selectedSettingIndex, settingsCount);
+}
+
+void SettingsActivity::revertSleepScreenIfOff() {
+  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return;
+  // Switched off: hand back the wallpaper this feature displaced. That file may be
+  // one the user transferred to the device themselves, so getting it back is the
+  // whole reason a copy was kept.
+  const bool hadWallpaper = organizerSleepScreen::hasBackup();
+  // The copy is ~48KB off the SD card, so the screen says something is happening.
+  if (hadWallpaper) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  const bool restored = organizerSleepScreen::revert();
+  if (!hadWallpaper) return;
+  GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
+  delay(1000);
+  requestUpdate(true);
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {

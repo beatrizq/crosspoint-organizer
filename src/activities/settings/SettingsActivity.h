@@ -185,6 +185,8 @@ class SettingsActivity final : public Activity {
   // Points currentSettings at the bucket for selectedCategoryIndex.
   void applyCategorySelection();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
+  // Hands the user's own wallpaper back when the sleep-screen app is set to Off.
+  void revertSleepScreenIfOff();
 
  public:
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

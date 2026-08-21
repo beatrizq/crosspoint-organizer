@@ -10,8 +10,6 @@ void TodoistStore::toJson(JsonDocument& doc) const {
   // In the clear: a filter query is not a secret, and it is the one setting worth
   // being able to fix from a PC without retyping it on a touch keyboard.
   doc["filter"] = filter;
-  doc["sleepScreen"] = sleepScreenEnabled;
-  doc["prevSleepScreen"] = previousSleepScreen;
 }
 
 bool TodoistStore::fromJson(JsonVariantConst doc) {
@@ -22,8 +20,6 @@ bool TodoistStore::fromJson(JsonVariantConst doc) {
   filter = doc["filter"] | DEFAULT_FILTER;
   if (filter.empty()) filter = DEFAULT_FILTER;
   if (filter.size() > MAX_FILTER_LEN) filter.resize(MAX_FILTER_LEN);
-  sleepScreenEnabled = doc["sleepScreen"] | true;
-  previousSleepScreen = doc["prevSleepScreen"] | NO_SLEEP_SCREEN;
 
   const char* obfuscated = doc["token_obf"] | "";
   if (obfuscated[0] != '\0') {

@@ -23,6 +23,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     QUICK_RESUME = 6,
     SLEEP_SCREEN_MODE_COUNT
   };
+  // Which organizer app, if any, paints the sleep screen from its first tab.
+  // Values are persisted, so append rather than renumber.
+  enum ORGANIZER_SLEEP_APP {
+    SLEEP_APP_OFF = 0,
+    SLEEP_APP_TASKS = 1,
+    SLEEP_APP_CALENDAR = 2,
+    SLEEP_APP_BUDGET = 3,
+    SLEEP_APP_HABITS = 4,
+    ORGANIZER_SLEEP_APP_COUNT
+  };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
   enum SLEEP_SCREEN_COVER_FILTER {
     NO_FILTER = 0,
@@ -143,6 +153,18 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_DICTIONARY = 3,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
+
+  // Which app repaints /sleep.bmp from its first tab whenever its contents
+  // change - a sync, or a change made on the device with the radio off. Off by
+  // default: this overwrites a file the user may have put there themselves, so it
+  // is never on until asked for. See util/OrganizerSleepScreen.h.
+  uint8_t organizerSleepApp = SLEEP_APP_OFF;
+  // The sleep screen mode in force before an app's screenshot switched it to
+  // CUSTOM, so switching the app off can put it back. NO_PREVIOUS_SLEEP_SCREEN
+  // until something has been replaced. Persisted via a category-less
+  // SettingInfo::Value: it is remembered state, not a setting anyone chooses.
+  uint8_t previousSleepScreenMode = 0xFF;
+  static constexpr uint8_t NO_PREVIOUS_SLEEP_SCREEN = 0xFF;
 
   // Per-app display names. Empty means "use the app's own name", which is what
   // every one of these ships as; a value here replaces it on the home grid and on

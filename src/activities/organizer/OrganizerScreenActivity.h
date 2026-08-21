@@ -6,6 +6,7 @@
 #include "activities/Activity.h"
 #include "components/themes/BaseTheme.h"
 #include "util/ButtonNavigator.h"
+#include "util/HomeAppOrder.h"
 
 /**
  * Shared chrome for the three organizer screens: Tasks, Calendar and Budget.
@@ -95,6 +96,22 @@ class OrganizerScreenActivity : public Activity {
   virtual void onTabChanged() {}
   // The tile home should reselect when this screen exits.
   virtual HomeMenuItem homeItem() const { return HomeMenuItem::NONE; }
+  // Which app this screen is, for the settings that address apps by name - the
+  // sleep screen source and the nickname.
+  virtual homeAppOrder::AppId appId() const = 0;
+
+  /**
+   * Repaints the sleep screen from this screen, when it is the chosen source.
+   *
+   * Call after anything that changes what the list shows - a sync, or a change
+   * made on the device with the radio off. No-op unless this app is the one
+   * chosen and the first tab is showing, so a snapshot is always of the view the
+   * user would recognise.
+   *
+   * Waits for the repaint rather than firing and forgetting, because what gets
+   * written is whatever the framebuffer holds when it is written.
+   */
+  void updateSleepScreen();
 
   // -- state a subclass reads and writes ------------------------------------
 

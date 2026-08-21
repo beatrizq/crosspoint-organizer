@@ -4,15 +4,16 @@
  * Keeps a copy of the sleep screen wallpaper the user chose, so a feature that
  * overwrites /sleep.bmp can hand it back.
  *
- * The Organizer's Tasks tab repaints /sleep.bmp from the task list after every
- * sync (Settings -> Organizer -> Todoist -> Sleep Screen). That file is also
- * where the image viewer's "Set Cover" action writes, so switching the option
- * on used to destroy a wallpaper the user had picked, with no way back:
- * switching it off again left the task screenshot in place forever.
+ * An organizer app can repaint /sleep.bmp from its first tab whenever its
+ * contents change (Settings -> Organizer -> Sleep Screen App). That file is also
+ * where the image viewer's "Set Cover" action writes, and it may hold an image
+ * the user transferred to the device themselves, so switching the option on used
+ * to destroy a wallpaper they had picked with no way back: switching it off again
+ * left the app screenshot in place forever.
  *
- * The copy is taken once, the first time a task screenshot is about to replace
- * a wallpaper this module has not already preserved, and it is handed back -
- * and dropped - when the option is switched off. Choosing a new cover in the
+ * The copy is taken once, the first time an app screenshot is about to replace a
+ * wallpaper this module has not already preserved, and it is handed back - and
+ * dropped - when the option is set back to Off. Choosing a new cover in the
  * image viewer drops it too: the user has just said what the wallpaper should
  * be, so an older copy is no longer theirs to restore.
  *

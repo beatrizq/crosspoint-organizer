@@ -49,6 +49,7 @@ class HabitsActivity final : public OrganizerScreenActivity {
   void onRowConfirm() override;
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::HABITS; }
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Habits; }
 
  private:
   // The cache index behind a visible row, or -1. Only the "hide completed"

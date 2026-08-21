@@ -201,6 +201,9 @@ void HabitsActivity::performIncrement(const int cacheIndex) {
   }
   HABITIFY_HABITS.saveToFile();
   requestUpdate(true);
+  // A press with the radio off moves the number on screen, which is as much a
+  // change as a sync is.
+  updateSleepScreen();
 }
 
 // -- sync -------------------------------------------------------------------
@@ -222,4 +225,5 @@ void HabitsActivity::performSync() {
   // reboot in onExit().
   tearDownRadio();
   finishSync(failure);
+  if (failure == nullptr) updateSleepScreen();
 }

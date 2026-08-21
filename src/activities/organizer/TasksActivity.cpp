@@ -24,15 +24,7 @@
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
 #include "util/OrganizerSync.h"
-#include "util/ScreenshotUtil.h"
-#include "util/SleepWallpaperBackup.h"
 #include "util/TaskWatchdog.h"
-
-namespace {
-// The sleep screen SleepActivity renders in CUSTOM mode, and the file the image
-// viewer's "Set Cover" action writes.
-constexpr char SLEEP_SCREEN_PATH[] = "/sleep.bmp";
-}  // namespace
 
 void TasksActivity::loadCaches() {
   TODOIST_TASKS.loadFromFile();
@@ -262,12 +254,9 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
   TODOIST_TASKS.saveToFile();
-  // Wait for the repaint rather than firing and forgetting, so the framebuffer
-  // holds the list without the completed task before it is snapshotted. The
-  // sleep screen tracks the list, not the sync: a task completed with the radio
-  // off changes what is on screen just as much as a fetch does.
-  requestUpdateAndWait();
-  saveSleepWallpaper();
+  // The sleep screen tracks the list, not the sync: a task completed with the
+  // radio off changes what is on screen just as much as a fetch does.
+  updateSleepScreen();
 }
 
 // -- sync -------------------------------------------------------------------
@@ -298,52 +287,8 @@ void TasksActivity::performTaskSync() {
   finishSync(failure);
 
   if (failure != nullptr) return;
-  // Wait for the repaint so the framebuffer holds the new list, then snapshot it
-  // as the sleep screen. Only this screen can: sync-everything has its own
-  // progress list on screen, not the task list.
-  requestUpdateAndWait();
-  saveSleepWallpaper();
-}
-
-void TasksActivity::saveSleepWallpaper() const {
-  if (!TODOIST_STORE.getSleepScreenEnabled()) {
-    // Logged so a sync that leaves the sleep screen untouched is distinguishable
-    // from one where this was never reached.
-    LOG_DBG("TASKS", "Sleep screen disabled in settings; wallpaper not updated");
-    return;
-  }
-
-  const uint8_t* framebuffer = renderer.getFrameBuffer();
-  if (!framebuffer) {
-    LOG_ERR("TASKS", "Framebuffer unavailable; sleep screen not updated");
-    return;
-  }
-  // Whatever wallpaper is there is the user's until this screen replaces it, so
-  // it is copied aside first - once, on the first replacement - and handed back
-  // when the option is switched off. Without it, turning the option on destroyed
-  // a chosen wallpaper and turning it off left the task list in its place.
-  SleepWallpaperBackup::captureIfAbsent();
-
-  // Same file and format the "Set Cover" action writes from the image viewer,
-  // so SleepActivity's CUSTOM mode picks it up unchanged.
-  if (!ScreenshotUtil::saveFramebufferAsBmp(SLEEP_SCREEN_PATH, framebuffer, renderer.getDisplayWidth(),
-                                            renderer.getDisplayHeight())) {
-    LOG_ERR("TASKS", "Failed to write %s", SLEEP_SCREEN_PATH);
-    return;
-  }
-  LOG_DBG("TASKS", "Sleep screen updated from the task list");
-
-  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM) {
-    // Remembered before it is overwritten, and only the first time: a later sync
-    // would otherwise record CUSTOM as the mode to go back to.
-    if (TODOIST_STORE.getPreviousSleepScreen() == TodoistStore::NO_SLEEP_SCREEN) {
-      TODOIST_STORE.setPreviousSleepScreen(SETTINGS.sleepScreen);
-      TODOIST_STORE.saveToFile();
-    }
-    // The wallpaper is only shown in CUSTOM mode; switching is what makes the
-    // snapshot visible at all.
-    SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-    SETTINGS.saveToFile();
-    LOG_INF("TASKS", "Sleep screen mode switched to custom");
-  }
+  // A new list is a change worth showing on a sleeping device. No-op unless this
+  // app is the chosen sleep screen source; sync-everything cannot do this, since
+  // its own progress list is what is on screen there.
+  updateSleepScreen();
 }

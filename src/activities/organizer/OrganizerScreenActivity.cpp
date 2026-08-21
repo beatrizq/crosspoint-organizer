@@ -17,6 +17,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/OrganizerSleepScreen.h"
 
 namespace {
 // Hold threshold for "sync now" on the Select button (firmware convention).
@@ -108,6 +109,16 @@ int OrganizerScreenActivity::listHeight() const {
 int OrganizerScreenActivity::pageItems() const { return std::max(1, listHeight() / std::max(1, listRowHeight())); }
 
 // -- tabs -------------------------------------------------------------------
+
+void OrganizerScreenActivity::updateSleepScreen() {
+  if (!organizerSleepScreen::isChosen(appId())) return;
+  // First tab only: it is the tab the screen opens on, so it is the one the user
+  // would recognise, and a sleep screen whose shape depended on which tab was
+  // last open would be worse than one that did not change at all.
+  if (tab() != 0) return;
+  requestUpdateAndWait();
+  organizerSleepScreen::capture(renderer);
+}
 
 void OrganizerScreenActivity::setTab(const int index) {
   if (index < 0 || index >= tabCount()) return;

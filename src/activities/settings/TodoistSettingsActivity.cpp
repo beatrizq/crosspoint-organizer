@@ -14,15 +14,13 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
-#include "util/SleepWallpaperBackup.h"
 
 namespace {
 constexpr int ROW_NICKNAME = 0;
 constexpr int ROW_TOKEN = 1;
 constexpr int ROW_FILTER = 2;
-constexpr int ROW_SLEEP_SCREEN = 3;
-constexpr int ROW_CLEAR = 4;
-constexpr int ROW_HINT = 5;
+constexpr int ROW_CLEAR = 3;
+constexpr int ROW_HINT = 4;
 }  // namespace
 
 void TodoistSettingsActivity::onEnter() {
@@ -127,19 +125,6 @@ void TodoistSettingsActivity::handleSelection() {
     return;
   }
 
-  if (selectedIndex == ROW_SLEEP_SCREEN) {
-    const bool enabled = !TODOIST_STORE.getSleepScreenEnabled();
-    TODOIST_STORE.setSleepScreenEnabled(enabled);
-    // Switching off undoes what switching on did: the wallpaper that was there
-    // before the first task screenshot comes back, and so does the sleep screen
-    // mode it was being shown in. Off used to leave the task list as the
-    // wallpaper forever, with the original gone.
-    if (!enabled) restoreSleepScreen();
-    TODOIST_STORE.saveToFile();
-    requestUpdate(true);
-    return;
-  }
-
   if (selectedIndex == ROW_CLEAR) {
     TODOIST_STORE.clearToken();
     TODOIST_STORE.saveToFile();
@@ -147,28 +132,6 @@ void TodoistSettingsActivity::handleSelection() {
     requestUpdate(true);
   }
   // ROW_HINT is a footnote, not an action.
-}
-
-void TodoistSettingsActivity::restoreSleepScreen() {
-  const bool hadWallpaper = SleepWallpaperBackup::hasBackup();
-  // The copy is ~48KB off the SD card, so the screen says something is happening.
-  if (hadWallpaper) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-  const bool restored = hadWallpaper && SleepWallpaperBackup::restore();
-
-  const uint8_t previous = TODOIST_STORE.getPreviousSleepScreen();
-  if (previous != TodoistStore::NO_SLEEP_SCREEN) {
-    // Guarded: a corrupt file must not put an out-of-range mode into settings.
-    if (previous < CrossPointSettings::SLEEP_SCREEN_MODE::SLEEP_SCREEN_MODE_COUNT) {
-      SETTINGS.sleepScreen = previous;
-      SETTINGS.saveToFile();
-      LOG_INF("TDS", "Sleep screen mode restored to %u", static_cast<unsigned>(previous));
-    }
-    TODOIST_STORE.setPreviousSleepScreen(TodoistStore::NO_SLEEP_SCREEN);
-  }
-
-  if (!hadWallpaper) return;
-  GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
-  delay(1000);
 }
 
 void TodoistSettingsActivity::render(RenderLock&&) {
@@ -186,9 +149,6 @@ void TodoistSettingsActivity::render(RenderLock&&) {
   // Live values; the token itself is never shown, only whether one is stored.
   const std::string tokenValue =
       TODOIST_STORE.hasToken() ? std::string("******") : std::string(I18n::getInstance().get(StrId::STR_NOT_SET));
-  const std::string sleepScreenValue = std::string(
-      I18n::getInstance().get(TODOIST_STORE.getSleepScreenEnabled() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF));
-
   GUI.drawList(
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
@@ -199,8 +159,6 @@ void TodoistSettingsActivity::render(RenderLock&&) {
             return std::string(I18n::getInstance().get(StrId::STR_TODOIST_API_TOKEN));
           case ROW_FILTER:
             return std::string(I18n::getInstance().get(StrId::STR_TODOIST_FILTER));
-          case ROW_SLEEP_SCREEN:
-            return std::string(I18n::getInstance().get(StrId::STR_TODOIST_SLEEP_SCREEN));
           case ROW_CLEAR:
             return std::string(I18n::getInstance().get(StrId::STR_CLEAR_BUTTON));
           default:
@@ -208,14 +166,13 @@ void TodoistSettingsActivity::render(RenderLock&&) {
         }
       },
       nullptr, nullptr,
-      [&tokenValue, &sleepScreenValue](int index) -> std::string {
+      [&tokenValue](int index) -> std::string {
         if (index == ROW_NICKNAME) return std::string(homeAppOrder::displayName(homeAppOrder::AppId::Tasks));
         if (index == ROW_TOKEN) return tokenValue;
         // Shown rather than masked, and in full: the theme truncates it to the
         // value column, which is the only hint that a long filter is longer than
         // it looks.
         if (index == ROW_FILTER) return TODOIST_STORE.getFilter();
-        if (index == ROW_SLEEP_SCREEN) return sleepScreenValue;
         return std::string("");
       },
       false, [](int index) -> bool { return index == ROW_HINT; });

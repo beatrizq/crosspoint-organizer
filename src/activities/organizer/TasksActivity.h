@@ -61,6 +61,7 @@ class TasksActivity final : public OrganizerScreenActivity {
   void onRowConfirm() override;
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::TASKS; }
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Tasks; }
 
  private:
   // The kind on screen at `index`, or ALL when the index is out of range.
@@ -87,7 +88,6 @@ class TasksActivity final : public OrganizerScreenActivity {
   void completeSelectedTask();
   void performTaskCompletion(int cacheIndex);
   void performTaskSync();
-  void saveSleepWallpaper() const;
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};
