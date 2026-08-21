@@ -87,9 +87,7 @@ class TasksActivity final : public OrganizerScreenActivity {
   void completeSelectedTask();
   void performTaskCompletion(int cacheIndex);
   void performTaskSync();
-  bool resolveTodayDate(std::string& outDate) const;
   void saveSleepWallpaper() const;
-  static const char* taskErrorText(TodoistClient::Error error);
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};

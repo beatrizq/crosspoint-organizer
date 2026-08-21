@@ -17,6 +17,7 @@
 #include "OrganizerLabels.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
 void BudgetActivity::loadCaches() {
@@ -179,29 +180,13 @@ void BudgetActivity::startSync() {
 }
 
 void BudgetActivity::performPlanSync() {
-  // One request, and it carries its own month: the balances are month-scoped
-  // and YNAB says which month it answered for, so nothing here needs a clock.
-  // That matters on boards with no RTC, and it keeps this sync to a single
-  // call against a token allowed 200 requests an hour.
-  std::vector<YnabCategory> fetched;
-  uint16_t month = civil::NO_DATE;
-  resetTaskWatchdogIfSubscribed();
-  const YnabClient::Error error = YnabClient::fetchSelectedCategories(fetched, month);
-  resetTaskWatchdogIfSubscribed();
-  if (error != YnabClient::OK) {
-    LOG_ERR("BUDGET", "Plan fetch failed: %s", YnabClient::errorString(error));
-  }
+  // Shared with the home screen's sync-everything; see organizerSync.
+  const char* failure = organizerSync::run(organizerSync::Service::Budget);
 
-  // Drop the radio before touching the SD card and repainting; the full
-  // teardown happens on the silent reboot in onExit().
+  // Drop the radio before repainting; the full teardown happens on the silent
+  // reboot in onExit().
   tearDownRadio();
-
-  if (error == YnabClient::OK) {
-    RenderLock lock(*this);
-    YNAB_CATEGORIES.setCategories(std::move(fetched), month);
-  }
-  finishSync(error == YnabClient::OK ? nullptr : budgetErrorText(error));
-  YNAB_CATEGORIES.saveToFile();
+  finishSync(failure);
 }
 
 void BudgetActivity::performTransactionSync(const std::string& accountId) {

@@ -62,5 +62,4 @@ class HabitsActivity final : public OrganizerScreenActivity {
   void performSync();
   // Renders progress as "x/y", or as a bare count for a habit with no goal.
   void formatProgress(const HabitifyHabit& habit, char* out, size_t outSize) const;
-  static const char* habitErrorText(HabitifyClient::Error error);
 };

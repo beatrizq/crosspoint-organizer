@@ -51,5 +51,4 @@ class CalendarActivity final : public OrganizerScreenActivity {
  private:
   void performCalendarSync();
   void formatEventWhen(int index, char* out, size_t outSize) const;
-  static const char* calendarErrorText(GCalClient::Error error);
 };

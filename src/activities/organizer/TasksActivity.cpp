@@ -22,22 +22,15 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/OrganizerSync.h"
 #include "util/ScreenshotUtil.h"
 #include "util/SleepWallpaperBackup.h"
 #include "util/TaskWatchdog.h"
 
 namespace {
-// The sleep screen SleepActivity renders in CUSTOM mode, and the file the
-// image viewer's "Set Cover" action writes.
+// The sleep screen SleepActivity renders in CUSTOM mode, and the file the image
+// viewer's "Set Cover" action writes.
 constexpr char SLEEP_SCREEN_PATH[] = "/sleep.bmp";
-
-// SNTP poll: 100ms x 50 = 5s, matching HalClock::syncFromNTP().
-constexpr int NTP_POLL_ATTEMPTS = 50;
-
-// Later of two "YYYY-MM-DD" dates. Today only ever moves forward, so picking the
-// newest of the available sources is what keeps a partial one from regressing.
-// ISO dates order correctly as plain strings, and "" loses to any real date.
-const std::string& laterDate(const std::string& a, const std::string& b) { return b > a ? b : a; }
 }  // namespace
 
 void TasksActivity::loadCaches() {
@@ -286,100 +279,27 @@ void TasksActivity::startSync() {
   runSync([this] { performTaskSync(); });
 }
 
-bool TasksActivity::resolveTodayDate(std::string& outDate) const {
-  // Most boards (X3/X4 included) have no RTC. This is the fallback source for
-  // today: the fetch derives it from the response's newest due date, which is
-  // both more reliable (it cannot fail when the fetch succeeded) and correct for
-  // the account's timezone rather than this device's configured offset. NTP is
-  // still needed for the cases the response cannot cover - an empty list, or one
-  // containing nothing due today.
-  outDate.clear();
-  configTzTime("UTC0", "pool.ntp.org", "time.nist.gov");
-  for (int i = 0; i < NTP_POLL_ATTEMPTS && sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED; i++) {
-    delay(100);
-    resetTaskWatchdogIfSubscribed();
-  }
-  if (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
-    // Not an error on its own; the response usually supplies the date instead.
-    LOG_DBG("TASKS", "NTP sync timed out; relying on the response date");
-    return false;
-  }
-
-  // Boards that do have an RTC get it set from the same SNTP result.
-  if (halClock.isAvailable()) halClock.syncFromNTP();
-
-  uint8_t offsetQ = SETTINGS.clockUtcOffsetQ;
-  if (offsetQ > 104) offsetQ = 104;  // clamp a corrupt persisted value to UTC+14
-  const time_t local = time(nullptr) + (static_cast<int>(offsetQ) - 48) * 15 * 60;
-  struct tm timeinfo;
-  gmtime_r(&local, &timeinfo);
-
-  char buf[11];
-  strftime(buf, sizeof(buf), "%Y-%m-%d", &timeinfo);
-  outDate = buf;
-  return true;
-}
-
 void TasksActivity::performTaskSync() {
-  // Fallback source, tried first only because it needs the radio while it is
-  // still up. The response date below wins when both are available.
-  std::string ntpDate;
-  if (!resolveTodayDate(ntpDate)) ntpDate.clear();
+  // The requests and the cache update live in organizerSync so the home screen's
+  // sync-everything can drive the same sequence over one Wi-Fi association. What
+  // stays here is what only this screen can do.
+  const char* failure = organizerSync::run(organizerSync::Service::Tasks);
 
-  // Push queued completions before fetching, so the fetched list already
-  // reflects them. A copy: clearPending() mutates the queue as we go.
-  const std::vector<std::string> pending = TODOIST_TASKS.getPendingIds();
-  TodoistClient::Error error = TodoistClient::OK;
-  for (const auto& id : pending) {
-    // Each push is a full TLS request; the sync runs on the main task.
-    resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::closeTask(id);
-    if (error != TodoistClient::OK) {
-      LOG_ERR("TASKS", "Push failed for %s: %s", id.c_str(), TodoistClient::errorString(error));
-      break;  // keep the rest queued for the next attempt
-    }
-    TODOIST_TASKS.clearPending(id);
-  }
-
-  std::vector<TodoistTask> fetched;
-  std::string serverDate;
-  if (error == TodoistClient::OK) {
-    resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::fetchTasks(fetched, serverDate);
-    resetTaskWatchdogIfSubscribed();
-  }
-
-  // NTP first when it worked: it is the only source that knows the configured UTC
-  // offset, so it gives the device's own local date. The response's Date header
-  // is the fallback - it cannot be blocked the way NTP can, but it is GMT, so it
-  // can read a day off either side of midnight. The previous sync then keeps the
-  // date from going backwards if both are unavailable or disagree downwards,
-  // because today never moves back.
-  std::string today = ntpDate.empty() ? serverDate : ntpDate;
-  today = laterDate(today, TODOIST_TASKS.getSyncDate());
-  if (today.empty()) {
-    LOG_ERR("TASKS", "Today unresolved: no NTP, no Date header, no previous sync");
-  }
-
-  // Drop the radio before touching the SD card and repainting; the full
-  // teardown happens on the silent reboot in onExit().
+  // Drop the radio before repainting; the full teardown happens on the silent
+  // reboot in onExit().
   tearDownRadio();
 
-  if (error == TodoistClient::OK) {
-    RenderLock lock(*this);
-    TODOIST_TASKS.setTasks(std::move(fetched), today);
+  if (failure == nullptr) {
     // A new result set means new row counts, so which tabs exist changes with it.
+    RenderLock lock(*this);
     rebuildTabs();
   }
-  // finishSync settles the state and repaints; the list is already in place.
-  finishSync(error == TodoistClient::OK ? nullptr : taskErrorText(error));
+  finishSync(failure);
 
-  // Persists the fetched list and whatever the queue push managed to clear.
-  TODOIST_TASKS.saveToFile();
-
-  if (error != TodoistClient::OK) return;
-  // Wait for the repaint so the framebuffer holds the new list, then snapshot
-  // it as the sleep screen.
+  if (failure != nullptr) return;
+  // Wait for the repaint so the framebuffer holds the new list, then snapshot it
+  // as the sleep screen. Only this screen can: sync-everything has its own
+  // progress list on screen, not the task list.
   requestUpdateAndWait();
   saveSleepWallpaper();
 }
@@ -424,24 +344,5 @@ void TasksActivity::saveSleepWallpaper() const {
     SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
     SETTINGS.saveToFile();
     LOG_INF("TASKS", "Sleep screen mode switched to custom");
-  }
-}
-
-const char* TasksActivity::taskErrorText(const TodoistClient::Error error) {
-  switch (error) {
-    case TodoistClient::NO_TOKEN:
-      return tr(STR_TODOIST_NO_TOKEN);
-    case TodoistClient::AUTH_FAILED:
-      return tr(STR_TODOIST_INVALID_TOKEN);
-    case TodoistClient::SERVER_ERROR:
-      return tr(STR_TODOIST_SERVER_ERROR);
-    case TodoistClient::PARSE_ERROR:
-      return tr(STR_TODOIST_BAD_RESPONSE);
-    case TodoistClient::INVALID_FILTER:
-      return tr(STR_TODOIST_INVALID_FILTER);
-    case TodoistClient::LOW_MEMORY:
-      return tr(STR_MEMORY_ERROR);
-    default:
-      return tr(STR_NETWORK_ERROR);
   }
 }

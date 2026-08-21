@@ -18,6 +18,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
 void HabitsActivity::loadCaches() {
@@ -212,73 +213,12 @@ void HabitsActivity::startSync() {
 }
 
 void HabitsActivity::performSync() {
-  // Push what is owed before fetching, so the journal that comes back already
-  // reflects it. A copy of the ids and amounts: clearPending() mutates the cache
-  // as we go, and the fetch replaces the list wholesale.
-  struct Owed {
-    std::string id;
-    std::string unit;
-    float amount;
-  };
-  std::vector<Owed> owed;
-  for (const auto& habit : HABITIFY_HABITS.getHabits()) {
-    if (habit.hasPending() && !habit.unitSymbol.empty()) {
-      owed.push_back(Owed{habit.id, habit.unitSymbol, habit.pending});
-    }
-  }
+  // The push-then-fetch sequence lives in organizerSync so the home screen's
+  // sync-everything can drive it over one Wi-Fi association.
+  const char* failure = organizerSync::run(organizerSync::Service::Habits);
 
-  HabitifyClient::Error error = HabitifyClient::OK;
-  for (const auto& entry : owed) {
-    // Each push is a full TLS request; the sync runs on the main task.
-    resetTaskWatchdogIfSubscribed();
-    error = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
-    if (error != HabitifyClient::OK) {
-      LOG_ERR("HABITS", "Push failed for %s: %s", entry.id.c_str(), HabitifyClient::errorString(error));
-      break;  // keep the rest owed for the next attempt
-    }
-    HABITIFY_HABITS.clearPending(entry.id, entry.amount);
-  }
-
-  std::vector<HabitifyHabit> fetched;
-  uint16_t date = civil::NO_DATE;
-  if (error == HabitifyClient::OK) {
-    resetTaskWatchdogIfSubscribed();
-    error = HabitifyClient::fetchJournal(fetched, date);
-    resetTaskWatchdogIfSubscribed();
-  }
-
-  // Drop the radio before touching the SD card and repainting; the full teardown
-  // happens on the silent reboot in onExit().
+  // Drop the radio before repainting; the full teardown happens on the silent
+  // reboot in onExit().
   tearDownRadio();
-
-  if (error == HabitifyClient::OK) {
-    RenderLock lock(*this);
-    // Carries over anything still owed - a press that landed between the push
-    // above and this fetch.
-    HABITIFY_HABITS.setHabits(std::move(fetched), date);
-  }
-  finishSync(error == HabitifyClient::OK ? nullptr : habitErrorText(error));
-  // Persists the fetched list and whatever the push managed to clear.
-  HABITIFY_HABITS.saveToFile();
-}
-
-const char* HabitsActivity::habitErrorText(const HabitifyClient::Error error) {
-  switch (error) {
-    case HabitifyClient::NO_KEY:
-      return tr(STR_HABITIFY_NO_KEY);
-    case HabitifyClient::AUTH_FAILED:
-      return tr(STR_HABITIFY_KEY_REJECTED);
-    case HabitifyClient::NOT_FOUND:
-      return tr(STR_HABITIFY_HABIT_NOT_FOUND);
-    case HabitifyClient::RATE_LIMITED:
-      return tr(STR_HABITIFY_RATE_LIMITED);
-    case HabitifyClient::SERVER_ERROR:
-      return tr(STR_HABITIFY_SERVER_ERROR);
-    case HabitifyClient::PARSE_ERROR:
-      return tr(STR_HABITIFY_BAD_RESPONSE);
-    case HabitifyClient::LOW_MEMORY:
-      return tr(STR_MEMORY_ERROR);
-    default:
-      return tr(STR_NETWORK_ERROR);
-  }
+  finishSync(failure);
 }
