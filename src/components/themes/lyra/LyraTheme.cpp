@@ -561,8 +561,6 @@ Rect LyraTheme::getHomeCompanionRect(const Rect coverCardRect) const {
 void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                     const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                     bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
-  const int tileWidth = rect.width - 2 * LyraMetrics::values.contentSidePadding;
-  const int tileHeight = rect.height;
   const int tileY = rect.y;
   const bool hasContinueReading = !recentBooks.empty();
   if (coverWidth == 0) {
@@ -616,8 +614,7 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
     bool bookSelected = (selectorIndex == 0);
 
-    int tileX = LyraMetrics::values.contentSidePadding;
-    int textWidth = tileWidth - 2 * hPaddingInSelection - LyraMetrics::values.verticalSpacing - coverWidth;
+    const int tileX = LyraMetrics::values.contentSidePadding;
 
     if (bookSelected) {
       // An outline around the cover, the same way drawButtonGrid marks a selected
@@ -640,7 +637,6 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     // any more: the cover is what identifies the book at a glance, and the words
     // were the cheapest thing to give up for the column the companion needs.
     // getHomeCompanionRect() hands that column out; HomeActivity draws into it.
-    (void)tileHeight;
   } else {
     drawEmptyRecents(renderer, rect);
   }

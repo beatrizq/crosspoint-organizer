@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Runs cppcheck over the whole tree with the repo's own check_flags.
+#
+# `pio check` cannot be relied on locally: it derives its file list from the
+# build environment and has been observed analysing 9 of 106 source files, so it
+# reports "No defects found" on a tree that CI then rejects. CI runs against a
+# clean checkout and sees everything. This sweeps every tracked source file so a
+# local run means the same thing as the CI one.
+#
+# Flags mirror `check_flags` in platformio.ini. Include paths are deliberately not
+# resolved - missingInclude is suppressed there too - which is enough for the
+# whole-file findings (unreadVariable, unusedVariable, redundant code) that the
+# CI gate actually trips on.
+#
+# It is stricter than CI, so a clean sweep is not the bar - CI's own partial file
+# list tolerates findings that predate this script. Read it filtered to the files
+# you changed. Known false positive: ArduinoJson's default-value operator, as in
+# `doc["k"] | 0`, is reported as badBitmaskCheck because cppcheck resolves the `|`
+# as bitwise without the header. src/util/BookmarkFile.cpp has carried that shape
+# for a long time; it is not a defect.
+set -uo pipefail
+
+CPPCHECK="${CPPCHECK:-$HOME/.platformio/packages/tool-cppcheck/cppcheck}"
+[[ -x "$CPPCHECK" ]] || CPPCHECK="$(command -v cppcheck)" || { echo "cppcheck not found"; exit 1; }
+
+mapfile -t FILES < <(git ls-files --exclude-standard \
+  | grep -E '\.(c|cpp)$' \
+  | grep -v -E '^lib/EpdFont/builtinFonts/' \
+  | grep -v -E '^lib/Epub/Epub/hyphenation/generated/' \
+  | grep -v -E '^lib/uzlib/' \
+  | grep -v -E '^lib/miniz/third_party/' \
+  | grep -v -E '^freeink-sdk/')
+
+echo "cppcheck over ${#FILES[@]} files..."
+"$CPPCHECK" --enable=all \
+  --suppress=missingIncludeSystem --suppress=missingInclude \
+  --suppress=unusedFunction --suppress=unmatchedSuppression \
+  --suppress=checkersReport \
+  --inline-suppr --quiet --template="{file}:{line}: [{severity}] {message} [{id}]" \
+  "${FILES[@]}" 2>&1 | grep -vE "^$" | sort -u
