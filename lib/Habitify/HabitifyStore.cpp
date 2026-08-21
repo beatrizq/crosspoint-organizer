@@ -29,13 +29,21 @@ bool HabitifyStore::fromJson(JsonVariantConst doc) {
   }
 
   // Plaintext fallback so the key can be dropped into the JSON by hand from a
-  // PC; it is re-saved obfuscated on load.
+  // PC; it is re-saved obfuscated on load, which rewrites the file without the
+  // plaintext field.
   const char* plain = doc["apiKey"] | "";
-  if (plain[0] != '\0' && strlen(plain) <= MAX_KEY_LEN) {
-    apiKey = plain;
-    LOG_DBG("HBS", "Plaintext API key found, resaving obfuscated");
-    requestResave();
+  if (plain[0] == '\0') return true;
+  if (strlen(plain) > MAX_KEY_LEN) {
+    // Said out loud rather than skipped silently: hand-editing the file is the
+    // main way this key gets set, and a key dropped for length would otherwise
+    // look exactly like a key that was never read.
+    LOG_ERR("HBS", "Plaintext API key is %u chars, over the %u cap; ignored", static_cast<unsigned>(strlen(plain)),
+            static_cast<unsigned>(MAX_KEY_LEN));
+    return true;
   }
+  apiKey = plain;
+  LOG_DBG("HBS", "Plaintext API key found, resaving obfuscated");
+  requestResave();
   return true;
 }
 

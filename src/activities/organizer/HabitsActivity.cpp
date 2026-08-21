@@ -9,10 +9,13 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "MappedInputManager.h"
 #include "OrganizerLabels.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/TaskWatchdog.h"
@@ -156,6 +159,33 @@ void HabitsActivity::onRowConfirm() { completeSelectedHabit(); }
 void HabitsActivity::completeSelectedHabit() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
   if (cacheIndex < 0) return;
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  if (habits[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
+
+  // Asked rather than done, matching the Todoist screen: Select is the same
+  // button that syncs from the tab bar one row up, so a misplaced press should not
+  // silently move a number. The prompt names the habit, because the list is behind
+  // it by then, and it opens on Cancel.
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_HABITIFY_COMPLETE_PROMPT),
+                                                                habits[static_cast<size_t>(cacheIndex)].name),
+                         [this, cacheIndex](const ActivityResult& result) {
+                           // The popup answered on the press; this screen acts on the release, and
+                           // the button may still be down.
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled) {
+                             LOG_DBG("HABITS", "Increment cancelled");
+                             return;
+                           }
+                           performIncrement(cacheIndex);
+                         });
+}
+
+void HabitsActivity::performIncrement(const int cacheIndex) {
+  // Re-checked: the prompt sat on top of this screen for as long as the user took
+  // to answer, and an index is not a habit.
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= HABITIFY_HABITS.getHabits().size()) return;
 
   {
     // The render task reads the habit list; hold the lock across the change so it
@@ -165,10 +195,6 @@ void HabitsActivity::completeSelectedHabit() {
     if (habits[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
     LOG_DBG("HABITS", "+%g to %s", static_cast<double>(HABITIFY_INCREMENT),
             habits[static_cast<size_t>(cacheIndex)].name.c_str());
-    // Not asked for, unlike a Todoist completion: this adds progress rather than
-    // closing something, it is reversible by syncing after undoing it in the app,
-    // and a habit is the kind of thing you tick several times in a row - a prompt
-    // each time would be in the way.
     HABITIFY_HABITS.addPending(static_cast<size_t>(cacheIndex), HABITIFY_INCREMENT);
   }
   HABITIFY_HABITS.saveToFile();
