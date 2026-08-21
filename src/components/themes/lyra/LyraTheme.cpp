@@ -608,16 +608,20 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     int textWidth = tileWidth - 2 * hPaddingInSelection - LyraMetrics::values.verticalSpacing - coverWidth;
 
     if (bookSelected) {
-      // Draw selection box
-      renderer.fillRoundedRect(tileX, tileY, tileWidth, hPaddingInSelection, cornerRadius, true, true, false, false,
-                               Color::LightGray);
-      renderer.fillRectDither(tileX, tileY + hPaddingInSelection, hPaddingInSelection,
-                              LyraMetrics::values.homeCoverHeight, Color::LightGray);
-      renderer.fillRectDither(tileX + hPaddingInSelection + coverWidth, tileY + hPaddingInSelection,
-                              tileWidth - hPaddingInSelection - coverWidth, LyraMetrics::values.homeCoverHeight,
-                              Color::LightGray);
-      renderer.fillRoundedRect(tileX, tileY + LyraMetrics::values.homeCoverHeight + hPaddingInSelection, tileWidth,
-                               hPaddingInSelection, cornerRadius, false, false, true, true, Color::LightGray);
+      // An outline around the cover, the same way drawButtonGrid marks a selected
+      // tile - and for the reason that function already gives: shading an area
+      // this size is a lot of ink to move every time the selection changes.
+      //
+      // It used to dither four strips covering the whole card, including the
+      // column beside the cover. That column is where the companion is drawn, and
+      // washing it over on selection made it unreadable. Bounding the cover alone
+      // also says more precisely what Select would open.
+      constexpr int coverSelectionPadding = 4;
+      constexpr int coverSelectionLineWidth = 2;
+      renderer.drawRoundedRect(
+          tileX + hPaddingInSelection - coverSelectionPadding, tileY + hPaddingInSelection - coverSelectionPadding,
+          coverWidth + coverSelectionPadding * 2, LyraMetrics::values.homeCoverHeight + coverSelectionPadding * 2,
+          coverSelectionLineWidth, cornerRadius, true);
     }
 
     auto titleLines = renderer.wrappedText(UI_12_FONT_ID, book.title.c_str(), textWidth, 3, EpdFontFamily::BOLD);
