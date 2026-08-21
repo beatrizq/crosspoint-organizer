@@ -21,11 +21,18 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "XtcReaderChapterSelectionActivity.h"
+#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
 void XtcReaderActivity::onEnter() {
   Activity::onEnter();
+
+  // A reading session per format. The fork this came from hooks the shared
+  // ReaderActivity base, which post-dates the reader consolidation this branch
+  // does not have - here ReaderActivity only dispatches, so each concrete reader
+  // opens and closes its own. No-op unless the companion is enabled.
+  COMPANION.beginSession();
 
   if (!xtc) {
     return;
@@ -47,6 +54,10 @@ void XtcReaderActivity::onEnter() {
 
 void XtcReaderActivity::onExit() {
   Activity::onExit();
+
+  // Banks credited time and persists it. Runs before deep sleep too, because
+  // ActivityManager::goToSleep() drives the outgoing activity's onExit().
+  COMPANION.endSession();
 
   APP_STATE.readerActivityLoadCount = 0;
   APP_STATE.saveToFile();
@@ -137,6 +148,8 @@ void XtcReaderActivity::loop() {
       !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs > ReaderUtils::SKIP_HOLD_MS;
   const int skipAmount = skipPages ? 10 : 1;
 
+  const uint32_t pageBefore = currentPage;
+
   if (prevTriggered) {
     if (currentPage >= static_cast<uint32_t>(skipAmount)) {
       currentPage -= skipAmount;
@@ -151,6 +164,11 @@ void XtcReaderActivity::loop() {
     }
     requestUpdate();
   }
+
+  // Credited only when the page actually moved: a turn refused at either end of
+  // the book must not keep the reading session looking active. Compared before
+  // and after rather than added to each branch, so a new branch cannot forget.
+  if (currentPage != pageBefore) COMPANION.onPageTurn();
 }
 
 void XtcReaderActivity::render(RenderLock&&) {

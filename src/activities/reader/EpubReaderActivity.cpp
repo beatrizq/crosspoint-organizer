@@ -35,6 +35,7 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/settings/TextSettingsActivity.h"
+#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/BookmarkUtil.h"
@@ -154,6 +155,12 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
 void EpubReaderActivity::onEnter() {
   Activity::onEnter();
 
+  // A reading session per format. The fork this came from hooks the shared
+  // ReaderActivity base, which post-dates the reader consolidation this branch
+  // does not have - here ReaderActivity only dispatches, so each concrete reader
+  // opens and closes its own. No-op unless the companion is enabled.
+  COMPANION.beginSession();
+
   if (!epub) {
     return;
   }
@@ -220,6 +227,10 @@ void EpubReaderActivity::onEnter() {
 
 void EpubReaderActivity::onExit() {
   Activity::onExit();
+
+  // Banks credited time and persists it. Runs before deep sleep too, because
+  // ActivityManager::goToSleep() drives the outgoing activity's onExit().
+  COMPANION.endSession();
 
   // The extractor holds a raw pointer to this activity's epub; drop it before
   // the activity (and the shared_ptr) goes away.
@@ -343,6 +354,11 @@ void EpubReaderActivity::loop() {
     RenderLock lock;  // the page table must not change under the scan
     // Re-check under the lock: peek() and acquisition are not atomic, so the render
     // task may have reset/replaced the section or moved the page in between.
+    //
+    // cppcheck reads the outer `section &&` and calls this redundant. It is not:
+    // the outer test happened before the lock was taken, and the render task can
+    // null this out in between. Dropping it would be a real race.
+    // cppcheck-suppress knownConditionTrueFalse
     if (section && !section->isBuilding() &&
         (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
       idlePrewarmSpine = currentSpineIndex;
@@ -1038,6 +1054,17 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 }
 
 void EpubReaderActivity::pageTurn(bool isForwardTurn) {
+  // Captured so the companion is only credited for a turn that moved. A backward
+  // turn on the first page of the book does nothing, and an idle reader must not
+  // keep a reading session looking active.
+  //
+  // The upstream fork this came from returns a bool from pageTurn() and wraps
+  // every call site; here the comparison happens inside instead, so the credit
+  // covers all four call sites without any of them having to remember.
+  const int spineBefore = currentSpineIndex;
+  // -1 when there is no section yet, which no real page index can equal.
+  const int pageBefore = section ? section->currentPage : -1;
+
   if (isForwardTurn) {
     // Advance within the section while there are (or may still be) more pages: either a built
     // page ahead, or the section is still building (windowed), in which case more pages exist
@@ -1069,6 +1096,13 @@ void EpubReaderActivity::pageTurn(bool isForwardTurn) {
       }
     }
   }
+  // The spine index catches a move to another section - where `section` has been
+  // reset and its page is no longer readable - and the page catches movement
+  // within one.
+  if (currentSpineIndex != spineBefore || (section && section->currentPage != pageBefore)) {
+    COMPANION.onPageTurn();
+  }
+
   lastPageTurnTime = millis();
   requestUpdate();
 }
@@ -1963,7 +1997,8 @@ void EpubReaderActivity::addBookmark() {
   if (!section || !epub) {
     return;
   }
-  LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
+  // No ternary: the early return above already guaranteed a section.
+  LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section->currentPage);
   int currentPage;
   int pageCount;
   {

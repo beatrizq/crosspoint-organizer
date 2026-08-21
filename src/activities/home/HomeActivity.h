@@ -61,6 +61,20 @@ class HomeActivity final : public Activity {
   // means one thing across the firmware.
   static constexpr unsigned long SYNC_ALL_HOLD_MS = 1000;
 
+  // Rotates the companion's line so each visit to Home gets a different one
+  // while it stays stable as the cursor moves around the menu.
+  uint32_t companionQuoteIndex = 0;
+  // Advances on every home repaint to drive the walk cycle. Driven by redraws
+  // rather than a timer, so the character only moves when the screen was going
+  // to be painted anyway - a timer would keep the panel refreshing, block the
+  // low-power idle and accumulate e-ink ghosting.
+  uint32_t companionFrame = 0;
+
+  // Draws the companion, its speech bubble and its status into the column the
+  // theme set aside inside the cover card. No-op when disabled, or when the
+  // theme handed back no room.
+  void drawCompanion(Rect region) const;
+
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onRecentsOpen();

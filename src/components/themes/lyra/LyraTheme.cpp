@@ -546,11 +546,21 @@ void LyraTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
   }
 }
 
+Rect LyraTheme::getHomeCompanionRect(const Rect coverCardRect) const {
+  // Same fallback drawRecentBookCover uses before a cover has been measured, so
+  // the two agree about where the cover ends on the very first paint.
+  if (coverWidth == 0) coverWidth = LyraMetrics::values.homeCoverHeight * 0.6;
+
+  const int coverRight = LyraMetrics::values.contentSidePadding + hPaddingInSelection + coverWidth;
+  const int x = coverRight + LyraMetrics::values.verticalSpacing;
+  const int right = coverCardRect.x + coverCardRect.width - LyraMetrics::values.contentSidePadding;
+  if (right - x <= 0) return Rect{};
+  return Rect{x, coverCardRect.y + hPaddingInSelection, right - x, LyraMetrics::values.homeCoverHeight};
+}
+
 void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                     const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                     bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
-  const int tileWidth = rect.width - 2 * LyraMetrics::values.contentSidePadding;
-  const int tileHeight = rect.height;
   const int tileY = rect.y;
   const bool hasContinueReading = !recentBooks.empty();
   if (coverWidth == 0) {
@@ -604,39 +614,34 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
     bool bookSelected = (selectorIndex == 0);
 
-    int tileX = LyraMetrics::values.contentSidePadding;
-    int textWidth = tileWidth - 2 * hPaddingInSelection - LyraMetrics::values.verticalSpacing - coverWidth;
+    const int tileX = LyraMetrics::values.contentSidePadding;
 
     if (bookSelected) {
-      // Draw selection box
-      renderer.fillRoundedRect(tileX, tileY, tileWidth, hPaddingInSelection, cornerRadius, true, true, false, false,
-                               Color::LightGray);
-      renderer.fillRectDither(tileX, tileY + hPaddingInSelection, hPaddingInSelection,
-                              LyraMetrics::values.homeCoverHeight, Color::LightGray);
-      renderer.fillRectDither(tileX + hPaddingInSelection + coverWidth, tileY + hPaddingInSelection,
-                              tileWidth - hPaddingInSelection - coverWidth, LyraMetrics::values.homeCoverHeight,
-                              Color::LightGray);
-      renderer.fillRoundedRect(tileX, tileY + LyraMetrics::values.homeCoverHeight + hPaddingInSelection, tileWidth,
-                               hPaddingInSelection, cornerRadius, false, false, true, true, Color::LightGray);
+      // A rail down the left of the cover, not an outline around it.
+      //
+      // An outline was the obvious choice - it is how drawButtonGrid marks a
+      // selected tile - but this card has no room for one. The cover is 226px in
+      // a 242px card, so 8px of slack above and below, and drawHeader lays a 3px
+      // divider at y+height-3, which lands 3px above the cover. Any outline wide
+      // enough to read merges into that divider at the top and overruns the card
+      // at the bottom: measured, the most it could take is 3px, less than the 4
+      // that already looked cramped against the artwork.
+      //
+      // The gutter left of the cover is free, runs its full height, and sits next
+      // to nothing else. A rail there is unambiguous, costs a fraction of the ink
+      // the old dithered strips did, and leaves the companion column alone -
+      // which is what the dither used to ruin.
+      constexpr int railWidth = 4;
+      constexpr int railGap = 4;  // between the rail and the cover's edge
+      const int railX = tileX + hPaddingInSelection - railGap - railWidth;
+      renderer.fillRoundedRect(railX, tileY + hPaddingInSelection, railWidth, LyraMetrics::values.homeCoverHeight,
+                               railWidth / 2, Color::Black);
     }
 
-    auto titleLines = renderer.wrappedText(UI_12_FONT_ID, book.title.c_str(), textWidth, 3, EpdFontFamily::BOLD);
-
-    auto author = renderer.truncatedText(UI_10_FONT_ID, book.author.c_str(), textWidth);
-    const int titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int titleBlockHeight = titleLineHeight * static_cast<int>(titleLines.size());
-    const int authorHeight = book.author.empty() ? 0 : (renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2);
-    const int totalBlockHeight = titleBlockHeight + authorHeight;
-    int titleY = tileY + tileHeight / 2 - totalBlockHeight / 2;
-    const int textX = tileX + hPaddingInSelection + coverWidth + LyraMetrics::values.verticalSpacing;
-    for (const auto& line : titleLines) {
-      renderer.drawText(UI_12_FONT_ID, textX, titleY, line.c_str(), true, EpdFontFamily::BOLD);
-      titleY += titleLineHeight;
-    }
-    if (!book.author.empty()) {
-      titleY += renderer.getLineHeight(UI_10_FONT_ID) / 2;
-      renderer.drawText(UI_10_FONT_ID, textX, titleY, author.c_str(), true);
-    }
+    // The title and author used to be drawn here, beside the cover. They are not
+    // any more: the cover is what identifies the book at a glance, and the words
+    // were the cheapest thing to give up for the column the companion needs.
+    // getHomeCompanionRect() hands that column out; HomeActivity draws into it.
   } else {
     drawEmptyRecents(renderer, rect);
   }
