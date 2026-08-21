@@ -74,8 +74,8 @@ struct DayLedger {
   // Sentinel for "no reading has ever been credited".
   static constexpr int32_t NEVER = INT32_MIN;
 
-  int32_t counterDay = NEVER;          // local day that minutesToday belongs to
-  int32_t lastQualifyingDay = NEVER;   // last local day that cleared contentMinutes
+  int32_t counterDay = NEVER;         // local day that minutesToday belongs to
+  int32_t lastQualifyingDay = NEVER;  // last local day that cleared contentMinutes
   uint16_t minutesToday = 0;
   uint16_t streakDays = 0;
   uint16_t bestStreakDays = 0;
@@ -107,8 +107,7 @@ class SessionAccumulator {
  public:
   static constexpr uint16_t DEFAULT_ACTIVE_WINDOW_S = 300;
 
-  explicit SessionAccumulator(uint16_t activeWindowSeconds = DEFAULT_ACTIVE_WINDOW_S)
-      : windowS(activeWindowSeconds) {}
+  explicit SessionAccumulator(uint16_t activeWindowSeconds = DEFAULT_ACTIVE_WINDOW_S) : windowS(activeWindowSeconds) {}
 
   // Marks the session active; time keeps accruing for activeWindowSeconds.
   void onPageTurn(uint32_t nowSeconds);

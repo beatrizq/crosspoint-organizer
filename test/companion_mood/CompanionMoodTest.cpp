@@ -36,18 +36,14 @@ TEST(CompanionMood, JustUnderThrivingIsStillContent) {
   EXPECT_EQ(companion::evaluate(withClock(t.thrivingMinutes, 0)), Mood::Thriving);
 }
 
-TEST(CompanionMood, AnyRealReadingTodayIsContent) {
-  EXPECT_EQ(companion::evaluate(withClock(2, 0)), Mood::Content);
-}
+TEST(CompanionMood, AnyRealReadingTodayIsContent) { EXPECT_EQ(companion::evaluate(withClock(2, 0)), Mood::Content); }
 
 TEST(CompanionMood, ReadYesterdayKeepsContentGrace) {
   // Nothing yet today, but yesterday counted: no penalty until a day is skipped.
   EXPECT_EQ(companion::evaluate(withClock(0, 1)), Mood::Content);
 }
 
-TEST(CompanionMood, OneSkippedDayIsPeckish) {
-  EXPECT_EQ(companion::evaluate(withClock(0, 2)), Mood::Peckish);
-}
+TEST(CompanionMood, OneSkippedDayIsPeckish) { EXPECT_EQ(companion::evaluate(withClock(0, 2)), Mood::Peckish); }
 
 TEST(CompanionMood, ThreeQuietDaysIsNeglected) {
   EXPECT_EQ(companion::evaluate(withClock(0, 3)), Mood::Neglected);
@@ -319,7 +315,9 @@ TEST(CompanionLedger, ClocklessModeUsesSessionMinutesOnly) {
 TEST(CompanionReachability, EveryMoodOccursOverALivedTimeline) {
   DayLedger led;
   std::set<Mood> seen;
-  const auto observe = [&](int32_t day) { seen.insert(companion::evaluate(companion::moodInputFor(led, day, true, 0))); };
+  const auto observe = [&](int32_t day) {
+    seen.insert(companion::evaluate(companion::moodInputFor(led, day, true, 0)));
+  };
 
   int32_t day = kDay;
   // Two solid days of reading.
@@ -428,7 +426,7 @@ TEST(CompanionSession, StopsCreditingOnceTheWindowLapses) {
 TEST(CompanionSession, ResumesCreditingAfterANewPageTurn) {
   SessionAccumulator acc(300);
   acc.onPageTurn(0);
-  acc.onTick(600);   // lapsed; nothing banked
+  acc.onTick(600);  // lapsed; nothing banked
   acc.onPageTurn(600);
   acc.onTick(660);
   EXPECT_EQ(acc.creditedSeconds(), 60u);

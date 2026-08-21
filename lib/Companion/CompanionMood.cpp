@@ -21,9 +21,9 @@ int32_t daysFromCivil(int32_t year, uint32_t month, uint32_t day) {
   // day of the cycle and removes every February special case.
   year -= month <= 2;
   const int32_t era = (year >= 0 ? year : year - 399) / 400;
-  const uint32_t yoe = static_cast<uint32_t>(year - era * 400);              // [0, 399]
+  const uint32_t yoe = static_cast<uint32_t>(year - era * 400);                   // [0, 399]
   const uint32_t doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;  // [0, 365]
-  const uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;               // [0, 146096]
+  const uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                     // [0, 146096]
   return era * 146097 + static_cast<int32_t>(doe) - 719468;
 }
 
@@ -35,8 +35,8 @@ int32_t daysBetween(int32_t fromYear, uint32_t fromMonth, uint32_t fromDay, int3
 int32_t localDayNumber(int32_t year, uint32_t month, uint32_t day, uint32_t hour, uint32_t minute,
                        int32_t utcOffsetQuarterHours) {
   static constexpr int32_t MINUTES_PER_DAY = 1440;
-  const int32_t utcMinutes = daysFromCivil(year, month, day) * MINUTES_PER_DAY +
-                             static_cast<int32_t>(hour) * 60 + static_cast<int32_t>(minute);
+  const int32_t utcMinutes = daysFromCivil(year, month, day) * MINUTES_PER_DAY + static_cast<int32_t>(hour) * 60 +
+                             static_cast<int32_t>(minute);
   const int32_t localMinutes = utcMinutes + utcOffsetQuarterHours * 15;
   // Floor division: C++ truncates toward zero, which would put the pre-epoch
   // side of midnight on the wrong day.
@@ -62,8 +62,7 @@ void creditDay(DayLedger& ledger, const int32_t today, const uint16_t minutes, c
 
   // This day just cleared the bar for the first time: extend the streak when it
   // directly follows the previous qualifying day, otherwise start a new one.
-  const bool consecutive = ledger.lastQualifyingDay != DayLedger::NEVER &&
-                           today == ledger.lastQualifyingDay + 1;
+  const bool consecutive = ledger.lastQualifyingDay != DayLedger::NEVER && today == ledger.lastQualifyingDay + 1;
   ledger.streakDays = consecutive && ledger.streakDays < UINT16_MAX ? ledger.streakDays + 1 : 1;
   if (ledger.streakDays > ledger.bestStreakDays) ledger.bestStreakDays = ledger.streakDays;
   ledger.lastQualifyingDay = today;
