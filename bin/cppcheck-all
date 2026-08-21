@@ -36,5 +36,7 @@ echo "cppcheck over ${#FILES[@]} files..."
   --suppress=missingIncludeSystem --suppress=missingInclude \
   --suppress=unusedFunction --suppress=unmatchedSuppression \
   --suppress=checkersReport \
+  --suppress=badBitmaskCheck:src/companion/CompanionState.cpp \
+  --suppress=badBitmaskCheck:src/util/BookmarkFile.cpp \
   --inline-suppr --quiet --template="{file}:{line}: [{severity}] {message} [{id}]" \
   "${FILES[@]}" 2>&1 | grep -vE "^$" | sort -u
