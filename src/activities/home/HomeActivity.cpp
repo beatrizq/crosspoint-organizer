@@ -50,9 +50,10 @@ void HomeActivity::buildEntries() {
     entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::READ_MENU, -1});
   }
 
-  // Tasks, Calendar and Budget: a tile and a screen each. They were tabs of one
-  // Organizer screen, and each now spends its own tab bar on its own views -
-  // Overdue/Today/Upcoming, Schedule, Plan/Account.
+  // Tasks, Calendar, Budget and Habits: a tile and a screen each. The first three
+  // were tabs of one Organizer screen and now spend their own tab bars on their
+  // own views - All/Overdue/Today/Upcoming/No date, All, and Plan plus a tab per
+  // account. Habits joined them as a fourth.
   entries.push_back({tr(STR_ORGANIZER_TAB_TASKS), Tasks, HomeMenuItem::TASKS, -1});
   entries.push_back({tr(STR_ORGANIZER_TAB_CALENDAR), Calendar, HomeMenuItem::CALENDAR, -1});
   entries.push_back({tr(STR_ORGANIZER_TAB_BUDGET), Budget, HomeMenuItem::BUDGET, -1});
@@ -276,8 +277,18 @@ void HomeActivity::loop() {
   // of its own, so it lives here. Resuming moved to the Read entry, which is a
   // press away in the menu itself. backPressSeen guards against the stale
   // release of the Back press that closed the previous activity.
+  //
+  // Held, the same button syncs every configured integration instead. It goes
+  // here rather than on a tile of its own because it is an action on all of them
+  // at once, so no single app owns it - and because holding a button for "the
+  // heavier version of this" is the convention the organizer tab bars already
+  // use for their own syncs.
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen) {
-    onSettingsOpen();
+    if (mappedInput.getHeldTime() >= SYNC_ALL_HOLD_MS) {
+      activityManager.goToSyncAll();
+    } else {
+      onSettingsOpen();
+    }
     return;
   }
 

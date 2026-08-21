@@ -18,6 +18,7 @@
 #include "organizer/BudgetActivity.h"
 #include "organizer/CalendarActivity.h"
 #include "organizer/HabitsActivity.h"
+#include "organizer/SyncAllActivity.h"
 #include "organizer/TasksActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/OpdsServerListActivity.h"
@@ -210,6 +211,8 @@ void ActivityManager::goToTasks(const uint8_t initialTab) {
 void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToHabits() { replaceActivity(std::make_unique<HabitsActivity>(renderer, mappedInput)); }
+
+void ActivityManager::goToSyncAll() { replaceActivity(std::make_unique<SyncAllActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToBudget(const uint8_t initialTab) {
   replaceActivity(std::make_unique<BudgetActivity>(renderer, mappedInput, static_cast<int>(initialTab)));

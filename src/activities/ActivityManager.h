@@ -108,6 +108,8 @@ class ActivityManager {
   void goToCalendar();
   void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
   void goToHabits();
+  // Syncs every configured integration over one Wi-Fi association.
+  void goToSyncAll();
   void goToReadMenu();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
