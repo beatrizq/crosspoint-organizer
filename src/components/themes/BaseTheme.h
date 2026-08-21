@@ -55,6 +55,11 @@ struct ThemeMetrics {
   int homeMenuTopOffset;
   // Home menu as tiles rather than rows: columns across, and the height of one
   // tile including its label. Zero columns keeps the list.
+  //
+  // The column count decides the row count too - the entries wrap into
+  // ceil(count / columns) rows, which then share whatever height is left under
+  // the cover card. Both the drawing and the tile hit-testing read this one
+  // value, so they cannot disagree about the shape.
   int homeGridColumns;
   int homeGridTileHeight;
 
