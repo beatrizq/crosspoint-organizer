@@ -573,7 +573,16 @@ void SettingsActivity::render(RenderLock&&) {
           valueText = value ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
         } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
           const uint8_t value = SETTINGS.*(setting.valuePtr);
-          valueText = I18N.get(setting.enumValues[value]);
+          // Both label sources, and bounds-checked, exactly as the valueGetter
+          // branch below already did. A member-pointer enum whose labels are
+          // runtime strings - the companion character picker, whose names come
+          // from the generated sprite table - leaves enumValues empty, and this
+          // read walked off the end of it into the string table.
+          if (!setting.enumStringValues.empty()) {
+            if (value < setting.enumStringValues.size()) valueText = setting.enumStringValues[value];
+          } else if (value < setting.enumValues.size()) {
+            valueText = I18N.get(setting.enumValues[value]);
+          }
         } else if (setting.type == SettingType::ENUM && setting.valueGetter) {
           const uint8_t value = setting.valueGetter();
           if (!setting.enumStringValues.empty() && value < setting.enumStringValues.size()) {

@@ -617,20 +617,25 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     const int tileX = LyraMetrics::values.contentSidePadding;
 
     if (bookSelected) {
-      // An outline around the cover, the same way drawButtonGrid marks a selected
-      // tile - and for the reason that function already gives: shading an area
-      // this size is a lot of ink to move every time the selection changes.
+      // A rail down the left of the cover, not an outline around it.
       //
-      // It used to dither four strips covering the whole card, including the
-      // column beside the cover. That column is where the companion is drawn, and
-      // washing it over on selection made it unreadable. Bounding the cover alone
-      // also says more precisely what Select would open.
-      constexpr int coverSelectionPadding = 4;
-      constexpr int coverSelectionLineWidth = 2;
-      renderer.drawRoundedRect(
-          tileX + hPaddingInSelection - coverSelectionPadding, tileY + hPaddingInSelection - coverSelectionPadding,
-          coverWidth + coverSelectionPadding * 2, LyraMetrics::values.homeCoverHeight + coverSelectionPadding * 2,
-          coverSelectionLineWidth, cornerRadius, true);
+      // An outline was the obvious choice - it is how drawButtonGrid marks a
+      // selected tile - but this card has no room for one. The cover is 226px in
+      // a 242px card, so 8px of slack above and below, and drawHeader lays a 3px
+      // divider at y+height-3, which lands 3px above the cover. Any outline wide
+      // enough to read merges into that divider at the top and overruns the card
+      // at the bottom: measured, the most it could take is 3px, less than the 4
+      // that already looked cramped against the artwork.
+      //
+      // The gutter left of the cover is free, runs its full height, and sits next
+      // to nothing else. A rail there is unambiguous, costs a fraction of the ink
+      // the old dithered strips did, and leaves the companion column alone -
+      // which is what the dither used to ruin.
+      constexpr int railWidth = 4;
+      constexpr int railGap = 4;  // between the rail and the cover's edge
+      const int railX = tileX + hPaddingInSelection - railGap - railWidth;
+      renderer.fillRoundedRect(railX, tileY + hPaddingInSelection, railWidth, LyraMetrics::values.homeCoverHeight,
+                               railWidth / 2, Color::Black);
     }
 
     // The title and author used to be drawn here, beside the cover. They are not
