@@ -15,12 +15,13 @@
 #include "OrganizerLabels.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
 void CalendarActivity::loadCaches() { GCAL_EVENTS.loadFromFile(); }
 
-const char* CalendarActivity::screenTitle() const { return tr(STR_ORGANIZER_TAB_CALENDAR); }
+const char* CalendarActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Calendar); }
 
 const char* CalendarActivity::tabLabel(const int index) const {
   switch (static_cast<Tab>(index)) {

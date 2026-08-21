@@ -42,7 +42,10 @@ constexpr int APP_COUNT = 5;
 
 struct AppInfo {
   AppId id;
-  StrId label;
+  // The app's own name - Todoist, Google Calendar, YNAB, Habitify - which is what
+  // it is called until a nickname is set. Not the generic "Tasks"/"Budget" the
+  // tiles used to carry: an app is easier to recognise by the account it talks to.
+  StrId appName;
   UIIcon icon;
 };
 
@@ -53,6 +56,22 @@ struct AppInfo {
 
 /** The apps in their built-in order, indexed by AppId. */
 const AppInfo& appAt(int index);
+
+/**
+ * What the app is called on the home grid and on its own screen: the nickname
+ * from CrossPointSettings when one is set, otherwise the app's own name.
+ *
+ * Settings deliberately does not use this - its rows stay labelled with the
+ * service, so an app renamed to something personal is still findable by the name
+ * its account is with.
+ *
+ * The returned pointer is either into the settings struct or into the translation
+ * table, both of which outlive any caller.
+ */
+const char* displayName(AppId id);
+
+/** Writable nickname for an app, for the screen that edits it. "" when unset. */
+char* nicknameField(AppId id, size_t& outSize);
 
 /** The default order string, used when nothing is stored or it is unusable. */
 constexpr const char* DEFAULT_ORDER = "01234";

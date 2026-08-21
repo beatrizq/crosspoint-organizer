@@ -26,6 +26,7 @@
 
 #include "CrossPointSettings.h"
 #include "activities/RenderLock.h"
+#include "util/HomeAppOrder.h"
 #include "util/TaskWatchdog.h"
 
 namespace organizerSync {
@@ -334,15 +335,17 @@ const char* runHabits() {
 }  // namespace
 
 const char* name(const Service service) {
+  // The same name the home grid and the app's own screen use, nickname included:
+  // a sync list that called an app something else would read as a different app.
   switch (service) {
     case Service::Tasks:
-      return tr(STR_ORGANIZER_TAB_TASKS);
+      return homeAppOrder::displayName(homeAppOrder::AppId::Tasks);
     case Service::Calendar:
-      return tr(STR_ORGANIZER_TAB_CALENDAR);
+      return homeAppOrder::displayName(homeAppOrder::AppId::Calendar);
     case Service::Budget:
-      return tr(STR_ORGANIZER_TAB_BUDGET);
+      return homeAppOrder::displayName(homeAppOrder::AppId::Budget);
     case Service::Habits:
-      return tr(STR_HABITS);
+      return homeAppOrder::displayName(homeAppOrder::AppId::Habits);
   }
   return "";
 }

@@ -79,7 +79,7 @@ void HomeActivity::buildEntries() {
     // Skipped only when the resume entry above already speaks for reading;
     // adding it again would draw it twice.
     if (resumeLeads && app.id == homeAppOrder::AppId::Read) continue;
-    entries.push_back({I18N.get(app.label), app.icon, homeMenuItemFor(app.id), -1});
+    entries.push_back({homeAppOrder::displayName(app.id), app.icon, homeMenuItemFor(app.id), -1});
   }
 }
 

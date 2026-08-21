@@ -22,6 +22,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 #include "util/OrganizerSync.h"
 #include "util/ScreenshotUtil.h"
 #include "util/SleepWallpaperBackup.h"
@@ -39,7 +40,7 @@ void TasksActivity::loadCaches() {
   rebuildTabs();
 }
 
-const char* TasksActivity::screenTitle() const { return tr(STR_ORGANIZER_TAB_TASKS); }
+const char* TasksActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Tasks); }
 
 TasksActivity::TabKind TasksActivity::kindAt(const int index) const {
   if (index < 0 || static_cast<size_t>(index) >= visibleTabs.size()) return TabKind::ALL;

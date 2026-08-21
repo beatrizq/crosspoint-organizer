@@ -22,8 +22,8 @@ class HabitifySettingsActivity final : public Activity {
   explicit HabitifySettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("HabitifySettings", renderer, mappedInput) {}
 
-  // API Key, Hide Completed, Clear Key, and the sync hint row.
-  static constexpr int MENU_ITEMS = 4;
+  // Nickname, API Key, Hide Completed, Clear Key, and the sync hint row.
+  static constexpr int MENU_ITEMS = 5;
 
   void onEnter() override;
   void onExit() override;

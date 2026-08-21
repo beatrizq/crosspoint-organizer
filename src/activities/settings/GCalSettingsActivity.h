@@ -22,7 +22,7 @@ class GCalSettingsActivity final : public Activity {
       : Activity("GCalSettings", renderer, mappedInput) {}
 
   // Client ID, Client Secret, Link/Unlink, Calendars, and the sync hint row.
-  static constexpr int MENU_ITEMS = 5;
+  static constexpr int MENU_ITEMS = 6;
 
   void onEnter() override;
   void onExit() override;

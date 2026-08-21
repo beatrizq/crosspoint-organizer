@@ -18,6 +18,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
@@ -26,7 +27,7 @@ void HabitsActivity::loadCaches() {
   HABITIFY_STORE.loadFromFile();
 }
 
-const char* HabitsActivity::screenTitle() const { return tr(STR_HABITS); }
+const char* HabitsActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Habits); }
 
 const char* HabitsActivity::tabLabel(const int index) const {
   switch (static_cast<Tab>(index)) {

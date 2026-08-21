@@ -144,6 +144,18 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
+  // Per-app display names. Empty means "use the app's own name", which is what
+  // every one of these ships as; a value here replaces it on the home grid and on
+  // the app's own screen, while Settings keeps listing the service so an app is
+  // always findable by the name its account is with. Persisted via category-less
+  // SettingInfo::Strings in SettingsList.h - edited from each app's settings
+  // screen, so they stay out of the on-device Settings list.
+  //
+  // 24 bytes each: a name longer than that is truncated by the tile anyway.
+  char tasksNickname[24] = "";
+  char calendarNickname[24] = "";
+  char budgetNickname[24] = "";
+  char habitsNickname[24] = "";
   // Home grid app order: one digit per app id, left to right (see
   // util/HomeAppOrder.h). Persisted via a category-less SettingInfo::String in
   // SettingsList.h, so it stays out of the on-device Settings screen - it is

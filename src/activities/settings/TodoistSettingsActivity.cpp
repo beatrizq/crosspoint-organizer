@@ -13,14 +13,16 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 #include "util/SleepWallpaperBackup.h"
 
 namespace {
-constexpr int ROW_TOKEN = 0;
-constexpr int ROW_FILTER = 1;
-constexpr int ROW_SLEEP_SCREEN = 2;
-constexpr int ROW_CLEAR = 3;
-constexpr int ROW_HINT = 4;
+constexpr int ROW_NICKNAME = 0;
+constexpr int ROW_TOKEN = 1;
+constexpr int ROW_FILTER = 2;
+constexpr int ROW_SLEEP_SCREEN = 3;
+constexpr int ROW_CLEAR = 4;
+constexpr int ROW_HINT = 5;
 }  // namespace
 
 void TodoistSettingsActivity::onEnter() {
@@ -84,6 +86,13 @@ void TodoistSettingsActivity::loop() {
 }
 
 void TodoistSettingsActivity::handleSelection() {
+  if (selectedIndex == ROW_NICKNAME) {
+    size_t size = 0;
+    char* field = homeAppOrder::nicknameField(homeAppOrder::AppId::Tasks, size);
+    editSettingsText(tr(STR_NICKNAME_ENTER), field, size);
+    return;
+  }
+
   if (selectedIndex == ROW_TOKEN) {
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_TODOIST_ENTER_TOKEN),
                                                                    TODOIST_STORE.getToken(),
@@ -184,6 +193,8 @@ void TodoistSettingsActivity::render(RenderLock&&) {
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
         switch (index) {
+          case ROW_NICKNAME:
+            return std::string(I18n::getInstance().get(StrId::STR_NICKNAME));
           case ROW_TOKEN:
             return std::string(I18n::getInstance().get(StrId::STR_TODOIST_API_TOKEN));
           case ROW_FILTER:
@@ -193,11 +204,12 @@ void TodoistSettingsActivity::render(RenderLock&&) {
           case ROW_CLEAR:
             return std::string(I18n::getInstance().get(StrId::STR_CLEAR_BUTTON));
           default:
-            return std::string(I18n::getInstance().get(StrId::STR_TODOIST_HOLD_TO_SYNC));
+            return std::string(I18n::getInstance().get(StrId::STR_ORGANIZER_HOLD_TO_SYNC));
         }
       },
       nullptr, nullptr,
       [&tokenValue, &sleepScreenValue](int index) -> std::string {
+        if (index == ROW_NICKNAME) return std::string(homeAppOrder::displayName(homeAppOrder::AppId::Tasks));
         if (index == ROW_TOKEN) return tokenValue;
         // Shown rather than masked, and in full: the theme truncates it to the
         // value column, which is the only hint that a long filter is longer than

@@ -317,6 +317,17 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
                             "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM),
 
+        // Per-app nicknames: persisted + web-exposed, category-less so they stay
+        // out of the on-device Settings list (edited from each app's own screen).
+        SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.tasksNickname[0], sizeof(SETTINGS.tasksNickname),
+                            "tasksNickname"),
+        SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.calendarNickname[0], sizeof(SETTINGS.calendarNickname),
+                            "calendarNickname"),
+        SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.budgetNickname[0], sizeof(SETTINGS.budgetNickname),
+                            "budgetNickname"),
+        SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.habitsNickname[0], sizeof(SETTINGS.habitsNickname),
+                            "habitsNickname"),
+
         // Home grid app order: persisted + web-exposed, category-less so it is
         // hidden from the on-device Settings screen (edited from App Order).
         SettingInfo::String(StrId::STR_APP_ORDER, &SETTINGS.homeAppOrder[0], sizeof(SETTINGS.homeAppOrder),

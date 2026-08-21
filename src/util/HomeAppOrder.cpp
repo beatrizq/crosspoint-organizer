@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+#include "CrossPointSettings.h"
+
 namespace homeAppOrder {
 namespace {
 
@@ -9,10 +11,10 @@ namespace {
 // and this opens everything else about books; the four integrations follow.
 constexpr AppInfo APPS[APP_COUNT] = {
     {AppId::Read, StrId::STR_MENU_READ, UIIcon::Book},
-    {AppId::Tasks, StrId::STR_ORGANIZER_TAB_TASKS, UIIcon::Tasks},
-    {AppId::Calendar, StrId::STR_ORGANIZER_TAB_CALENDAR, UIIcon::Calendar},
-    {AppId::Budget, StrId::STR_ORGANIZER_TAB_BUDGET, UIIcon::Budget},
-    {AppId::Habits, StrId::STR_HABITS, UIIcon::Habits},
+    {AppId::Tasks, StrId::STR_TODOIST, UIIcon::Tasks},
+    {AppId::Calendar, StrId::STR_GOOGLE_CALENDAR, UIIcon::Calendar},
+    {AppId::Budget, StrId::STR_YNAB, UIIcon::Budget},
+    {AppId::Habits, StrId::STR_HABITIFY, UIIcon::Habits},
 };
 
 }  // namespace
@@ -20,6 +22,36 @@ constexpr AppInfo APPS[APP_COUNT] = {
 const AppInfo& appAt(const int index) {
   if (index < 0 || index >= APP_COUNT) return APPS[0];
   return APPS[index];
+}
+
+char* nicknameField(const AppId id, size_t& outSize) {
+  switch (id) {
+    case AppId::Tasks:
+      outSize = sizeof(SETTINGS.tasksNickname);
+      return SETTINGS.tasksNickname;
+    case AppId::Calendar:
+      outSize = sizeof(SETTINGS.calendarNickname);
+      return SETTINGS.calendarNickname;
+    case AppId::Budget:
+      outSize = sizeof(SETTINGS.budgetNickname);
+      return SETTINGS.budgetNickname;
+    case AppId::Habits:
+      outSize = sizeof(SETTINGS.habitsNickname);
+      return SETTINGS.habitsNickname;
+    case AppId::Read:
+      // Read is not an integration - it has no account, no settings screen of its
+      // own, and so nothing to rename it from.
+      break;
+  }
+  outSize = 0;
+  return nullptr;
+}
+
+const char* displayName(const AppId id) {
+  size_t size = 0;
+  const char* nickname = nicknameField(id, size);
+  if (nickname != nullptr && nickname[0] != '\0') return nickname;
+  return I18N.get(APPS[static_cast<int>(id) < APP_COUNT ? static_cast<int>(id) : 0].appName);
 }
 
 void parse(const char* stored, int (&out)[APP_COUNT]) {

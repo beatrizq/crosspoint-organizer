@@ -12,12 +12,14 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 
 namespace {
-constexpr int ROW_KEY = 0;
-constexpr int ROW_HIDE_COMPLETED = 1;
-constexpr int ROW_CLEAR = 2;
-constexpr int ROW_HINT = 3;
+constexpr int ROW_NICKNAME = 0;
+constexpr int ROW_KEY = 1;
+constexpr int ROW_HIDE_COMPLETED = 2;
+constexpr int ROW_CLEAR = 3;
+constexpr int ROW_HINT = 4;
 }  // namespace
 
 void HabitifySettingsActivity::onEnter() {
@@ -30,6 +32,13 @@ void HabitifySettingsActivity::onEnter() {
 void HabitifySettingsActivity::onExit() { Activity::onExit(); }
 
 void HabitifySettingsActivity::handleSelection() {
+  if (selectedIndex == ROW_NICKNAME) {
+    size_t size = 0;
+    char* field = homeAppOrder::nicknameField(homeAppOrder::AppId::Habits, size);
+    editSettingsText(tr(STR_NICKNAME_ENTER), field, size);
+    return;
+  }
+
   if (selectedIndex == ROW_KEY) {
     // Entered as a password: the key is a long-lived credential, and it is only
     // ever pasted or typed once.
@@ -137,6 +146,8 @@ void HabitifySettingsActivity::render(RenderLock&&) {
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
         switch (index) {
+          case ROW_NICKNAME:
+            return std::string(tr(STR_NICKNAME));
           case ROW_KEY:
             return std::string(tr(STR_HABITIFY_API_KEY));
           case ROW_HIDE_COMPLETED:
@@ -144,11 +155,12 @@ void HabitifySettingsActivity::render(RenderLock&&) {
           case ROW_CLEAR:
             return std::string(tr(STR_CLEAR_BUTTON));
           default:
-            return std::string(tr(STR_HABITIFY_HOLD_TO_SYNC));
+            return std::string(tr(STR_ORGANIZER_HOLD_TO_SYNC));
         }
       },
       nullptr, nullptr,
       [&keyValue, &hideValue](int index) -> std::string {
+        if (index == ROW_NICKNAME) return std::string(homeAppOrder::displayName(homeAppOrder::AppId::Habits));
         if (index == ROW_KEY) return keyValue;
         if (index == ROW_HIDE_COMPLETED) return hideValue;
         return std::string("");

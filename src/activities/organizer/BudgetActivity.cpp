@@ -17,6 +17,7 @@
 #include "OrganizerLabels.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
@@ -33,7 +34,7 @@ void BudgetActivity::rebuildTabs() {
   for (const auto& account : accounts) tabLabels.push_back(ynabAccountLabel(account));
 }
 
-const char* BudgetActivity::screenTitle() const { return tr(STR_ORGANIZER_TAB_BUDGET); }
+const char* BudgetActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Budget); }
 
 const char* BudgetActivity::tabLabel(const int index) const {
   if (index == PLAN_TAB) return tr(STR_BUDGET_TAB_PLAN);

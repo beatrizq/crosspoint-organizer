@@ -150,7 +150,8 @@ void AppOrderActivity::render(RenderLock&&) {
         // Numbered, because the point of the screen is the position rather than
         // the name, and the numbers are what the home grid reads left to right.
         char label[48];
-        snprintf(label, sizeof(label), "%d.  %s", index + 1, I18N.get(homeAppOrder::appAt(rows[index]).label));
+        snprintf(label, sizeof(label), "%d.  %s", index + 1,
+                 homeAppOrder::displayName(homeAppOrder::appAt(rows[index]).id));
         return std::string(label);
       },
       nullptr, [rows](int index) { return homeAppOrder::appAt(rows[index]).icon; },
