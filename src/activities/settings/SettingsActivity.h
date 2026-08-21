@@ -20,6 +20,7 @@ enum class SettingAction {
   Todoist,
   GoogleCalendar,
   Ynab,
+  Habitify,
   OPDSBrowser,
   Network,
   ClearCache,

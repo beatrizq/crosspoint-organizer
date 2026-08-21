@@ -56,6 +56,7 @@ void HomeActivity::buildEntries() {
   entries.push_back({tr(STR_ORGANIZER_TAB_TASKS), Tasks, HomeMenuItem::TASKS, -1});
   entries.push_back({tr(STR_ORGANIZER_TAB_CALENDAR), Calendar, HomeMenuItem::CALENDAR, -1});
   entries.push_back({tr(STR_ORGANIZER_TAB_BUDGET), Budget, HomeMenuItem::BUDGET, -1});
+  entries.push_back({tr(STR_HABITS), Habits, HomeMenuItem::HABITS, -1});
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -226,6 +227,9 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::BUDGET:
         activityManager.goToBudget();
+        break;
+      case HomeMenuItem::HABITS:
+        activityManager.goToHabits();
         break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();

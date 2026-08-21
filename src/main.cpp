@@ -22,6 +22,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "GCalStore.h"
+#include "HabitifyStore.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
@@ -318,6 +319,7 @@ void setup() {
   TODOIST_STORE.loadFromFile();
   GCAL_STORE.loadFromFile();
   YNAB_STORE.loadFromFile();
+  HABITIFY_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 

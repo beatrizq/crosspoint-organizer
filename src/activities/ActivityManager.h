@@ -17,8 +17,9 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-// TASKS, CALENDAR and BUDGET are a tile and a screen each. They shared one
-// screen with a three-way tab bar until each grew tabs of its own.
+// TASKS, CALENDAR, BUDGET and HABITS are a tile and a screen each. The first
+// three shared one screen with a three-way tab bar until each grew tabs of its
+// own; HABITS joined them as a fourth.
 enum class HomeMenuItem {
   NONE,
   READ_MENU,
@@ -27,6 +28,7 @@ enum class HomeMenuItem {
   TASKS,
   CALENDAR,
   BUDGET,
+  HABITS,
   OPDS_BROWSER,
   FILE_TRANSFER,
   SETTINGS_MENU
@@ -105,6 +107,7 @@ class ActivityManager {
   void goToTasks(uint8_t initialTab = 0);  // 0 = All
   void goToCalendar();
   void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
+  void goToHabits();
   void goToReadMenu();
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);

@@ -121,7 +121,8 @@ enum UIIcon {
   Bookmark,
   Tasks,
   Calendar,
-  Budget
+  Budget,
+  Habits
 };
 
 // Default theme implementation (Classic Theme)
