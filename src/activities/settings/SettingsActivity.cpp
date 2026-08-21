@@ -85,6 +85,11 @@ void SettingsActivity::rebuildSettingsLists() {
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
+  // A footnote, not an action: the hold on the home screen's Settings button is
+  // the only way to reach a sync-everything, and nothing on that screen advertises
+  // it. A None action draws the row and does nothing when it is selected, which is
+  // also what marks it dimmed below.
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_SYNC_ALL_HINT, SettingAction::None));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   // TODO: Touch devices need their own firmware update path/artifacts before OTA is exposed.
   if (!BoardConfig::hasTouch()) {
@@ -542,7 +547,12 @@ void SettingsActivity::render(RenderLock&&) {
         }
         return valueText;
       },
-      true);
+      true,
+      // An ACTION that does nothing is a footnote by construction - nothing else
+      // is built that way - so dimming it needs no separate flag.
+      [&settings](int i) {
+        return settings[i].type == SettingType::ACTION && settings[i].action == SettingAction::None;
+      });
 
   // Draw help text
   const auto confirmLabel =
