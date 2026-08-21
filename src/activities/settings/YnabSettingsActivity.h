@@ -22,7 +22,7 @@ class YnabSettingsActivity final : public Activity {
 
   // Access Token, Budget ID, Categories, Accounts, Clear Token, and the sync
   // hint row.
-  static constexpr int MENU_ITEMS = 6;
+  static constexpr int MENU_ITEMS = 7;
 
   void onEnter() override;
   void onExit() override;

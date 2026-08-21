@@ -76,4 +76,10 @@ class Activity {
   // touched row, a tap selects and reports Activated. The caller supplies the
   // list band and runs its own activate action on Activated.
   ListTouchResult handleListTouch(int& selectedIndex, int itemCount, int listTop, int listHeight, bool hasSubtitle);
+
+  // Opens the keyboard on a CrossPointSettings char field and persists the
+  // result. Shared by the app settings screens for their Nickname rows, which are
+  // all the same interaction over a different field. Takes the field rather than
+  // an app id so this header stays clear of the settings and theme headers.
+  void editSettingsText(const char* title, char* field, size_t fieldSize);
 };

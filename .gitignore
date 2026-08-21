@@ -31,3 +31,11 @@ lib/EpdFont/scripts/output/
 /dependencies.lock
 /sdkconfig.*
 sdkconfig.sticky
+
+# Vendor API docs saved from the browser for reference while implementing an
+# integration (the Habitify docs are a client-rendered SPA, so a saved copy is
+# the only way to read them offline). The ":Zone.Identifier" files are Windows
+# download-provenance metadata that come with them.
+/Habitify API.htm
+/Habitify API_files/
+*:Zone.Identifier

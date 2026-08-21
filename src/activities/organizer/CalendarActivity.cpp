@@ -15,11 +15,13 @@
 #include "OrganizerLabels.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
+#include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
 void CalendarActivity::loadCaches() { GCAL_EVENTS.loadFromFile(); }
 
-const char* CalendarActivity::screenTitle() const { return tr(STR_ORGANIZER_TAB_CALENDAR); }
+const char* CalendarActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Calendar); }
 
 const char* CalendarActivity::tabLabel(const int index) const {
   switch (static_cast<Tab>(index)) {
@@ -81,58 +83,15 @@ void CalendarActivity::startSync() {
 }
 
 void CalendarActivity::performCalendarSync() {
-  // The refresh serves two purposes: it mints the access token every request
-  // needs, and its HTTP Date header is the device's clock. Most boards have no
-  // RTC and SNTP can be blocked on a given network, so anchoring the window on
-  // a header that cannot fail when the request succeeded is what makes "today
-  // and the next 30 days" mean anything.
-  std::string accessToken;
-  uint16_t today = civil::NO_DATE;
-  const GCalAuth::Error authError = GCalAuth::refreshAccessToken(accessToken, today);
+  // The requests and the cache update live in organizerSync so the home screen's
+  // sync-everything can drive the same sequence over one Wi-Fi association.
+  const char* failure = organizerSync::run(organizerSync::Service::Calendar);
 
-  GCalClient::Error error = GCalClient::OK;
-  std::vector<GCalEvent> fetched;
-
-  if (authError != GCalAuth::OK) {
-    LOG_ERR("CAL", "Token refresh failed: %s", GCalAuth::errorString(authError));
-  } else if (today == civil::NO_DATE) {
-    // Without a date there is no window to ask for, and guessing would silently
-    // show the wrong month.
-    LOG_ERR("CAL", "No Date header on the token response; cannot anchor the window");
-    error = GCalClient::PARSE_ERROR;
-  } else {
-    const uint16_t lastDay = static_cast<uint16_t>(today + GCAL_WINDOW_DAYS - 1);
-    fetched.reserve(GCAL_MAX_EVENTS);
-    for (const auto& calendarId : GCAL_STORE.getSelectedCalendars()) {
-      resetTaskWatchdogIfSubscribed();
-      error = GCalClient::fetchEvents(accessToken, calendarId, today, lastDay, fetched);
-      resetTaskWatchdogIfSubscribed();
-      if (error != GCalClient::OK) {
-        LOG_ERR("CAL", "Fetch failed for %s: %s", calendarId.c_str(), GCalClient::errorString(error));
-        break;
-      }
-      if (fetched.size() >= GCAL_MAX_EVENTS) {
-        LOG_INF("CAL", "Event cap (%zu) reached; later calendars not fetched", GCAL_MAX_EVENTS);
-        break;
-      }
-    }
-  }
-
-  // Drop the radio before touching the SD card and repainting; the full
-  // teardown happens on the silent reboot in onExit().
+  // Drop the radio before repainting; the full teardown happens on the silent
+  // reboot in onExit().
   tearDownRadio();
-
-  const char* failure = nullptr;
-  if (authError != GCalAuth::OK) {
-    failure = authError == GCalAuth::INVALID_GRANT ? tr(STR_GCAL_RELINK_NEEDED) : tr(STR_NETWORK_ERROR);
-  } else if (error != GCalClient::OK) {
-    failure = calendarErrorText(error);
-  } else {
-    RenderLock lock(*this);
-    GCAL_EVENTS.setEvents(std::move(fetched), today);
-  }
   finishSync(failure);
-  GCAL_EVENTS.saveToFile();
+  if (failure == nullptr) updateSleepScreen();
 }
 
 void CalendarActivity::formatEventWhen(const int index, char* out, const size_t outSize) const {
@@ -161,21 +120,4 @@ void CalendarActivity::formatEventWhen(const int index, char* out, const size_t 
   snprintf(out, outSize, "%s  %02u:%02u-%02u:%02u", when, static_cast<unsigned>(event.startMin / 60),
            static_cast<unsigned>(event.startMin % 60), static_cast<unsigned>(event.endMin / 60),
            static_cast<unsigned>(event.endMin % 60));
-}
-
-const char* CalendarActivity::calendarErrorText(const GCalClient::Error error) {
-  switch (error) {
-    case GCalClient::NO_TOKEN:
-      return tr(STR_GCAL_NOT_LINKED);
-    case GCalClient::AUTH_FAILED:
-      return tr(STR_GCAL_RELINK_NEEDED);
-    case GCalClient::SERVER_ERROR:
-      return tr(STR_GCAL_SERVER_ERROR);
-    case GCalClient::PARSE_ERROR:
-      return tr(STR_GCAL_BAD_RESPONSE);
-    case GCalClient::LOW_MEMORY:
-      return tr(STR_MEMORY_ERROR);
-    default:
-      return tr(STR_NETWORK_ERROR);
-  }
 }

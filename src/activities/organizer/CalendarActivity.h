@@ -47,9 +47,9 @@ class CalendarActivity final : public OrganizerScreenActivity {
   bool rowsHaveSubtitle() const override { return true; }
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::CALENDAR; }
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Calendar; }
 
  private:
   void performCalendarSync();
   void formatEventWhen(int index, char* out, size_t outSize) const;
-  static const char* calendarErrorText(GCalClient::Error error);
 };

@@ -17,14 +17,16 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 
 namespace {
-constexpr int ROW_TOKEN = 0;
-constexpr int ROW_BUDGET_ID = 1;
-constexpr int ROW_CATEGORIES = 2;
-constexpr int ROW_ACCOUNTS = 3;
-constexpr int ROW_CLEAR = 4;
-constexpr int ROW_HINT = 5;
+constexpr int ROW_NICKNAME = 0;
+constexpr int ROW_TOKEN = 1;
+constexpr int ROW_BUDGET_ID = 2;
+constexpr int ROW_CATEGORIES = 3;
+constexpr int ROW_ACCOUNTS = 4;
+constexpr int ROW_CLEAR = 5;
+constexpr int ROW_HINT = 6;
 }  // namespace
 
 void YnabSettingsActivity::onEnter() {
@@ -98,6 +100,13 @@ void YnabSettingsActivity::loop() {
 }
 
 void YnabSettingsActivity::handleSelection() {
+  if (selectedIndex == ROW_NICKNAME) {
+    size_t size = 0;
+    char* field = homeAppOrder::nicknameField(homeAppOrder::AppId::Budget, size);
+    editSettingsText(tr(STR_NICKNAME_ENTER), field, size);
+    return;
+  }
+
   if (selectedIndex == ROW_TOKEN) {
     startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_YNAB_ENTER_TOKEN),
                                                                    YNAB_STORE.getAccessToken(),
@@ -204,6 +213,8 @@ void YnabSettingsActivity::render(RenderLock&&) {
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
         [](int index) -> std::string {
           switch (index) {
+            case ROW_NICKNAME:
+              return std::string(tr(STR_NICKNAME));
             case ROW_TOKEN:
               return std::string(tr(STR_YNAB_ACCESS_TOKEN));
             case ROW_BUDGET_ID:
@@ -215,11 +226,12 @@ void YnabSettingsActivity::render(RenderLock&&) {
             case ROW_CLEAR:
               return std::string(tr(STR_CLEAR_BUTTON));
             default:
-              return std::string(tr(STR_YNAB_HOLD_TO_SYNC));
+              return std::string(tr(STR_ORGANIZER_HOLD_TO_SYNC));
           }
         },
         nullptr, nullptr,
         [&tokenValue, &budgetValue, &categoryValue, &accountValue](int index) -> std::string {
+          if (index == ROW_NICKNAME) return std::string(homeAppOrder::displayName(homeAppOrder::AppId::Budget));
           if (index == ROW_TOKEN) return tokenValue;
           if (index == ROW_BUDGET_ID) return budgetValue;
           if (index == ROW_CATEGORIES) return std::string(categoryValue);

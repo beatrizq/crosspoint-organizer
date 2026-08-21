@@ -23,6 +23,7 @@
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
 #include "components/icons/folder24.h"
+#include "components/icons/habits80.h"
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
@@ -63,6 +64,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return Calendar80Icon;
       case UIIcon::Budget:
         return Budget80Icon;
+      case UIIcon::Habits:
+        return Habits80Icon;
       default:
         return nullptr;
     }

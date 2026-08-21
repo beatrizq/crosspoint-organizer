@@ -56,6 +56,11 @@ class HomeActivity final : public Activity {
   // themes that carry reading as a menu entry instead.
   int leadingRecentCount() const;
 
+  // Hold threshold for "sync everything" on the Settings button. The same
+  // 1000ms the organizer screens use for their hold-to-sync, so one gesture
+  // means one thing across the firmware.
+  static constexpr unsigned long SYNC_ALL_HOLD_MS = 1000;
+
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onRecentsOpen();

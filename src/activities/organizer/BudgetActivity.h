@@ -52,6 +52,7 @@ class BudgetActivity final : public OrganizerScreenActivity {
   bool rowsHaveSubtitle() const override { return tab() != PLAN_TAB; }
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::BUDGET; }
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Budget; }
 
  private:
   void performPlanSync();

@@ -16,13 +16,15 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 
 namespace {
-constexpr int ROW_CLIENT_ID = 0;
-constexpr int ROW_CLIENT_SECRET = 1;
-constexpr int ROW_LINK = 2;
-constexpr int ROW_CALENDARS = 3;
-constexpr int ROW_HINT = 4;
+constexpr int ROW_NICKNAME = 0;
+constexpr int ROW_CLIENT_ID = 1;
+constexpr int ROW_CLIENT_SECRET = 2;
+constexpr int ROW_LINK = 3;
+constexpr int ROW_CALENDARS = 4;
+constexpr int ROW_HINT = 5;
 }  // namespace
 
 void GCalSettingsActivity::onEnter() {
@@ -96,6 +98,13 @@ void GCalSettingsActivity::loop() {
 }
 
 void GCalSettingsActivity::handleSelection() {
+  if (selectedIndex == ROW_NICKNAME) {
+    size_t size = 0;
+    char* field = homeAppOrder::nicknameField(homeAppOrder::AppId::Calendar, size);
+    editSettingsText(tr(STR_NICKNAME_ENTER), field, size);
+    return;
+  }
+
   if (selectedIndex == ROW_CLIENT_ID) {
     startActivityForResult(
         std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_GCAL_ENTER_CLIENT_ID),
@@ -274,6 +283,8 @@ void GCalSettingsActivity::render(RenderLock&&) {
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
         [](int index) -> std::string {
           switch (index) {
+            case ROW_NICKNAME:
+              return std::string(tr(STR_NICKNAME));
             case ROW_CLIENT_ID:
               return std::string(tr(STR_GCAL_CLIENT_ID));
             case ROW_CLIENT_SECRET:
@@ -283,11 +294,12 @@ void GCalSettingsActivity::render(RenderLock&&) {
             case ROW_CALENDARS:
               return std::string(tr(STR_GCAL_CALENDARS));
             default:
-              return std::string(tr(STR_GCAL_HOLD_TO_SYNC));
+              return std::string(tr(STR_ORGANIZER_HOLD_TO_SYNC));
           }
         },
         nullptr, nullptr,
         [&clientIdValue, &secretValue, &calendarValue](int index) -> std::string {
+          if (index == ROW_NICKNAME) return std::string(homeAppOrder::displayName(homeAppOrder::AppId::Calendar));
           if (index == ROW_CLIENT_ID) return clientIdValue;
           if (index == ROW_CLIENT_SECRET) return secretValue;
           if (index == ROW_CALENDARS) return std::string(calendarValue);

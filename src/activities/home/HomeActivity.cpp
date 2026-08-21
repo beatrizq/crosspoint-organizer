@@ -19,6 +19,27 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
+
+namespace {
+// The home entry each app opens. Kept here rather than in the app table so
+// util/HomeAppOrder.h does not have to include the activity layer.
+HomeMenuItem homeMenuItemFor(const homeAppOrder::AppId id) {
+  switch (id) {
+    case homeAppOrder::AppId::Read:
+      return HomeMenuItem::READ_MENU;
+    case homeAppOrder::AppId::Tasks:
+      return HomeMenuItem::TASKS;
+    case homeAppOrder::AppId::Calendar:
+      return HomeMenuItem::CALENDAR;
+    case homeAppOrder::AppId::Budget:
+      return HomeMenuItem::BUDGET;
+    case homeAppOrder::AppId::Habits:
+      return HomeMenuItem::HABITS;
+  }
+  return HomeMenuItem::NONE;
+}
+}  // namespace
 
 int HomeActivity::getMenuItemCount() const { return static_cast<int>(entries.size()); }
 
@@ -40,22 +61,26 @@ void HomeActivity::buildEntries() {
     }
   }
 
-  if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
-    // Themes without a cover tile carry reading as the first entry instead.
+  // Themes without a cover tile carry reading itself as the leading entry, which
+  // stands in for the Read tile rather than sitting beside it.
+  const bool resumeLeads = metrics.homeContinueReadingInMenu && !recentBooks.empty();
+  if (resumeLeads) {
     entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::NONE, 0});
-  } else {
-    // Read leads the tiles: the card above opens the last book, and this opens
-    // everything else about books - browse, recent, transfer - in one screen,
-    // so the tiles beside it stay one subject each.
-    entries.push_back({tr(STR_MENU_READ), Book, HomeMenuItem::READ_MENU, -1});
   }
 
-  // Tasks, Calendar and Budget: a tile and a screen each. They were tabs of one
-  // Organizer screen, and each now spends its own tab bar on its own views -
-  // Overdue/Today/Upcoming, Schedule, Plan/Account.
-  entries.push_back({tr(STR_ORGANIZER_TAB_TASKS), Tasks, HomeMenuItem::TASKS, -1});
-  entries.push_back({tr(STR_ORGANIZER_TAB_CALENDAR), Calendar, HomeMenuItem::CALENDAR, -1});
-  entries.push_back({tr(STR_ORGANIZER_TAB_BUDGET), Budget, HomeMenuItem::BUDGET, -1});
+  // The tiles, in the order the user arranged them on the App Order screen. Read
+  // is one of them, so it moves with the rest - the cover card above opens the
+  // last book, and the Read tile opens everything else about books, which is a
+  // subject like any other.
+  int order[homeAppOrder::APP_COUNT];
+  homeAppOrder::parse(SETTINGS.homeAppOrder, order);
+  for (const int index : order) {
+    const auto& app = homeAppOrder::appAt(index);
+    // Skipped only when the resume entry above already speaks for reading;
+    // adding it again would draw it twice.
+    if (resumeLeads && app.id == homeAppOrder::AppId::Read) continue;
+    entries.push_back({homeAppOrder::displayName(app.id), app.icon, homeMenuItemFor(app.id), -1});
+  }
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -227,6 +252,9 @@ void HomeActivity::loop() {
       case HomeMenuItem::BUDGET:
         activityManager.goToBudget();
         break;
+      case HomeMenuItem::HABITS:
+        activityManager.goToHabits();
+        break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -272,8 +300,18 @@ void HomeActivity::loop() {
   // of its own, so it lives here. Resuming moved to the Read entry, which is a
   // press away in the menu itself. backPressSeen guards against the stale
   // release of the Back press that closed the previous activity.
+  //
+  // Held, the same button syncs every configured integration instead. It goes
+  // here rather than on a tile of its own because it is an action on all of them
+  // at once, so no single app owns it - and because holding a button for "the
+  // heavier version of this" is the convention the organizer tab bars already
+  // use for their own syncs.
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen) {
-    onSettingsOpen();
+    if (mappedInput.getHeldTime() >= SYNC_ALL_HOLD_MS) {
+      activityManager.goToSyncAll();
+    } else {
+      onSettingsOpen();
+    }
     return;
   }
 
