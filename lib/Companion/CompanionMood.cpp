@@ -7,12 +7,17 @@ Mood evaluate(const MoodInput& in, const MoodThresholds& t) {
   if (points >= t.thrivingPoints) return Mood::Thriving;
 
   // No clock: elapsed days are unknowable, so decay cannot be justified.
-  // Content is the floor rather than punishing a user whose RTC was never set.
-  if (!in.clockValid) return Mood::Content;
+  // Happy is the floor rather than punishing a user whose RTC was never set.
+  if (!in.clockValid) return Mood::Happy;
 
-  if (points >= t.contentPoints) return Mood::Content;
-  // Qualified yesterday but not yet today: still within the day's grace.
-  if (in.daysSinceLastActive <= 1) return Mood::Content;
+  if (points >= t.happyPoints) return Mood::Happy;
+  // Zero here means no history to judge against yet (a brand new companion)
+  // or the clock was just corrected backwards past the last qualifying day --
+  // never a real "did enough yesterday" carry-over, since a day that actually
+  // qualified would have made the points check above true. Mood reflects only
+  // today's own effort: nothing done today starts the decay immediately, with
+  // no grace for what happened on a previous day.
+  if (in.daysSinceLastActive == 0) return Mood::Happy;
   if (in.daysSinceLastActive < t.neglectedDays) return Mood::Peckish;
   return Mood::Neglected;
 }
@@ -52,7 +57,7 @@ bool creditQualifyingDay(DayLedger& ledger, const int32_t today, const uint16_t 
   if (ledger.lastQualifyingDay == today) return false;
 
   const uint32_t points = static_cast<uint32_t>(tasksCompletedToday) + habitsCompletedToday;
-  if (points < t.contentPoints) return false;
+  if (points < t.happyPoints) return false;
 
   // This day just cleared the bar for the first time: extend the streak when it
   // directly follows the previous qualifying day, otherwise start a new one.

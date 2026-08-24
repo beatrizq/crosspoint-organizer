@@ -181,14 +181,14 @@ const char* moodLabel(const Mood mood) {
   switch (mood) {
     case Mood::Thriving:
       return tr(STR_COMPANION_MOOD_THRIVING);
-    case Mood::Content:
-      return tr(STR_COMPANION_MOOD_CONTENT);
+    case Mood::Happy:
+      return tr(STR_COMPANION_MOOD_HAPPY);
     case Mood::Peckish:
       return tr(STR_COMPANION_MOOD_PECKISH);
     case Mood::Neglected:
       return tr(STR_COMPANION_MOOD_NEGLECTED);
   }
-  return tr(STR_COMPANION_MOOD_CONTENT);
+  return tr(STR_COMPANION_MOOD_HAPPY);
 }
 
 const char* quoteFor(const CompanionId id, const Mood mood, const uint32_t rotation) {

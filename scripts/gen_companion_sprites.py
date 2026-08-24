@@ -13,7 +13,7 @@ asset pipeline:
     ..............##..........##......
     ... 30 rows of 34 characters ...
 
-    [content]
+    [happy]
     ...
 
 Cell characters:
@@ -39,7 +39,7 @@ import sys
 
 WIDTH = 34
 HEIGHT = 30
-MOODS = ["thriving", "content", "peckish", "neglected"]
+MOODS = ["thriving", "happy", "peckish", "neglected"]
 # Quote sections that are not moods. "milestone" fires once when the reader
 # beats their own best streak, so it needs its own voice rather than reusing a
 # mood line.

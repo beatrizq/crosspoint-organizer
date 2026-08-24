@@ -33,7 +33,7 @@ kind: robot
 ...........#####..#####...........
 ..................................
 
-[content]
+[happy]
 ..................................
 ................##................
 ................##................
@@ -139,7 +139,7 @@ Logged. This one goes in the good file.
 Processing joy. Unfamiliar. Not unpleasant.
 You absolute machine. Takes one to know one.
 
-[quotes.content]
+[quotes.happy]
 Systems nominal. Awaiting further input.
 Task received. Processing. Enjoying.
 Battery: fine. Mood: also fine. Carry on.

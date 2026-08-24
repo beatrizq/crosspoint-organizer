@@ -132,7 +132,7 @@ void HomeActivity::drawCompanion(const Rect region) const {
   char sub[40] = "";
   const uint16_t points = COMPANION.pointsToday();
   const companion::MoodThresholds thresholds;
-  if (points >= thresholds.contentPoints && points < thresholds.thrivingPoints) {
+  if (points >= thresholds.happyPoints && points < thresholds.thrivingPoints) {
     snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingPoints - points);
   } else if (COMPANION.hasValidClock() && COMPANION_STATE.ledger.streakDays > 0) {
     snprintf(sub, sizeof(sub), tr(STR_COMPANION_STREAK_FORMAT), COMPANION_STATE.ledger.streakDays);

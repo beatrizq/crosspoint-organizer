@@ -7,7 +7,7 @@
 // exercised by host unit tests before it ever reaches the device.
 namespace companion {
 
-enum class Mood : uint8_t { Thriving = 0, Content = 1, Peckish = 2, Neglected = 3 };
+enum class Mood : uint8_t { Thriving = 0, Happy = 1, Peckish = 2, Neglected = 3 };
 
 // Tunables kept in one struct so tests can pin behaviour without rebuilding the
 // firmware defaults. Tasks and habits are weighted identically -- each
@@ -15,7 +15,7 @@ enum class Mood : uint8_t { Thriving = 0, Content = 1, Peckish = 2, Neglected = 
 // the ladder to Thriving on its own, or the two can mix freely.
 struct MoodThresholds {
   uint16_t thrivingPoints = 3;  // combined tasks+habits completed today for Thriving
-  uint16_t contentPoints = 1;   // combined tasks+habits completed today to count as "did something"
+  uint16_t happyPoints = 1;     // combined tasks+habits completed today to count as "did something"
   uint8_t neglectedDays = 3;    // quiet days at or above which the mood bottoms out
 };
 
@@ -23,8 +23,9 @@ struct MoodInput {
   uint16_t tasksCompletedToday = 0;
   uint16_t habitsCompletedToday = 0;
   // Whole calendar days between the last day that qualified (cleared
-  // contentPoints) and today. 0 = qualified today, 1 = qualified yesterday, 2
-  // = skipped a full day.
+  // happyPoints) and today. 0 = qualified today, no qualifying day yet
+  // (brand new companion), or a clock correction; 1 = one full day with zero
+  // activity; 2 = two, and so on.
   uint16_t daysSinceLastActive = 0;
   // False when the RTC is absent or was never set (see HalClock::getDate).
   // Day arithmetic is meaningless then, so the decay ladder is skipped.
@@ -34,11 +35,13 @@ struct MoodInput {
 // Maps today's organizing activity onto one of the four drawn poses.
 //
 // With a valid clock the ladder is: enough combined points today -> Thriving,
-// some activity today or yesterday -> Content, one skipped day -> Peckish, and
-// neglectedDays or more -> Neglected.
+// some activity today -> Happy, otherwise Peckish immediately and Neglected
+// once neglectedDays quiet days have passed. Mood reflects only today's own
+// effort -- a streak from a previous day earns nothing today it did not also
+// earn today.
 //
 // Without a clock, elapsed days cannot be measured, so neglect is unknowable
-// and the result never falls below Content. Today's task/habit counts are
+// and the result never falls below Happy. Today's task/habit counts are
 // live reads regardless of clock validity, so Thriving stays reachable.
 Mood evaluate(const MoodInput& in, const MoodThresholds& t = {});
 
@@ -69,19 +72,19 @@ int32_t localDayNumber(int32_t year, uint32_t month, uint32_t day, uint32_t hour
  * Today's task and habit counts each live in their own owning cache
  * (TodoistTaskCache, HabitifyHabitCache), which already resets them daily, so
  * nothing about today's counts is duplicated here. This ledger only remembers
- * the last day that cleared contentPoints and the resulting streak -- state
+ * the last day that cleared happyPoints and the resulting streak -- state
  * neither of those caches has any reason to know about.
  */
 struct DayLedger {
   // Sentinel for "no day has ever qualified".
   static constexpr int32_t NEVER = INT32_MIN;
 
-  int32_t lastQualifyingDay = NEVER;  // last local day that cleared contentPoints
+  int32_t lastQualifyingDay = NEVER;  // last local day that cleared happyPoints
   uint16_t streakDays = 0;
   uint16_t bestStreakDays = 0;
 };
 
-// Re-derives whether `today` has now cleared contentPoints of combined
+// Re-derives whether `today` has now cleared happyPoints of combined
 // tasks+habits effort and, the first time it does, extends (or restarts) the
 // streak. Idempotent for the rest of the day, and a no-op while today still
 // falls short. Returns true when the ledger changed and the caller should
