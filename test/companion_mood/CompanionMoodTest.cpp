@@ -7,14 +7,14 @@
 using companion::Mood;
 using companion::MoodInput;
 using companion::MoodThresholds;
-using companion::SessionAccumulator;
 
 namespace {
 
-MoodInput withClock(uint16_t minutesToday, uint16_t daysSince) {
+MoodInput withClock(uint16_t tasksToday, uint16_t habitsToday, uint16_t daysSince) {
   MoodInput in;
-  in.creditedMinutesToday = minutesToday;
-  in.daysSinceLastRead = daysSince;
+  in.tasksCompletedToday = tasksToday;
+  in.habitsCompletedToday = habitsToday;
+  in.daysSinceLastActive = daysSince;
   in.clockValid = true;
   return in;
 }
@@ -23,53 +23,61 @@ MoodInput withClock(uint16_t minutesToday, uint16_t daysSince) {
 
 // ---------------------------------------------------------------- mood ladder
 
-TEST(CompanionMood, LongSessionTodayIsThriving) {
-  EXPECT_EQ(companion::evaluate(withClock(40, 0)), Mood::Thriving);
-  EXPECT_EQ(companion::evaluate(withClock(120, 0)), Mood::Thriving);
+TEST(CompanionMood, EnoughTasksAloneIsThriving) {
+  const MoodThresholds t;
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 0)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints + 5, 0, 0)), Mood::Thriving);
+}
+
+TEST(CompanionMood, EnoughHabitsAloneIsThriving) {
+  const MoodThresholds t;
+  EXPECT_EQ(companion::evaluate(withClock(0, t.thrivingPoints, 0)), Mood::Thriving);
+}
+
+TEST(CompanionMood, TasksAndHabitsMixToReachThriving) {
+  const MoodThresholds t;
+  ASSERT_GE(t.thrivingPoints, 2);
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints - 1, 1, 0)), Mood::Thriving);
 }
 
 TEST(CompanionMood, JustUnderThrivingIsStillContent) {
-  // Derived from the threshold rather than hardcoded, so retuning the target
-  // does not require editing the test that guards its boundary.
   const MoodThresholds t;
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingMinutes - 1, 0)), Mood::Content);
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingMinutes, 0)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints - 1, 0, 0)), Mood::Content);
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 0)), Mood::Thriving);
 }
 
-TEST(CompanionMood, AnyRealReadingTodayIsContent) { EXPECT_EQ(companion::evaluate(withClock(2, 0)), Mood::Content); }
+TEST(CompanionMood, AnyCompletionTodayIsContent) {
+  EXPECT_EQ(companion::evaluate(withClock(1, 0, 0)), Mood::Content);
+  EXPECT_EQ(companion::evaluate(withClock(0, 1, 0)), Mood::Content);
+}
 
-TEST(CompanionMood, ReadYesterdayKeepsContentGrace) {
+TEST(CompanionMood, QualifiedYesterdayKeepsContentGrace) {
   // Nothing yet today, but yesterday counted: no penalty until a day is skipped.
-  EXPECT_EQ(companion::evaluate(withClock(0, 1)), Mood::Content);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 1)), Mood::Content);
 }
 
-TEST(CompanionMood, OneSkippedDayIsPeckish) { EXPECT_EQ(companion::evaluate(withClock(0, 2)), Mood::Peckish); }
+TEST(CompanionMood, OneSkippedDayIsPeckish) { EXPECT_EQ(companion::evaluate(withClock(0, 0, 2)), Mood::Peckish); }
 
 TEST(CompanionMood, ThreeQuietDaysIsNeglected) {
-  EXPECT_EQ(companion::evaluate(withClock(0, 3)), Mood::Neglected);
-  EXPECT_EQ(companion::evaluate(withClock(0, 90)), Mood::Neglected);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 3)), Mood::Neglected);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 90)), Mood::Neglected);
 }
 
-TEST(CompanionMood, NeglectIsRecoverableWithinOneSession) {
-  // The chosen design has no death state: a long read from the floor goes
+TEST(CompanionMood, NeglectIsRecoverableTheSameDay) {
+  // The chosen design has no death state: enough activity from the floor goes
   // straight back to the top.
-  EXPECT_EQ(companion::evaluate(withClock(0, 400)), Mood::Neglected);
-  EXPECT_EQ(companion::evaluate(withClock(40, 400)), Mood::Thriving);
-}
-
-TEST(CompanionMood, TrivialReadingDoesNotClearASkippedDay) {
-  // A few seconds of page-flipping is below contentMinutes, so the decay ladder
-  // still applies and the skipped day is not laundered away.
-  EXPECT_EQ(companion::evaluate(withClock(1, 2)), Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 400)), Mood::Neglected);
+  const MoodThresholds t;
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 400)), Mood::Thriving);
 }
 
 TEST(CompanionMood, ThresholdsAreConfigurable) {
   MoodThresholds relaxed;
-  relaxed.thrivingMinutes = 10;
+  relaxed.thrivingPoints = 1;
   relaxed.neglectedDays = 7;
-  EXPECT_EQ(companion::evaluate(withClock(10, 0), relaxed), Mood::Thriving);
-  EXPECT_EQ(companion::evaluate(withClock(0, 5), relaxed), Mood::Peckish);
-  EXPECT_EQ(companion::evaluate(withClock(0, 7), relaxed), Mood::Neglected);
+  EXPECT_EQ(companion::evaluate(withClock(1, 0, 0), relaxed), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 5), relaxed), Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 7), relaxed), Mood::Neglected);
 }
 
 // -------------------------------------------------------- clockless fallback
@@ -77,15 +85,19 @@ TEST(CompanionMood, ThresholdsAreConfigurable) {
 TEST(CompanionMood, WithoutClockNeverFallsBelowContent) {
   MoodInput in;
   in.clockValid = false;
-  in.creditedMinutesToday = 0;
-  in.daysSinceLastRead = 999;  // garbage without a clock; must be ignored
+  in.tasksCompletedToday = 0;
+  in.habitsCompletedToday = 0;
+  in.daysSinceLastActive = 999;  // garbage without a clock; must be ignored
   EXPECT_EQ(companion::evaluate(in), Mood::Content);
 }
 
 TEST(CompanionMood, WithoutClockThrivingStillReachable) {
+  // Today's task/habit counts are live reads independent of the RTC, so
+  // Thriving must stay reachable even when the clock is invalid.
+  const MoodThresholds t;
   MoodInput in;
   in.clockValid = false;
-  in.creditedMinutesToday = 45;
+  in.tasksCompletedToday = t.thrivingPoints;
   EXPECT_EQ(companion::evaluate(in), Mood::Thriving);
 }
 
@@ -144,8 +156,8 @@ TEST(CompanionLocalDay, MatchesUtcAtZeroOffset) {
 }
 
 TEST(CompanionLocalDay, EveningWestOfGreenwichStaysOnTheSameLocalDay) {
-  // 02:30 UTC on the 19th is 21:30 on the 18th in UTC-5. A reading session then
-  // must still count as the 18th, or the streak breaks at the wrong moment.
+  // 02:30 UTC on the 19th is 21:30 on the 18th in UTC-5. Activity then must
+  // still count as the 18th, or the streak breaks at the wrong moment.
   const int32_t offsetMinus5 = -20;  // quarter-hours
   EXPECT_EQ(companion::localDayNumber(2026, 8, 19, 2, 30, offsetMinus5), companion::daysFromCivil(2026, 8, 18));
 }
@@ -182,129 +194,110 @@ TEST(CompanionLocalDay, ConsecutiveLocalDaysDifferByOne) {
 using companion::DayLedger;
 
 namespace {
-constexpr uint16_t kContent = 2;
 constexpr int32_t kDay = 20000;  // arbitrary local day number
 }  // namespace
 
 TEST(CompanionLedger, FirstQualifyingDayStartsAStreak) {
   DayLedger led;
-  companion::creditDay(led, kDay, 30, kContent);
-  EXPECT_EQ(led.minutesToday, 30);
+  EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 1, 0));
   EXPECT_EQ(led.streakDays, 1);
   EXPECT_EQ(led.bestStreakDays, 1);
   EXPECT_EQ(led.lastQualifyingDay, kDay);
 }
 
-TEST(CompanionLedger, MinutesAccumulateWithinOneDay) {
+TEST(CompanionLedger, SecondCreditSameDayDoesNotDoubleCount) {
   DayLedger led;
-  companion::creditDay(led, kDay, 10, kContent);
-  companion::creditDay(led, kDay, 15, kContent);
-  EXPECT_EQ(led.minutesToday, 25);
-  EXPECT_EQ(led.streakDays, 1);  // still one day, not two
+  EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 1, 0));
+  // A second task completed later the same day must not extend the streak
+  // again.
+  EXPECT_FALSE(companion::creditQualifyingDay(led, kDay, 2, 0));
+  EXPECT_EQ(led.streakDays, 1);
 }
 
 TEST(CompanionLedger, ConsecutiveDaysExtendTheStreak) {
   DayLedger led;
-  for (int32_t d = 0; d < 5; ++d) companion::creditDay(led, kDay + d, 30, kContent);
+  for (int32_t d = 0; d < 5; ++d) companion::creditQualifyingDay(led, kDay + d, 1, 0);
   EXPECT_EQ(led.streakDays, 5);
   EXPECT_EQ(led.bestStreakDays, 5);
-  EXPECT_EQ(led.minutesToday, 30);  // counter reset each new day
 }
 
 TEST(CompanionLedger, GapResetsStreakButKeepsBest) {
   DayLedger led;
-  for (int32_t d = 0; d < 4; ++d) companion::creditDay(led, kDay + d, 30, kContent);
+  for (int32_t d = 0; d < 4; ++d) companion::creditQualifyingDay(led, kDay + d, 1, 0);
   ASSERT_EQ(led.streakDays, 4);
-  companion::creditDay(led, kDay + 10, 30, kContent);  // week-long gap
+  companion::creditQualifyingDay(led, kDay + 10, 1, 0);  // week-long gap
   EXPECT_EQ(led.streakDays, 1);
   EXPECT_EQ(led.bestStreakDays, 4);
 }
 
-TEST(CompanionLedger, TrivialReadingDoesNotQualifyTheDay) {
+TEST(CompanionLedger, ZeroActivityDoesNotQualifyTheDay) {
   DayLedger led;
-  companion::creditDay(led, kDay, 1, kContent);  // under contentMinutes
-  EXPECT_EQ(led.minutesToday, 1);
+  EXPECT_FALSE(companion::creditQualifyingDay(led, kDay, 0, 0));
   EXPECT_EQ(led.streakDays, 0);
   EXPECT_EQ(led.lastQualifyingDay, DayLedger::NEVER);
 }
 
-TEST(CompanionLedger, TrivialThenRealReadingQualifiesOnce) {
+TEST(CompanionLedger, HabitsAloneQualifyJustLikeTasks) {
   DayLedger led;
-  companion::creditDay(led, kDay, 1, kContent);
-  companion::creditDay(led, kDay, 1, kContent);  // now at 2, crosses the bar
+  EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 0, 1));
   EXPECT_EQ(led.streakDays, 1);
-  companion::creditDay(led, kDay, 50, kContent);  // more of the same day
-  EXPECT_EQ(led.streakDays, 1);                   // must not double-count
 }
 
-TEST(CompanionLedger, BackwardsClockStartsAFreshDayCounter) {
+TEST(CompanionLedger, MoodInputReportsTodaysCounts) {
   DayLedger led;
-  companion::creditDay(led, kDay, 40, kContent);
-  companion::creditDay(led, kDay - 3, 10, kContent);  // clock corrected backwards
-  EXPECT_EQ(led.counterDay, kDay - 3);
-  EXPECT_EQ(led.minutesToday, 10);
-  EXPECT_EQ(led.bestStreakDays, 1);
-}
-
-TEST(CompanionLedger, MinutesSaturateInsteadOfWrapping) {
-  DayLedger led;
-  companion::creditDay(led, kDay, 60000, kContent);
-  companion::creditDay(led, kDay, 60000, kContent);
-  EXPECT_EQ(led.minutesToday, UINT16_MAX);
-  EXPECT_EQ(led.streakDays, 1);  // one day, however many minutes
-}
-
-TEST(CompanionLedger, MoodInputReportsTodaysMinutes) {
-  DayLedger led;
-  companion::creditDay(led, kDay, 45, kContent);
-  const auto in = companion::moodInputFor(led, kDay, true, 0);
-  EXPECT_EQ(in.creditedMinutesToday, 45);
-  EXPECT_EQ(in.daysSinceLastRead, 0);
+  companion::creditQualifyingDay(led, kDay, 2, 1);
+  const auto in = companion::moodInputFor(led, kDay, true, 2, 1);
+  EXPECT_EQ(in.tasksCompletedToday, 2);
+  EXPECT_EQ(in.habitsCompletedToday, 1);
+  EXPECT_EQ(in.daysSinceLastActive, 0);
   EXPECT_EQ(companion::evaluate(in), companion::Mood::Thriving);
 }
 
-TEST(CompanionLedger, MoodInputZeroesMinutesOnANewDay) {
+TEST(CompanionLedger, MoodInputReflectsLiveCountsOnANewDay) {
   DayLedger led;
-  companion::creditDay(led, kDay, 45, kContent);
-  const auto in = companion::moodInputFor(led, kDay + 1, true, 0);
-  EXPECT_EQ(in.creditedMinutesToday, 0);  // yesterday's minutes do not carry
-  EXPECT_EQ(in.daysSinceLastRead, 1);
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  // A new day: the caller passes 0 (yesterday's completions do not carry),
+  // and the ledger reports one day since the last qualifying day.
+  const auto in = companion::moodInputFor(led, kDay + 1, true, 0, 0);
+  EXPECT_EQ(in.tasksCompletedToday, 0);
+  EXPECT_EQ(in.daysSinceLastActive, 1);
   EXPECT_EQ(companion::evaluate(in), companion::Mood::Content);
 }
 
 TEST(CompanionLedger, MoodDecaysAcrossQuietDays) {
   DayLedger led;
-  companion::creditDay(led, kDay, 45, kContent);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0)), companion::Mood::Peckish);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0)), companion::Mood::Neglected);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 60, true, 0)), companion::Mood::Neglected);
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), companion::Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0, 0)), companion::Mood::Neglected);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 60, true, 0, 0)), companion::Mood::Neglected);
 }
 
 TEST(CompanionLedger, FreshCompanionIsContentNotNeglected) {
-  // Nothing has been read yet, so there is nothing to have neglected.
+  // Nothing has ever qualified, so there is nothing to have neglected.
   const DayLedger led;
-  const auto in = companion::moodInputFor(led, kDay, true, 0);
-  EXPECT_EQ(in.daysSinceLastRead, 0);
+  const auto in = companion::moodInputFor(led, kDay, true, 0, 0);
+  EXPECT_EQ(in.daysSinceLastActive, 0);
   EXPECT_EQ(companion::evaluate(in), companion::Mood::Content);
 }
 
 TEST(CompanionLedger, BackwardsClockDoesNotReadAsNeglect) {
   DayLedger led;
-  companion::creditDay(led, kDay, 45, kContent);
-  const auto in = companion::moodInputFor(led, kDay - 5, true, 0);
-  EXPECT_EQ(in.daysSinceLastRead, 0);
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  const auto in = companion::moodInputFor(led, kDay - 5, true, 0, 0);
+  EXPECT_EQ(in.daysSinceLastActive, 0);
   EXPECT_NE(companion::evaluate(in), companion::Mood::Neglected);
 }
 
-TEST(CompanionLedger, ClocklessModeUsesSessionMinutesOnly) {
+TEST(CompanionLedger, ClocklessModeUsesLiveCountsOnly) {
   DayLedger led;
-  companion::creditDay(led, kDay, 45, kContent);
-  const auto idle = companion::moodInputFor(led, kDay + 99, false, 0);
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  const auto idle = companion::moodInputFor(led, kDay + 99, false, 0, 0);
   EXPECT_FALSE(idle.clockValid);
   EXPECT_EQ(companion::evaluate(idle), companion::Mood::Content);
 
-  const auto active = companion::moodInputFor(led, kDay + 99, false, 50);
-  EXPECT_EQ(active.creditedMinutesToday, 50);
+  const MoodThresholds t;
+  const auto active = companion::moodInputFor(led, kDay + 99, false, t.thrivingPoints, 0);
+  EXPECT_EQ(active.tasksCompletedToday, t.thrivingPoints);
   EXPECT_EQ(companion::evaluate(active), companion::Mood::Thriving);
 }
 
@@ -315,23 +308,23 @@ TEST(CompanionLedger, ClocklessModeUsesSessionMinutesOnly) {
 TEST(CompanionReachability, EveryMoodOccursOverALivedTimeline) {
   DayLedger led;
   std::set<Mood> seen;
-  const auto observe = [&](int32_t day) {
-    seen.insert(companion::evaluate(companion::moodInputFor(led, day, true, 0)));
+  const auto observe = [&](int32_t day, uint16_t tasksToday, uint16_t habitsToday) {
+    seen.insert(companion::evaluate(companion::moodInputFor(led, day, true, tasksToday, habitsToday)));
   };
 
   int32_t day = kDay;
-  // Two solid days of reading.
-  companion::creditDay(led, day, 45, kContent);
-  observe(day);      // long session today
-  observe(day + 1);  // yesterday's grace
-  companion::creditDay(led, day + 1, 10, kContent);
-  observe(day + 1);
+  // Two solid days of activity.
+  companion::creditQualifyingDay(led, day, 3, 0);
+  observe(day, 3, 0);      // enough today
+  observe(day + 1, 0, 0);  // yesterday's grace
+  companion::creditQualifyingDay(led, day + 1, 1, 0);
+  observe(day + 1, 1, 0);
 
   // Then it goes quiet.
-  observe(day + 2);  // one day after the last qualifying day
-  observe(day + 3);  // a full day skipped
-  observe(day + 4);  // and another
-  observe(day + 9);  // long gone
+  observe(day + 2, 0, 0);  // one day after the last qualifying day
+  observe(day + 3, 0, 0);  // a full day skipped
+  observe(day + 4, 0, 0);  // and another
+  observe(day + 9, 0, 0);  // long gone
 
   EXPECT_EQ(seen.count(Mood::Thriving), 1u) << "Thriving unreachable";
   EXPECT_EQ(seen.count(Mood::Content), 1u) << "Content unreachable";
@@ -344,45 +337,43 @@ TEST(CompanionReachability, PeckishIsNotSkippedOnTheWayDown) {
   // The narrowest tier: it exists for exactly one day, between the grace day
   // and the neglected floor. An off-by-one anywhere would step straight past it.
   DayLedger led;
-  companion::creditDay(led, kDay, 45, kContent);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 0, true, 0)), Mood::Thriving);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0)), Mood::Content);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0)), Mood::Peckish);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0)), Mood::Neglected);
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 0, true, 3, 0)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0, 0)), Mood::Content);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0, 0)), Mood::Neglected);
 }
 
 TEST(CompanionReachability, EveryTierIsExitableBackToTheTop) {
   // Recovery must work from the floor, with no penalty box. Starts at one quiet
-  // day: with zero the companion is already Thriving, so there is nothing to
-  // recover from.
+  // day: with zero the companion is already Thriving on day 0's credit, so
+  // there is nothing to recover from.
+  const MoodThresholds t;
   for (int32_t quietDays : {1, 2, 3, 50, 5000}) {
     DayLedger led;
-    companion::creditDay(led, kDay, 45, kContent);
+    companion::creditQualifyingDay(led, kDay, t.thrivingPoints, 0);
     const int32_t today = kDay + quietDays;
-    ASSERT_NE(companion::evaluate(companion::moodInputFor(led, today, true, 0)), Mood::Thriving) << quietDays;
+    ASSERT_NE(companion::evaluate(companion::moodInputFor(led, today, true, 0, 0)), Mood::Thriving) << quietDays;
 
-    companion::creditDay(led, today, 40, kContent);
-    EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, today, true, 0)), Mood::Thriving)
+    companion::creditQualifyingDay(led, today, t.thrivingPoints, 0);
+    EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, today, true, t.thrivingPoints, 0)), Mood::Thriving)
         << "could not recover after " << quietDays << " quiet days";
   }
 }
 
 TEST(CompanionReachability, ThresholdBoundariesAreExact) {
   const MoodThresholds t;
-  ASSERT_GT(t.thrivingMinutes, t.contentMinutes) << "Thriving must sit above Content or a tier is unreachable";
+  ASSERT_GT(t.thrivingPoints, t.contentPoints) << "Thriving must sit above Content or a tier is unreachable";
 
-  DayLedger led;
-  companion::creditDay(led, kDay, t.thrivingMinutes - 1, kContent);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay, true, 0)), Mood::Content)
-      << "one minute short of Thriving";
-  companion::creditDay(led, kDay, 1, kContent);  // exactly on the threshold
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay, true, 0)), Mood::Thriving) << "exactly Thriving";
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints - 1, 0, 0)), Mood::Content) << "one point short of Thriving";
+  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 0)), Mood::Thriving) << "exactly Thriving";
 
   DayLedger low;
-  companion::creditDay(low, kDay, t.contentMinutes - 1, kContent);
-  EXPECT_EQ(low.lastQualifyingDay, DayLedger::NEVER) << "below contentMinutes must not qualify the day";
-  companion::creditDay(low, kDay, 1, kContent);  // exactly on the threshold
-  EXPECT_EQ(low.lastQualifyingDay, kDay) << "exactly contentMinutes must qualify the day";
+  EXPECT_FALSE(companion::creditQualifyingDay(low, kDay, t.contentPoints - 1, 0))
+      << "below contentPoints must not qualify the day";
+  EXPECT_EQ(low.lastQualifyingDay, DayLedger::NEVER);
+  EXPECT_TRUE(companion::creditQualifyingDay(low, kDay, t.contentPoints, 0)) << "exactly contentPoints must qualify";
+  EXPECT_EQ(low.lastQualifyingDay, kDay);
 }
 
 TEST(CompanionReachability, EveryMoodHasArtAndIsIndexable) {
@@ -392,94 +383,4 @@ TEST(CompanionReachability, EveryMoodHasArtAndIsIndexable) {
   EXPECT_EQ(static_cast<int>(Mood::Content), 1);
   EXPECT_EQ(static_cast<int>(Mood::Peckish), 2);
   EXPECT_EQ(static_cast<int>(Mood::Neglected), 3);
-}
-
-// ------------------------------------------------------- session accumulator
-
-TEST(CompanionSession, CreditsNothingWithoutAPageTurn) {
-  SessionAccumulator acc;
-  acc.onTick(0);
-  acc.onTick(120);
-  acc.onTick(240);
-  EXPECT_EQ(acc.creditedSeconds(), 0u);
-}
-
-TEST(CompanionSession, CreditsTimeAfterAPageTurn) {
-  SessionAccumulator acc;
-  acc.onPageTurn(0);
-  acc.onTick(60);
-  EXPECT_EQ(acc.creditedSeconds(), 60u);
-}
-
-TEST(CompanionSession, StopsCreditingOnceTheWindowLapses) {
-  SessionAccumulator acc(300);
-  acc.onPageTurn(0);
-  acc.onTick(300);  // still inside the window
-  EXPECT_EQ(acc.creditedSeconds(), 300u);
-
-  acc.onTick(600);  // 600s since the last page turn: idle, credit nothing
-  EXPECT_EQ(acc.creditedSeconds(), 300u);
-  acc.onTick(900);
-  EXPECT_EQ(acc.creditedSeconds(), 300u);
-}
-
-TEST(CompanionSession, ResumesCreditingAfterANewPageTurn) {
-  SessionAccumulator acc(300);
-  acc.onPageTurn(0);
-  acc.onTick(600);  // lapsed; nothing banked
-  acc.onPageTurn(600);
-  acc.onTick(660);
-  EXPECT_EQ(acc.creditedSeconds(), 60u);
-}
-
-TEST(CompanionSession, LongStallIsCappedAtTheWindow) {
-  // A starved loop must not bank an hour of "reading" in one tick.
-  SessionAccumulator acc(300);
-  acc.onPageTurn(0);
-  acc.onPageTurn(3600);  // keeps the session active across the stall
-  acc.onTick(3601);
-  EXPECT_LE(acc.creditedSeconds(), 300u);
-}
-
-TEST(CompanionSession, BackwardsClockBanksNothingAndReAnchors) {
-  SessionAccumulator acc;
-  acc.onPageTurn(1000);
-  acc.onTick(1060);
-  EXPECT_EQ(acc.creditedSeconds(), 60u);
-
-  acc.onTick(500);  // clock moved backwards
-  EXPECT_EQ(acc.creditedSeconds(), 60u);
-
-  acc.onPageTurn(500);
-  acc.onTick(530);  // re-anchored, so this interval is sane again
-  EXPECT_EQ(acc.creditedSeconds(), 90u);
-}
-
-TEST(CompanionSession, IdleReaderEarnsNothingOverALongSitting) {
-  // The core anti-gaming property: device open on one page all afternoon.
-  SessionAccumulator acc(300);
-  acc.onPageTurn(0);
-  for (uint32_t t = 30; t <= 7200; t += 30) acc.onTick(t);
-  EXPECT_LE(acc.creditedMinutes(), 5u);
-}
-
-TEST(CompanionSession, SustainedReadingAccruesRealMinutes) {
-  // Turning a page every half minute for an hour is genuine reading.
-  SessionAccumulator acc(300);
-  for (uint32_t t = 0; t <= 3600; t += 30) {
-    acc.onPageTurn(t);
-    acc.onTick(t);
-  }
-  EXPECT_EQ(acc.creditedMinutes(), 60u);
-}
-
-TEST(CompanionSession, ResetClearsEverything) {
-  SessionAccumulator acc;
-  acc.onPageTurn(0);
-  acc.onTick(120);
-  ASSERT_GT(acc.creditedSeconds(), 0u);
-  acc.reset();
-  EXPECT_EQ(acc.creditedSeconds(), 0u);
-  acc.onTick(1000);  // no page turn since reset
-  EXPECT_EQ(acc.creditedSeconds(), 0u);
 }

@@ -14,7 +14,6 @@
 #include "ProgressFile.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
-#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -27,12 +26,6 @@ constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format cha
 
 void TxtReaderActivity::onEnter() {
   Activity::onEnter();
-
-  // A reading session per format. The fork this came from hooks the shared
-  // ReaderActivity base, which post-dates the reader consolidation this branch
-  // does not have - here ReaderActivity only dispatches, so each concrete reader
-  // opens and closes its own. No-op unless the companion is enabled.
-  COMPANION.beginSession();
 
   if (!txt) {
     return;
@@ -55,10 +48,6 @@ void TxtReaderActivity::onEnter() {
 
 void TxtReaderActivity::onExit() {
   Activity::onExit();
-
-  // Banks credited time and persists it. Runs before deep sleep too, because
-  // ActivityManager::goToSleep() drives the outgoing activity's onExit().
-  COMPANION.endSession();
 
   // Reset orientation back to portrait for the rest of the UI
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
@@ -84,8 +73,6 @@ void TxtReaderActivity::loop() {
     return;
   }
 
-  const int pageBefore = currentPage;
-
   if (prevTriggered && currentPage > 0) {
     currentPage--;
     requestUpdate();
@@ -97,11 +84,6 @@ void TxtReaderActivity::loop() {
       onGoHome();
     }
   }
-
-  // Credited only when the page actually moved: a turn refused at either end of
-  // the book must not keep the reading session looking active. Compared before
-  // and after rather than added to each branch, so a new branch cannot forget.
-  if (currentPage != pageBefore) COMPANION.onPageTurn();
 }
 
 void TxtReaderActivity::initializeReader() {

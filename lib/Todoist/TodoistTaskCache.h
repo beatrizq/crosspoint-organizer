@@ -21,6 +21,12 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   std::vector<TodoistTask> tasks;       // Overdue first, then due today
   std::vector<std::string> pendingIds;  // Completed locally, awaiting push
   std::string syncDate;                 // Local date of the last sync, "YYYY-MM-DD"
+  uint16_t completedToday = 0;          // Tasks completed on this device today
+  // Day completedToday belongs to, keyed the same way syncDate's day is
+  // (see completeTaskAt): the class already treats syncDate as "today"
+  // everywhere else, so the completion counter follows the same convention
+  // rather than introducing a second notion of today.
+  uint16_t completedDay = todoist::DUE_NONE;
 
   TodoistTaskCache() = default;
   ~TodoistTaskCache() = default;
@@ -61,10 +67,21 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // Called once the server accepted (or already knew about) the completion.
   void clearPending(const std::string& id);
 
+  // Tasks completed on this device today, per syncDate's notion of "today".
+  // Stale until the next sync if the day rolled over with no completion yet
+  // to trigger the rollover - the same staleness every other syncDate-derived
+  // figure in this class already tolerates between syncs.
+  uint16_t getCompletedToday() const { return completedToday; }
+
  private:
   // Recomputes every task's overdue flag against syncDate. The flag is derived
   // state, so it is set here rather than stored by the parser or the file.
   void applyOverdueFlags();
+
+  // Zeroes completedToday the first time syncDate's day moves past
+  // completedDay. Shared by setTasks (a sync can itself roll the day over)
+  // and completeTaskAt (a local completion can too, between syncs).
+  void rolloverCompletedIfNeeded();
 };
 
 #define TODOIST_TASKS TodoistTaskCache::getInstance()

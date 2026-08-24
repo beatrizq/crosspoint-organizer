@@ -16,6 +16,7 @@
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
@@ -200,6 +201,9 @@ void HabitsActivity::performIncrement(const int cacheIndex) {
     HABITIFY_HABITS.addPending(static_cast<size_t>(cacheIndex), HABITIFY_INCREMENT);
   }
   HABITIFY_HABITS.saveToFile();
+  // A completion is one of the two things the companion reacts to; credit it
+  // immediately in case this press is what pushed a habit to isComplete().
+  COMPANION.recordActivity();
   requestUpdate(true);
   // A press with the radio off moves the number on screen, which is as much a
   // change as a sync is.

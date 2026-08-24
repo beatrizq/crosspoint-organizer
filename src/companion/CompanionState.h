@@ -22,23 +22,21 @@ class CompanionState : public PersistableStore<CompanionState> {
 
  public:
   companion::DayLedger ledger;
-  uint32_t totalMinutes = 0;  // lifetime credited minutes, shown as a stat
-  uint32_t totalPages = 0;    // lifetime pages turned, shown as a stat
-  // Set when a session pushes the streak past its previous best, cleared once
-  // the companion has actually said something about it. Persisted so the
-  // moment survives the sleep between finishing a book and next opening Home,
-  // which is exactly when it is most likely to be earned.
+  // Set when a day's activity pushes the streak past its previous best,
+  // cleared once the companion has actually said something about it.
+  // Persisted so the moment survives the sleep between earning it and next
+  // opening Home, which is exactly when it is most likely to be earned.
   bool milestonePending = false;
 
   static const char* getFilePath() { return "/.crosspoint/companion.json"; }
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
-  // Folds a finished reading session into the ledger and lifetime totals.
-  // `localDay` is ignored when clockValid is false: minutes still count toward
-  // lifetime totals, but they cannot be attributed to a calendar day.
+  // Credits today's combined tasks+habits effort into the ledger. `localDay`
+  // is ignored (no streak update) when clockValid is false, since day
+  // arithmetic would be meaningless without a real calendar day to key it to.
   // Returns true when something changed and the caller should persist.
-  bool recordSession(uint32_t creditedSeconds, uint32_t pagesTurned, bool clockValid, int32_t localDay);
+  bool recordActivity(int32_t localDay, bool clockValid, uint16_t tasksCompletedToday, uint16_t habitsCompletedToday);
 };
 
 #define COMPANION_STATE CompanionState::getInstance()

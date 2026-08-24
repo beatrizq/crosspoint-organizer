@@ -21,12 +21,16 @@ void TodoistTaskCache::toJson(JsonDocument& doc) const {
   for (const auto& id : pendingIds) {
     pending.add(id);
   }
+  doc["completedToday"] = completedToday;
+  doc["completedDay"] = completedDay;
 }
 
 bool TodoistTaskCache::fromJson(JsonVariantConst doc) {
   tasks.clear();
   pendingIds.clear();
   syncDate = doc["syncDate"] | "";
+  completedToday = doc["completedToday"] | static_cast<uint16_t>(0);
+  completedDay = doc["completedDay"] | todoist::DUE_NONE;
 
   JsonArrayConst arr = doc["tasks"].as<JsonArrayConst>();
   tasks.reserve(std::min(arr.size(), MAX_TASKS));
@@ -73,6 +77,7 @@ void TodoistTaskCache::setTasks(std::vector<TodoistTask>&& fetched, const std::s
   // keeps showing the last date it did know rather than falling back to "--".
   if (!date.empty()) syncDate = date;
   applyOverdueFlags();
+  rolloverCompletedIfNeeded();
 }
 
 void TodoistTaskCache::applyOverdueFlags() {
@@ -92,8 +97,21 @@ void TodoistTaskCache::completeTaskAt(const size_t index) {
     LOG_ERR("TDC", "Pending completion queue full (%zu), dropping push for %s", MAX_PENDING, tasks[index].id.c_str());
   }
   tasks.erase(tasks.begin() + static_cast<long>(index));
+
+  rolloverCompletedIfNeeded();
+  if (completedToday < UINT16_MAX) completedToday++;
 }
 
 void TodoistTaskCache::clearPending(const std::string& id) {
   pendingIds.erase(std::remove(pendingIds.begin(), pendingIds.end(), id), pendingIds.end());
+}
+
+void TodoistTaskCache::rolloverCompletedIfNeeded() {
+  const uint16_t today = todoist::dueDaysFromIso(syncDate.c_str());
+  // Undated ("today" unknown) leaves the counter alone rather than resetting
+  // it against a sentinel: the same tolerance applyOverdueFlags() has for not
+  // yet knowing what today is.
+  if (today == todoist::DUE_NONE || completedDay == today) return;
+  completedDay = today;
+  completedToday = 0;
 }

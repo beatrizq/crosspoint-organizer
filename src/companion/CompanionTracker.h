@@ -6,14 +6,11 @@
 #include "CompanionSprites.generated.h"
 
 /**
- * @brief Runtime glue between the reader, the RTC, and CompanionState.
+ * @brief Runtime glue between the task/habit caches, the RTC, and CompanionState.
  *
- * Owns the per-session accumulator and the cached calendar day. Reading the RTC
- * costs an I2C transaction, so the day is resolved at session boundaries and
- * cached; currentMood() is safe to call from render paths.
- *
- * Sessions do not span deep sleep — waking is effectively a chip reset — so the
- * accumulator is banked into CompanionState before the reader exits.
+ * Reading the RTC costs an I2C transaction, so the day is resolved on demand
+ * (screen entry, a completion) and cached; currentMood() only reads the cache
+ * plus the in-RAM task/habit lists, so it is safe to call from render paths.
  */
 class CompanionTracker {
  public:
@@ -26,32 +23,32 @@ class CompanionTracker {
   CompanionTracker& operator=(const CompanionTracker&) = delete;
 
   // True when the user has switched the companion on. Every hook is a no-op
-  // otherwise, so the stock reader paths are untouched when disabled.
+  // otherwise, so the stock organizer paths are untouched when disabled.
   static bool isEnabled();
 
   // Active character, clamped so a settings value from a newer firmware (or a
   // hand-edited settings.json) cannot index past the sprite table.
   static companion::CompanionId activeId();
 
-  // Reader lifecycle. beginSession resolves the calendar day (one I2C read),
-  // endSession banks credited time and persists if anything changed.
-  void beginSession();
-  void onPageTurn();
-  void tick();
-  void endSession();
-
-  // Resolves the calendar day for screens that show the companion outside a
-  // reading session (the home screen). Does one I2C read, so call it from a
-  // lifecycle hook such as onEnter, never from a render path.
+  // Resolves the calendar day (one I2C read) so currentMood() is cheap from
+  // the render path. Call from a lifecycle hook such as onEnter, never from a
+  // render path. Home calls this every time it is entered.
   void refreshForDisplay();
 
-  // Cheap: uses the cached day, no I2C, no SD.
+  // Call right after a task completes or habit progress changes, locally or
+  // via sync. Re-resolves the day, then credits today's combined tasks+habits
+  // total into the streak the first time it clears the qualifying bar this
+  // day, and persists only when that actually happened.
+  void recordActivity();
+
+  // Cheap: uses the cached day plus live reads of today's task/habit counts
+  // from their own caches. No I2C, no SD.
   companion::Mood currentMood() const;
 
-  // Credited minutes attributed to today, including this session's not-yet
-  // banked remainder. This is the same figure the mood is derived from, so a
-  // progress hint built on it can never disagree with the pose on screen.
-  uint16_t minutesToday() const;
+  // Combined tasks+habits points credited today, the same figure evaluate()
+  // sums against MoodThresholds. A progress hint built on it can never
+  // disagree with the pose on screen.
+  uint16_t pointsToday() const;
 
   // False when the board has no RTC or it was never set. Day-based decay and
   // streaks are paused in that case; the UI can explain why.
@@ -63,19 +60,17 @@ class CompanionTracker {
   // Reads the RTC and recomputes the cached local day. Does I2C.
   void refreshDay();
 
+  // Habits marked complete right now, read live from HABITIFY_HABITS -- it
+  // already resets daily on its own, so nothing about it needs persisting
+  // here.
+  static uint16_t liveHabitsCompletedToday();
+
   // Single source for the mood inputs, so the pose and any figure shown beside
   // it are always derived from the same numbers.
   companion::MoodInput buildMoodInput() const;
 
-  // Banks the accumulator into CompanionState. Returns true if state changed.
-  bool bankSession();
-
-  companion::SessionAccumulator accumulator;
-  uint32_t pagesThisSession = 0;
-  uint32_t bankedSeconds = 0;  // already folded into CompanionState this session
   int32_t localDay = 0;
   bool clockValid = false;
-  bool sessionActive = false;
 };
 
 #define COMPANION CompanionTracker::getInstance()

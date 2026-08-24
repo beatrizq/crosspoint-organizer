@@ -130,10 +130,10 @@ void HomeActivity::drawCompanion(const Rect region) const {
   const auto mood = COMPANION.currentMood();
   const char* label = companion::moodLabel(mood);
   char sub[40] = "";
-  const uint16_t minutes = COMPANION.minutesToday();
+  const uint16_t points = COMPANION.pointsToday();
   const companion::MoodThresholds thresholds;
-  if (minutes >= thresholds.contentMinutes && minutes < thresholds.thrivingMinutes) {
-    snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingMinutes - minutes);
+  if (points >= thresholds.contentPoints && points < thresholds.thrivingPoints) {
+    snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingPoints - points);
   } else if (COMPANION.hasValidClock() && COMPANION_STATE.ledger.streakDays > 0) {
     snprintf(sub, sizeof(sub), tr(STR_COMPANION_STREAK_FORMAT), COMPANION_STATE.ledger.streakDays);
   }
