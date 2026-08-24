@@ -220,10 +220,16 @@ void TasksActivity::completeSelectedTask() {
       std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
                                              TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].content),
       [this, cacheIndex](const ActivityResult& result) {
-        // The popup answered on the press; this screen acts on the release, and
-        // the button may still be down.
+        // Confirm may still be physically down (the popup answers on the press,
+        // this screen on the release). Back is swallowed whenever the result was
+        // cancelled at all, since dismissing the popup with Back can itself be
+        // release-triggered - by then the button is no longer down, but the
+        // release is still what this screen would see next.
         if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
           swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
         }
         if (result.isCancelled) {
           LOG_DBG("TASKS", "Task completion cancelled");
