@@ -914,7 +914,14 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
   const auto sb = SETTINGS.statusBarSpec();
-  const bool showStatusBarTextLane = sb.textLaneVisible(halClock.isAvailable());
+  // Read once up front: textLaneVisible() needs to know whether the clock
+  // will actually be drawable (RTC or, on boards without one, a system clock
+  // already NTP-synced this session), and the draw below reuses the same
+  // result rather than asking formatTime() a second time.
+  char clockTimeBuf[9];
+  const bool clockReady =
+      sb.showsClock() && halClock.formatTime(clockTimeBuf, sizeof(clockTimeBuf), sb.clockUtcOffsetQ, sb.clock12h);
+  const bool showStatusBarTextLane = sb.textLaneVisible(clockReady);
 
   // Draw Progress Text
   const auto screenHeight = renderer.getScreenHeight();
@@ -985,22 +992,19 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     leftClusterWidth += batteryWidth;
   }
 
-  // Draw Clock (X3 only — DS3231 RTC)
-  if (sb.showsClock() && halClock.isAvailable()) {
-    char timeBuf[9];
-    if (halClock.formatTime(timeBuf, sizeof(timeBuf), sb.clockUtcOffsetQ, sb.clock12h)) {
-      int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
-      int clockX = 0;
-      // Position to the left or right of the progress text (with a small gap)
-      if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_LEFT) {
-        clockX = leftClusterX + leftClusterWidth + (leftClusterWidth > 0 ? 10 : 0);
-        leftClusterWidth += clockTextWidth + 10;
-      } else if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_RIGHT) {
-        clockX = rightClusterX - rightClusterWidth - (rightClusterWidth > 0 ? 10 : 0) - clockTextWidth;
-        rightClusterWidth += clockTextWidth + 10;
-      }
-      renderer.drawText(SMALL_FONT_ID, clockX, textY, timeBuf);
+  // Draw Clock
+  if (clockReady) {
+    int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, clockTimeBuf);
+    int clockX = 0;
+    // Position to the left or right of the progress text (with a small gap)
+    if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_LEFT) {
+      clockX = leftClusterX + leftClusterWidth + (leftClusterWidth > 0 ? 10 : 0);
+      leftClusterWidth += clockTextWidth + 10;
+    } else if (sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_RIGHT) {
+      clockX = rightClusterX - rightClusterWidth - (rightClusterWidth > 0 ? 10 : 0) - clockTextWidth;
+      rightClusterWidth += clockTextWidth + 10;
     }
+    renderer.drawText(SMALL_FONT_ID, clockX, textY, clockTimeBuf);
   }
 
   // Draw Bookmark
