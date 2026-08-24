@@ -159,7 +159,7 @@ void drawSpeechBubble(const GfxRenderer& renderer, const int x, const int y, con
     const int baseLeftX = midX - baseHalf;
     const int baseRightX = midX + baseHalf;
     const int tipY = bottom + tailLength;
-    const int tipX = baseRightX + tailLength / 3;
+    const int tipX = baseLeftX - tailLength / 3;
     fillTriangle(renderer, baseLeftX, bottom, baseRightX, bottom, tipX, tipY, false);
     renderer.drawLine(baseLeftX, bottom, tipX, tipY, true);
     renderer.drawLine(tipX, tipY, baseRightX, bottom, true);
