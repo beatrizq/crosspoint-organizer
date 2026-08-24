@@ -5,6 +5,15 @@
 #include <esp_sntp.h>
 #include <time.h>
 
+namespace {
+// Floor a synced system clock could plausibly report; the un-synced default
+// (seconds since boot, counted from the Unix epoch) reads as 1970 and is
+// always well below this, so it is a reliable "has this actually been set"
+// check without depending on SNTP's own sync-status flag (see the comment on
+// getUtcDateTime() for why that flag cannot be trusted here).
+constexpr int MIN_PLAUSIBLE_YEAR = 2024;
+}  // namespace
+
 HalClock halClock;  // Singleton instance
 
 void HalClock::begin() {
@@ -13,43 +22,80 @@ void HalClock::begin() {
 }
 
 bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
-  if (!_available) return false;
+  if (_available) {
+    const unsigned long now = millis();
+    if (_lastPollMs != 0 && (now - _lastPollMs) < CLOCK_POLL_MS) {
+      hour = _cachedHour;
+      minute = _cachedMinute;
+      return true;
+    }
 
-  const unsigned long now = millis();
-  if (_lastPollMs != 0 && (now - _lastPollMs) < CLOCK_POLL_MS) {
-    hour = _cachedHour;
-    minute = _cachedMinute;
-    return true;
+    Rtc::DateTime dt;
+    if (_sdkRtc.now(dt)) {
+      _cachedHour = dt.hour;
+      _cachedMinute = dt.minute;
+      _lastPollMs = now;
+      _hasCachedTime = true;
+      hour = _cachedHour;
+      minute = _cachedMinute;
+      return true;
+    }
+    if (_hasCachedTime) {
+      _lastPollMs = now;
+      hour = _cachedHour;
+      minute = _cachedMinute;
+      return true;
+    }
+    return false;
   }
 
-  Rtc::DateTime dt;
-  if (!_sdkRtc.now(dt)) {
-    if (!_hasCachedTime) return false;
-    _lastPollMs = now;
-    hour = _cachedHour;
-    minute = _cachedMinute;
-    return true;
-  }
-  _cachedHour = dt.hour;
-  _cachedMinute = dt.minute;
-  _lastPollMs = now;
-  _hasCachedTime = true;
-  hour = _cachedHour;
-  minute = _cachedMinute;
+  // Most boards (X3/X4 included) have no hardware RTC, so this is the status
+  // bar clock's only source there. Same system clock and same plausible-year
+  // check as getUtcDateTime() -- see its comment for why. No I2C involved, so
+  // none of the poll-interval caching above is needed here.
+  const time_t now = time(nullptr);
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+  if (timeinfo.tm_year + 1900 < MIN_PLAUSIBLE_YEAR) return false;
+  hour = static_cast<uint8_t>(timeinfo.tm_hour);
+  minute = static_cast<uint8_t>(timeinfo.tm_min);
   return true;
 }
 
 bool HalClock::getUtcDateTime(uint16_t& year, uint8_t& month, uint8_t& day, uint8_t& hour, uint8_t& minute) const {
-  if (!_available) return false;
+  if (_available) {
+    Rtc::DateTime dt;
+    if (_sdkRtc.now(dt)) {
+      year = dt.year;
+      month = dt.month;
+      day = dt.day;
+      hour = dt.hour;
+      minute = dt.minute;
+      return true;
+    }
+  }
 
-  Rtc::DateTime dt;
-  if (!_sdkRtc.now(dt)) return false;
+  // Most boards (X3/X4 included) have no battery-backed RTC chip, so
+  // _available is false and the branch above never runs there. The system
+  // clock -- set once via SNTP, either by syncFromNTP() or as a side effect
+  // of any organizer sync (see OrganizerSync::resolveTodayDate()) -- is the
+  // only UTC source those boards have. sntp_get_sync_status() is NOT used to
+  // gate this: it lives in normal RAM, which a deep-sleep wake reruns setup()
+  // over and resets to "unsynced", even though the RTC-backed time offset
+  // ESP-IDF maintains underneath time() survives that same wake untouched. A
+  // plausible year is what actually distinguishes "really set at some point"
+  // from the un-synced post-boot default of 1970.
+  const time_t now = time(nullptr);
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+  const int y = timeinfo.tm_year + 1900;
+  if (y < MIN_PLAUSIBLE_YEAR) return false;
 
-  year = dt.year;
-  month = dt.month;
-  day = dt.day;
-  hour = dt.hour;
-  minute = dt.minute;
+  year = static_cast<uint16_t>(y);
+  month = static_cast<uint8_t>(timeinfo.tm_mon + 1);
+  day = static_cast<uint8_t>(timeinfo.tm_mday);
+  hour = static_cast<uint8_t>(timeinfo.tm_hour);
+  minute = static_cast<uint8_t>(timeinfo.tm_min);
   return true;
 }
 
