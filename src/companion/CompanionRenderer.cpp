@@ -155,11 +155,11 @@ void drawSpeechBubble(const GfxRenderer& renderer, const int x, const int y, con
   // into the bubble instead of being a stuck-on shape.
   if (side == TailSide::Bottom) {
     const int baseHalf = std::max(3, std::min(tailLength / 2, w / 8));
-    const int midX = left + w / 3;  // off-centre, towards the character's head
+    const int midX = left + (2 * w) / 3;  // off-centre, towards the character's head
     const int baseLeftX = midX - baseHalf;
     const int baseRightX = midX + baseHalf;
     const int tipY = bottom + tailLength;
-    const int tipX = baseLeftX - tailLength / 3;
+    const int tipX = baseRightX + tailLength / 3;
     fillTriangle(renderer, baseLeftX, bottom, baseRightX, bottom, tipX, tipY, false);
     renderer.drawLine(baseLeftX, bottom, tipX, tipY, true);
     renderer.drawLine(tipX, tipY, baseRightX, bottom, true);
