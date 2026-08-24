@@ -130,11 +130,19 @@ void IntervalSelectionActivity::loop() {
 void IntervalSelectionActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
-  renderer.drawCenteredText(UI_12_FONT_ID, 15, I18N.get(titleId), true, EpdFontFamily::BOLD);
+  if (customTitle.empty()) {
+    renderer.drawCenteredText(UI_12_FONT_ID, 15, I18N.get(titleId), true, EpdFontFamily::BOLD);
+  } else {
+    const auto truncatedTitle =
+        renderer.truncatedText(UI_12_FONT_ID, customTitle.c_str(), renderer.getScreenWidth() - 40, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_12_FONT_ID, 15, truncatedTitle.c_str(), true, EpdFontFamily::BOLD);
+  }
 
   char formattedValue[32];
   if (maxBoundaryLabelId != StrId::STR_NONE_OPT && value == maxValue) {
     snprintf(formattedValue, sizeof(formattedValue), "%s", I18N.get(maxBoundaryLabelId));
+  } else if (!valueSuffix.empty()) {
+    snprintf(formattedValue, sizeof(formattedValue), "%d %s", value, valueSuffix.c_str());
   } else if (valueFormatId != StrId::STR_NONE_OPT) {
     snprintf(formattedValue, sizeof(formattedValue), I18N.get(valueFormatId), static_cast<unsigned int>(value));
   } else {

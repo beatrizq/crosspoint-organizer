@@ -15,13 +15,22 @@
 
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
-#include "activities/util/ConfirmationActivity.h"
+#include "activities/util/IntervalSelectionActivity.h"
 #include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
+
+namespace {
+// Manual entry is capped well above anything worth tapping through by hand;
+// a habit that legitimately needs more than this in one sitting is not what
+// this screen is for.
+constexpr int MAX_HABIT_LOG_AMOUNT = 50;
+constexpr int HABIT_LOG_SMALL_STEP = 1;
+constexpr int HABIT_LOG_LARGE_STEP = 5;
+}  // namespace
 
 void HabitsActivity::loadCaches() {
   HABITIFY_HABITS.loadFromFile();
@@ -152,9 +161,8 @@ const char* HabitsActivity::rowConfirmLabel() const {
   const int cacheIndex = cacheIndexForRow(selectedRow());
   if (cacheIndex < 0) return "";
   // A habit with no goal has no unit either, so there is nothing to log against
-  // it; saying "Complete" would promise an action that cannot happen.
-  return HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty() ? ""
-                                                                                         : tr(STR_HABITIFY_COMPLETE);
+  // it; saying "Log" would promise an action that cannot happen.
+  return HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty() ? "" : tr(STR_HABITIFY_LOG);
 }
 
 void HabitsActivity::onRowConfirm() { completeSelectedHabit(); }
@@ -164,31 +172,45 @@ void HabitsActivity::completeSelectedHabit() {
   if (cacheIndex < 0) return;
   const auto& habits = HABITIFY_HABITS.getHabits();
   if (habits[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
+  const HabitifyHabit& habit = habits[static_cast<size_t>(cacheIndex)];
 
-  // Asked rather than done, matching the Todoist screen: Select is the same
-  // button that syncs from the tab bar one row up, so a misplaced press should not
-  // silently move a number. The prompt names the habit, because the list is behind
-  // it by then, and it opens on Cancel.
-  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_HABITIFY_COMPLETE_PROMPT),
-                                                                habits[static_cast<size_t>(cacheIndex)].name),
+  // A number entry rather than a single +1: repeatedly confirming "+1" was a
+  // chore for anything past one. Defaults to 1 so a single Confirm press still
+  // behaves exactly like the old one-tap flow; Left/Right and the side buttons
+  // move it further before that press. Select is the same button that syncs
+  // from the tab bar one row up, so a misplaced press should not silently log
+  // anything - it opens here on Back.
+  startActivityForResult(std::make_unique<IntervalSelectionActivity>(
+                             renderer, mappedInput, "HabitifyLogAmount", StrId::STR_NONE_OPT, 1, 1,
+                             MAX_HABIT_LOG_AMOUNT, HABIT_LOG_SMALL_STEP, HABIT_LOG_LARGE_STEP, StrId::STR_NONE_OPT,
+                             /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true, StrId::STR_NONE_OPT,
+                             habit.name, habit.unitSymbol),
                          [this, cacheIndex](const ActivityResult& result) {
-                           // The popup answered on the press; this screen acts on the release, and
-                           // the button may still be down.
+                           // Confirm may still be physically down (the picker answers on the
+                           // press, this screen on the release). Back is swallowed whenever the
+                           // result was cancelled at all, since dismissing the picker with Back
+                           // is release-triggered here - by then the button is no longer down,
+                           // but the release is still what this screen would see next.
                            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
                              swallowConfirmRelease = true;
                            }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
                            if (result.isCancelled) {
-                             LOG_DBG("HABITS", "Increment cancelled");
+                             LOG_DBG("HABITS", "Log cancelled");
                              return;
                            }
-                           performIncrement(cacheIndex);
+                           const auto amount = std::get<IntervalResult>(result.data).value;
+                           performIncrement(cacheIndex, static_cast<float>(amount));
                          });
 }
 
-void HabitsActivity::performIncrement(const int cacheIndex) {
-  // Re-checked: the prompt sat on top of this screen for as long as the user took
+void HabitsActivity::performIncrement(const int cacheIndex, const float amount) {
+  // Re-checked: the picker sat on top of this screen for as long as the user took
   // to answer, and an index is not a habit.
   if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= HABITIFY_HABITS.getHabits().size()) return;
+  if (amount <= 0.0f) return;
 
   {
     // The render task reads the habit list; hold the lock across the change so it
@@ -196,9 +218,8 @@ void HabitsActivity::performIncrement(const int cacheIndex) {
     RenderLock lock(*this);
     const auto& habits = HABITIFY_HABITS.getHabits();
     if (habits[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
-    LOG_DBG("HABITS", "+%g to %s", static_cast<double>(HABITIFY_INCREMENT),
-            habits[static_cast<size_t>(cacheIndex)].name.c_str());
-    HABITIFY_HABITS.addPending(static_cast<size_t>(cacheIndex), HABITIFY_INCREMENT);
+    LOG_DBG("HABITS", "+%g to %s", static_cast<double>(amount), habits[static_cast<size_t>(cacheIndex)].name.c_str());
+    HABITIFY_HABITS.addPending(static_cast<size_t>(cacheIndex), amount);
   }
   HABITIFY_HABITS.saveToFile();
   // A completion is one of the two things the companion reacts to; credit it

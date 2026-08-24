@@ -13,14 +13,15 @@
  * same layout the Budget screen gives a category and its balance, because it
  * answers the same shape of question at a glance.
  *
- * Select adds one to the selected habit, after a confirmation prompt - the same
- * gesture and the same prompt-then-act shape as completing a Todoist task, so the
- * two screens behave alike. It is deliberately not Habitify's own "mark complete"
- * endpoint, which fills the whole goal at once: the point of showing 1/3 is being
- * able to log the second and the third separately. The press only touches the
- * cache, so it works with the radio off and the number moves immediately; the
- * accumulated amount is pushed on the next sync, one request per habit however
- * many times Select was pressed, before the journal is re-fetched.
+ * Select opens a number entry for the selected habit, defaulting to 1 so a
+ * single Confirm press behaves exactly like the old one-tap "+1". It is
+ * deliberately not Habitify's own "mark complete" endpoint, which fills the
+ * whole goal at once: the point of showing 1/3 is being able to log the
+ * second and the third separately, in whatever amount was actually done. The
+ * entry only touches the cache, so it works with the radio off and the number
+ * moves immediately; the accumulated amount is pushed on the next sync, one
+ * request per habit however many separate amounts were logged in between,
+ * before the journal is re-fetched.
  *
  * Today is the only tab. It stays as a tab so the screen reads as a sibling of
  * Tasks, Calendar and Budget rather than as a bare list, and because progress is
@@ -57,9 +58,9 @@ class HabitsActivity final : public OrganizerScreenActivity {
   int cacheIndexForRow(int row) const;
   bool isVisible(size_t cacheIndex) const;
 
-  // Asks first; performIncrement() is what actually moves the number.
+  // Opens the number entry; performIncrement() is what actually moves the number.
   void completeSelectedHabit();
-  void performIncrement(int cacheIndex);
+  void performIncrement(int cacheIndex, float amount);
   void performSync();
   // Renders progress as "x/y", or as a bare count for a habit with no goal.
   void formatProgress(const HabitifyHabit& habit, char* out, size_t outSize) const;

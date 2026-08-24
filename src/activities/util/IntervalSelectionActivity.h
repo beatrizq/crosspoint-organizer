@@ -2,6 +2,9 @@
 
 #include <I18n.h>
 
+#include <string>
+#include <utility>
+
 #include "MappedInputManager.h"
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
@@ -10,11 +13,16 @@ class GfxRenderer;
 
 class IntervalSelectionActivity final : public Activity {
  public:
+  // `customTitle` and `valueSuffix` are for callers whose title or unit is a
+  // runtime string rather than a translated StrId (e.g. a habit's name and
+  // its Habitify unit symbol) - left empty, titleId/valueFormatId behave
+  // exactly as before.
   explicit IntervalSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const char* activityName,
                                      StrId titleId, int initialValue, int minValue, int maxValue, int smallStep,
                                      int largeStep, StrId valueFormatId = StrId::STR_NONE_OPT,
                                      bool readerActivity = false, bool ignoreInitialConfirmRelease = false,
-                                     StrId maxBoundaryLabelId = StrId::STR_NONE_OPT)
+                                     StrId maxBoundaryLabelId = StrId::STR_NONE_OPT, std::string customTitle = "",
+                                     std::string valueSuffix = "")
       : Activity(activityName, renderer, mappedInput),
         titleId(titleId),
         valueFormatId(valueFormatId),
@@ -25,7 +33,9 @@ class IntervalSelectionActivity final : public Activity {
         smallStep(smallStep),
         largeStep(largeStep),
         readerActivity(readerActivity),
-        ignoreConfirmRelease(ignoreInitialConfirmRelease) {}
+        ignoreConfirmRelease(ignoreInitialConfirmRelease),
+        customTitle(std::move(customTitle)),
+        valueSuffix(std::move(valueSuffix)) {}
 
   void onEnter() override;
   void loop() override;
@@ -43,6 +53,8 @@ class IntervalSelectionActivity final : public Activity {
   int largeStep;
   bool readerActivity;
   bool ignoreConfirmRelease;
+  std::string customTitle;
+  std::string valueSuffix;
   bool draggingBar = false;
   ButtonNavigator buttonNavigator;
 
