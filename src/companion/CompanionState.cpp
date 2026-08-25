@@ -5,6 +5,7 @@ void CompanionState::toJson(JsonDocument& doc) const {
   doc["streakDays"] = ledger.streakDays;
   doc["bestStreakDays"] = ledger.bestStreakDays;
   doc["milestonePending"] = milestonePending;
+  doc["activatedDay"] = activatedDay;
 }
 
 bool CompanionState::fromJson(JsonVariantConst doc) {
@@ -12,6 +13,7 @@ bool CompanionState::fromJson(JsonVariantConst doc) {
   ledger.streakDays = doc["streakDays"] | static_cast<uint16_t>(0);
   ledger.bestStreakDays = doc["bestStreakDays"] | static_cast<uint16_t>(0);
   milestonePending = doc["milestonePending"] | false;
+  activatedDay = doc["activatedDay"] | companion::DayLedger::NEVER;
 
   // A hand-edited or truncated file must not leave best below current.
   if (ledger.bestStreakDays < ledger.streakDays) ledger.bestStreakDays = ledger.streakDays;

@@ -17,8 +17,8 @@ class CompanionSettingsActivity final : public Activity {
   explicit CompanionSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("CompanionSettings", renderer, mappedInput) {}
 
-  // Enabled, Character, Show on Home, Show mood label.
-  static constexpr int MENU_ITEMS = 4;
+  // Enabled, Character, Show on Home, Show mood label, Active for.
+  static constexpr int MENU_ITEMS = 5;
 
   void onEnter() override;
   void onExit() override;
@@ -27,6 +27,12 @@ class CompanionSettingsActivity final : public Activity {
 
  private:
   void handleSelection();
+  // Stamps CompanionState::activatedDay the first time it notices the
+  // companion enabled with no activation ever recorded -- whether that is
+  // because it was just switched on here, or because it was already on from
+  // before this field existed. No-op once activatedDay is already set, and
+  // whenever the companion is off or the clock has no reading yet.
+  void stampActivationIfNeeded();
 
   ButtonNavigator buttonNavigator;
   OptionPopup optionPopup;
@@ -38,4 +44,9 @@ class CompanionSettingsActivity final : public Activity {
   // flips it before the user has touched anything. Armed in onEnter() only
   // when Confirm is still physically down at that point.
   bool swallowConfirmRelease = false;
+  // The Enabled row's confirmation popup answers on the button going down (see
+  // ConfirmationActivity), so its Confirm/Back release lands back here once
+  // this screen is active again. Same idea as swallowConfirmRelease above,
+  // armed instead from the popup's result handler.
+  bool swallowBackRelease = false;
 };

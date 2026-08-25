@@ -27,19 +27,26 @@ companion::CompanionId CompanionTracker::activeId() {
   return static_cast<companion::CompanionId>(id);
 }
 
-void CompanionTracker::refreshDay() {
+bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
   uint16_t year = 0;
   uint8_t month = 0;
   uint8_t day = 0;
   uint8_t hour = 0;
   uint8_t minute = 0;
 
-  if (!halClock.getUtcDateTime(year, month, day, hour, minute)) {
+  if (!halClock.getUtcDateTime(year, month, day, hour, minute)) return false;
+  outDay = companion::localDayNumber(year, month, day, hour, minute, signedUtcOffsetQuarterHours());
+  return true;
+}
+
+void CompanionTracker::refreshDay() {
+  int32_t day = 0;
+  if (!resolveLocalDay(day)) {
     clockValid = false;
     return;
   }
   clockValid = true;
-  localDay = companion::localDayNumber(year, month, day, hour, minute, signedUtcOffsetQuarterHours());
+  localDay = day;
 }
 
 void CompanionTracker::refreshForDisplay() {

@@ -54,6 +54,13 @@ class CompanionTracker {
   // streaks are paused in that case; the UI can explain why.
   bool hasValidClock() const { return clockValid; }
 
+  // Resolves "today" as a local day number straight from the RTC, independent
+  // of whether the companion is enabled or any cached state. Used to stamp
+  // CompanionState::activatedDay and to show how long the companion has been
+  // active even while it is currently disabled. Returns false (outDay
+  // untouched) when the clock has no usable reading yet.
+  static bool resolveLocalDay(int32_t& outDay);
+
  private:
   CompanionTracker() = default;
 
