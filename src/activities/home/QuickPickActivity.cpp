@@ -10,6 +10,7 @@
 #include "activities/ActivityManager.h"
 #include "companion/CompanionRenderer.h"
 #include "companion/CompanionTracker.h"
+#include "companion/QuickPickRoll.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -21,37 +22,58 @@ constexpr int PAD = 8;
 constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
+
+// Mirrored into CrossPointState rather than fished out reactively when sleep
+// happens: keeps whatever the screen is showing durable at all times it's
+// up, and needs no RTTI to read back out of a generic Activity* later (this
+// build has none). Guarded so re-entering with the exact pick already held
+// (a resume from sleep, or a reroll landing back where it started) does not
+// cost a redundant SD write.
+void mirrorToAppState(const std::string& text, const std::string& itemId, const bool isHabit, const bool poolEmpty) {
+  if (APP_STATE.quickPickText == text && APP_STATE.quickPickItemId == itemId &&
+      APP_STATE.quickPickIsHabit == isHabit && APP_STATE.quickPickPoolEmpty == poolEmpty) {
+    return;
+  }
+  APP_STATE.quickPickText = text;
+  APP_STATE.quickPickItemId = itemId;
+  APP_STATE.quickPickIsHabit = isHabit;
+  APP_STATE.quickPickPoolEmpty = poolEmpty;
+  APP_STATE.saveToFile();
+}
 }  // namespace
 
 void QuickPickActivity::onEnter() {
   Activity::onEnter();
-
-  // Mirrored here rather than fished out reactively when sleep happens: keeps
-  // whatever the screen is showing durable at all times it's up, and needs no
-  // RTTI to read back out of a generic Activity* later (this build has none).
-  // Guarded so a resume-from-sleep re-entry (already holding this exact pick)
-  // does not cost a redundant SD write.
-  if (APP_STATE.quickPickText != pickedText || APP_STATE.quickPickItemId != itemId ||
-      APP_STATE.quickPickIsHabit != isHabit || APP_STATE.quickPickPoolEmpty != poolEmpty) {
-    APP_STATE.quickPickText = pickedText;
-    APP_STATE.quickPickItemId = itemId;
-    APP_STATE.quickPickIsHabit = isHabit;
-    APP_STATE.quickPickPoolEmpty = poolEmpty;
-    APP_STATE.saveToFile();
-  }
-
+  mirrorToAppState(pickedText, itemId, isHabit, poolEmpty);
   requestUpdate(true);
+}
+
+void QuickPickActivity::reroll() {
+  const auto rolled = quickpick::roll();
+  pickedText = rolled.text;
+  itemId = rolled.itemId;
+  isHabit = rolled.isHabit;
+  poolEmpty = rolled.poolEmpty;
+  mirrorToAppState(pickedText, itemId, isHabit, poolEmpty);
+  requestUpdate();
 }
 
 void QuickPickActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
     finish();
+    return;
+  }
+
+  if (!poolEmpty && mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    reroll();
     return;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     // Nothing to jump to with an empty pool -- Confirm just leaves, same as Back.
     if (poolEmpty) {
+      setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
       finish();
       return;
     }
@@ -70,8 +92,7 @@ void QuickPickActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_QUICK_PICK_TITLE),
-                 nullptr);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_COMPANION), nullptr);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
@@ -120,7 +141,8 @@ void QuickPickActivity::render(RenderLock&&) {
 
   companion::drawPose(renderer, id, mood, centreX - spriteW / 2, blockTop + bubbleBlock, scale);
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), "", "");
+  const auto labels =
+      mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), "", poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

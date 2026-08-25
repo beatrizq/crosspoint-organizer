@@ -27,16 +27,6 @@ constexpr int poseHeight(const int scale) { return SPRITE_HEIGHT * scale; }
 // no second set of art is needed.
 void drawPose(const GfxRenderer& renderer, CompanionId id, Mood mood, int x, int y, int scale, bool mirrored = false);
 
-// Picks one of a companion's lines for the given mood. `rotation` is wrapped
-// into range, so callers can pass any counter (a visit count, a day number)
-// without knowing how many lines a character has. Returns nullptr when the
-// indices are out of range.
-const char* quoteFor(CompanionId id, Mood mood, uint32_t rotation);
-
-// How many lines a companion has for a mood, so a caller can pick an index
-// itself (to avoid repeating the previous one) rather than only rotating.
-uint8_t quoteCountFor(CompanionId id, Mood mood);
-
 // Which edge the tail hangs off, so the bubble can point at a companion beside
 // it or below it.
 enum class TailSide : uint8_t { Left, Bottom };
@@ -54,8 +44,5 @@ void drawSpeechBubble(const GfxRenderer& renderer, int x, int y, int w, int h, i
 // Translated name of a mood, for the status label under the character. Unlike
 // the character quotes this is UI chrome, so it comes from the string table.
 const char* moodLabel(Mood mood);
-
-// The character's one-off line for beating their own best streak.
-const char* milestoneQuoteFor(CompanionId id, uint32_t rotation);
 
 }  // namespace companion

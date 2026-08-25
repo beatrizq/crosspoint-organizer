@@ -12,7 +12,14 @@
  * on boot from CrossPointState when the device was showing this screen at the
  * moment it went to sleep -- either way, everything it needs comes through the
  * constructor, since it also mirrors its own content into CrossPointState on
- * entry (see onEnter()) rather than main.cpp fishing it out reactively.
+ * entry and on every reroll (see onEnter()/reroll()) rather than main.cpp
+ * fishing it out reactively.
+ *
+ * Random rerolls the pick in place; Go jumps to it in Tasks/Habits; Back
+ * returns to Home, reporting whatever is currently held as a QuickPickResult
+ * so Home's own bubble can be kept in sync. setResult() has to be called
+ * before finish(), not in onExit() -- ActivityManager::popActivity() reads
+ * the result before it runs the outgoing activity's onExit().
  */
 class QuickPickActivity final : public Activity {
  public:
@@ -33,6 +40,10 @@ class QuickPickActivity final : public Activity {
   bool isQuickPickActivity() const override { return true; }
 
  private:
+  // Rerolls via quickpick::roll() -- the same pool/weights Home's own roll
+  // used -- and re-mirrors the result into CrossPointState.
+  void reroll();
+
   std::string pickedText;
   std::string itemId;
   bool isHabit;

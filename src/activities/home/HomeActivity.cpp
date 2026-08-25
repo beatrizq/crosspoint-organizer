@@ -5,13 +5,9 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
-#include <HabitifyHabitCache.h>
 #include <I18n.h>
-#include <QuickPick.h>
-#include <TodoistTaskCache.h>
 #include <Utf8.h>
 #include <Xtc.h>
-#include <esp_random.h>
 
 #include <cstring>
 #include <memory>
@@ -26,6 +22,7 @@
 #include "companion/CompanionRenderer.h"
 #include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
+#include "companion/QuickPickRoll.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
@@ -175,7 +172,9 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   // is progress to report. Skipped entirely when the setting is off, so the
   // sprite gets that height back instead.
   const auto id = CompanionTracker::activeId();
-  const auto mood = COMPANION.currentMood();
+  // One-shot: overrides the ladder mood for exactly the paint that follows,
+  // then clears below once it has actually been seen (see the comment there).
+  const auto mood = COMPANION_STATE.milestonePending ? companion::Mood::Milestone : COMPANION.currentMood();
   const char* label = showLabel ? companion::moodLabel(mood) : nullptr;
   char sub[40] = "";
   if (showLabel) {
@@ -188,17 +187,19 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
     }
   }
 
-  const char* quote = COMPANION_STATE.milestonePending ? companion::milestoneQuoteFor(id, companionQuoteIndex)
-                                                       : companion::quoteFor(id, mood, companionQuoteIndex);
+  // Suggests a task/habit instead of a mood quote -- rolled once in onEnter()
+  // (see homeSuggestionText's own comment) and reused verbatim here on every
+  // repaint, so navigating the menu never changes what is being suggested.
+  const std::string suggestion = homeSuggestionPoolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : homeSuggestionText;
 
-  // The bubble is measured before the character is sized: the quote needs however
-  // many lines it needs, and the character takes what is left.
+  // The bubble is measured before the character is sized: the suggestion needs
+  // however many lines it needs, and the character takes what is left.
   std::vector<std::string> lines;
-  if (quote != nullptr) {
-    if (renderer.getTextWidth(UI_10_FONT_ID, quote) <= textW) {
-      lines.emplace_back(quote);
+  if (!suggestion.empty()) {
+    if (renderer.getTextWidth(UI_10_FONT_ID, suggestion.c_str()) <= textW) {
+      lines.emplace_back(suggestion);
     } else {
-      lines = renderer.wrappedText(UI_10_FONT_ID, quote, textW, 3);
+      lines = renderer.wrappedText(UI_10_FONT_ID, suggestion.c_str(), textW, 3);
     }
   }
   const int bubbleH = lines.empty() ? 0 : static_cast<int>(lines.size()) * lineH + PAD * 2;
@@ -264,44 +265,22 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
 void HomeActivity::activateCompanion() {
   if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
 
-  // Pool: every pending task not clearly scheduled for a future day (overdue,
-  // due today, or undated all count -- "give me something to do right now"
-  // is not served by handing back a task due in three weeks), plus every
-  // habit not yet complete today.
-  const auto& tasks = TODOIST_TASKS.getTasks();
-  const bool knowToday = !TODOIST_TASKS.getSyncDate().empty();
-  const uint16_t today = todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
-
-  std::vector<quickpick::WeightedItem> candidates;
-  candidates.reserve(tasks.size());
-  for (size_t i = 0; i < tasks.size(); i++) {
-    const bool isUpcoming = knowToday && tasks[i].dueDays != todoist::DUE_NONE && tasks[i].dueDays > today;
-    if (isUpcoming) continue;
-    candidates.push_back({static_cast<int>(i), false, 1});
-  }
-
-  const auto& habits = HABITIFY_HABITS.getHabits();
-  for (size_t i = 0; i < habits.size(); i++) {
-    if (habits[i].isComplete()) continue;
-    candidates.push_back(
-        {static_cast<int>(i), true, quickpick::habitWeight(habits[i].shownCurrent(), habits[i].target)});
-  }
-
-  const uint32_t total = quickpick::totalWeight(candidates);
-  const int picked = total == 0 ? -1 : quickpick::pick(candidates, esp_random() % total);
-
-  if (picked < 0) {
-    startActivityForResult(std::make_unique<QuickPickActivity>(renderer, mappedInput, "", "", false, true), nullptr);
-    return;
-  }
-
-  const auto& item = candidates[static_cast<size_t>(picked)];
-  const std::string text = item.isHabit ? habits[static_cast<size_t>(item.sourceIndex)].name
-                                        : tasks[static_cast<size_t>(item.sourceIndex)].content;
-  const std::string itemId =
-      item.isHabit ? habits[static_cast<size_t>(item.sourceIndex)].id : tasks[static_cast<size_t>(item.sourceIndex)].id;
+  // Shows exactly what the bubble is already showing -- no fresh roll here,
+  // see homeSuggestionText's own comment. The result handler folds back
+  // whatever QuickPickActivity ends up holding when it returns (its own
+  // Random action may have changed it), so the bubble never goes stale
+  // relative to what was last seen on the full screen.
   startActivityForResult(
-      std::make_unique<QuickPickActivity>(renderer, mappedInput, text, itemId, item.isHabit, false), nullptr);
+      std::make_unique<QuickPickActivity>(renderer, mappedInput, homeSuggestionText, homeSuggestionItemId,
+                                          homeSuggestionIsHabit, homeSuggestionPoolEmpty),
+      [this](const ActivityResult& result) {
+        if (const auto* pick = std::get_if<QuickPickResult>(&result.data)) {
+          homeSuggestionText = pick->text;
+          homeSuggestionItemId = pick->itemId;
+          homeSuggestionIsHabit = pick->isHabit;
+          homeSuggestionPoolEmpty = pick->poolEmpty;
+        }
+      });
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {
@@ -394,9 +373,13 @@ void HomeActivity::onEnter() {
   // One I2C read to resolve the calendar day, so currentMood() is cheap from the
   // render path. Here rather than in render() for exactly that reason.
   COMPANION.refreshForDisplay();
-  // A different line each visit, stable while the cursor moves around the menu.
-  const uint8_t quoteCount = companion::quoteCountFor(CompanionTracker::activeId(), COMPANION.currentMood());
-  companionQuoteIndex = quoteCount > 0 ? (companionQuoteIndex + 1) % quoteCount : 0;
+  // A different suggestion each visit, stable while the cursor moves around
+  // the menu -- see homeSuggestionText's own comment.
+  const auto rolled = quickpick::roll();
+  homeSuggestionText = rolled.text;
+  homeSuggestionItemId = rolled.itemId;
+  homeSuggestionIsHabit = rolled.isHabit;
+  homeSuggestionPoolEmpty = rolled.poolEmpty;
 
   selectorIndex = 0;
   if (initialMenuItem != HomeMenuItem::NONE) {

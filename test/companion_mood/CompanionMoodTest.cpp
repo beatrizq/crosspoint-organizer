@@ -388,9 +388,12 @@ TEST(CompanionReachability, ThresholdBoundariesAreExact) {
 
 TEST(CompanionReachability, EveryMoodHasArtAndIsIndexable) {
   // The enum is used to index the generated sprite and quote tables, so the
-  // values must stay contiguous from zero with no gaps.
+  // values must stay contiguous from zero with no gaps. Milestone is never
+  // returned by evaluate() -- it is an external override -- but still needs
+  // an index into those same tables, so it belongs in this contiguous run too.
   EXPECT_EQ(static_cast<int>(Mood::Thriving), 0);
   EXPECT_EQ(static_cast<int>(Mood::Happy), 1);
   EXPECT_EQ(static_cast<int>(Mood::Peckish), 2);
   EXPECT_EQ(static_cast<int>(Mood::Neglected), 3);
+  EXPECT_EQ(static_cast<int>(Mood::Milestone), 4);
 }

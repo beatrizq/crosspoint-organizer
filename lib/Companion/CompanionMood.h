@@ -7,7 +7,12 @@
 // exercised by host unit tests before it ever reaches the device.
 namespace companion {
 
-enum class Mood : uint8_t { Thriving = 0, Happy = 1, Peckish = 2, Neglected = 3 };
+// Milestone is not a ladder outcome -- evaluate() never returns it. It is an
+// external override callers apply for one paint when a streak record is
+// beaten (see CompanionState::milestonePending), the same way the old
+// milestone quote used to override which line was said rather than which
+// mood earned it.
+enum class Mood : uint8_t { Thriving = 0, Happy = 1, Peckish = 2, Neglected = 3, Milestone = 4 };
 
 // Tunables kept in one struct so tests can pin behaviour without rebuilding the
 // firmware defaults. Tasks and habits are weighted identically -- each

@@ -67,9 +67,19 @@ struct FilePathResult {
   std::string path;
 };
 
+// What QuickPickActivity was showing when it exited -- possibly rerolled via
+// its own Random action, so the caller (Home) can keep its own small bubble
+// in sync rather than showing whatever it originally rolled.
+struct QuickPickResult {
+  std::string text;
+  std::string itemId;
+  bool isHabit = false;
+  bool poolEmpty = true;
+};
+
 using ResultVariant =
     std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult, IntervalResult,
-                 PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult>;
+                 PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult, QuickPickResult>;
 
 struct ActivityResult {
   bool isCancelled = false;

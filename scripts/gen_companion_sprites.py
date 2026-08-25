@@ -39,16 +39,12 @@ import sys
 
 WIDTH = 34
 HEIGHT = 30
-MOODS = ["thriving", "happy", "peckish", "neglected"]
-# Quote sections that are not moods. "milestone" fires once when the reader
-# beats their own best streak, so it needs its own voice rather than reusing a
-# mood line.
-EXTRA_QUOTES = ["milestone"]
+# "milestone" is a mood like the rest: its own art block, generated the same
+# way as thriving/happy/peckish/neglected. It is never returned by the ladder
+# in CompanionMood (evaluate() only ever yields the first four); callers apply
+# it as a one-shot override when a streak record is beaten.
+MOODS = ["thriving", "happy", "peckish", "neglected", "milestone"]
 VALID_CELLS = set(".#wod")
-# Speech-bubble copy is wrapped to two lines on a 480px-wide panel; beyond this
-# it overflows the bubble, so the generator rejects it rather than letting it
-# clip on device.
-MAX_QUOTE_CHARS = 64
 
 
 def dither_ink(cell, x, y):
@@ -64,16 +60,13 @@ def dither_ink(cell, x, y):
 
 
 def parse_grid_file(path):
-    """Returns (name, kind, {mood: [rows]}, {mood: [quotes]}).
+    """Returns (name, kind, {mood: [rows]}).
 
-    Sections are [<mood>] for art and [quotes.<mood>] for the character's
-    speech-bubble lines. Raises ValueError on bad input."""
+    Sections are [<mood>] for art. Raises ValueError on bad input."""
     name = None
     kind = None
     poses = {}
-    quotes = {m: [] for m in MOODS + EXTRA_QUOTES}
     current = None
-    current_is_quotes = False
 
     with open(path, "r", encoding="utf-8") as handle:
         for lineno, raw in enumerate(handle, 1):
@@ -84,21 +77,14 @@ def parse_grid_file(path):
                 continue
 
             if stripped.startswith("[") and stripped.endswith("]"):
-                section = stripped[1:-1].strip().lower()
-                current_is_quotes = section.startswith("quotes.")
-                current = section[len("quotes.") :] if current_is_quotes else section
-                allowed = MOODS + EXTRA_QUOTES if current_is_quotes else MOODS
-                if current not in allowed:
+                current = stripped[1:-1].strip().lower()
+                if current not in MOODS:
                     raise ValueError(
-                        f"{path}:{lineno}: unknown section '{current}' (expected one of {', '.join(allowed)})"
+                        f"{path}:{lineno}: unknown section '{current}' (expected one of {', '.join(MOODS)})"
                     )
-                if current_is_quotes:
-                    if quotes[current]:
-                        raise ValueError(f"{path}:{lineno}: quotes for '{current}' declared twice")
-                else:
-                    if current in poses:
-                        raise ValueError(f"{path}:{lineno}: mood '{current}' declared twice")
-                    poses[current] = []
+                if current in poses:
+                    raise ValueError(f"{path}:{lineno}: mood '{current}' declared twice")
+                poses[current] = []
                 continue
 
             if current is None:
@@ -113,17 +99,6 @@ def parse_grid_file(path):
                     kind = value
                 else:
                     raise ValueError(f"{path}:{lineno}: unknown header key '{key}'")
-                continue
-
-            if current_is_quotes:
-                if '"' in stripped or "\\" in stripped:
-                    raise ValueError(f"{path}:{lineno}: quotes cannot contain \" or \\ (they are emitted as C strings)")
-                if len(stripped) > MAX_QUOTE_CHARS:
-                    raise ValueError(
-                        f"{path}:{lineno}: quote is {len(stripped)} chars, max {MAX_QUOTE_CHARS} "
-                        f"(longer lines will not fit the speech bubble)"
-                    )
-                quotes[current].append(stripped)
                 continue
 
             # Inside an art block: this is a row. Use the unstripped line so
@@ -149,13 +124,8 @@ def parse_grid_file(path):
     for mood in MOODS:
         if len(poses[mood]) != HEIGHT:
             raise ValueError(f"{path}: [{mood}] has {len(poses[mood])} rows, expected {HEIGHT}")
-        if not quotes[mood]:
-            raise ValueError(f"{path}: no [quotes.{mood}] lines; every mood needs at least one")
-    for extra in EXTRA_QUOTES:
-        if not quotes[extra]:
-            raise ValueError(f"{path}: no [quotes.{extra}] lines; at least one is required")
 
-    return name, kind, poses, quotes
+    return name, kind, poses
 
 
 def pack_pose(rows):
@@ -178,7 +148,6 @@ def to_identifier(name):
 def render_header(companions, row_bytes, sprite_bytes):
     lines = []
     add = lines.append
-    max_quotes = max(len(q[mood]) for _n, _k, _p, q in companions for mood in MOODS)
 
     add("#pragma once")
     add("")
@@ -199,13 +168,13 @@ def render_header(companions, row_bytes, sprite_bytes):
     add("// Order matches CompanionSprites below and the persisted companionId,")
     add("// so appending a companion is backwards compatible but reordering is not.")
     add("enum class CompanionId : uint8_t {")
-    for name, _kind, _poses, _quotes in companions:
+    for name, _kind, _poses in companions:
         add(f"  {to_identifier(name)},")
     add("};")
     add("")
     add("// [companion][mood][byte] -- 1bpp, MSB-first within each row, set bit = ink.")
     add("inline constexpr uint8_t COMPANION_SPRITES[COMPANION_COUNT][MOOD_COUNT][SPRITE_BYTES] = {")
-    for name, kind, poses, _quotes in companions:
+    for name, kind, poses in companions:
         add(f"    // {name} ({kind})")
         add("    {")
         for mood in MOODS:
@@ -222,61 +191,15 @@ def render_header(companions, row_bytes, sprite_bytes):
     add("// ASCII display names for the settings picker. Not translated: they are")
     add("// character names, the same in every UI language.")
     add("inline constexpr const char* COMPANION_NAMES[COMPANION_COUNT] = {")
-    for name, _kind, _poses, _quotes in companions:
+    for name, _kind, _poses in companions:
         add(f'    "{name}",')
     add("};")
     add("")
     add("// One-word species label, shown beside the name in the settings picker so")
     add("// the choice is meaningful before it is made.")
     add("inline constexpr const char* COMPANION_KINDS[COMPANION_COUNT] = {")
-    for _n, kind, _p, _q in companions:
+    for _n, kind, _p in companions:
         add(f'    "{kind}",')
-    add("};")
-    add("")
-    add(f"inline constexpr int MAX_QUOTES_PER_MOOD = {max_quotes};")
-    add("")
-    add("// Speech-bubble lines, per companion and mood. Deliberately outside the")
-    add("// i18n string table: this is character voice, not UI chrome, and 32")
-    add("// translations of every joke is not a burden worth putting on translators.")
-    add("// Unused slots are nullptr; consult COMPANION_QUOTE_COUNTS for the real length.")
-    add("inline constexpr const char* COMPANION_QUOTES[COMPANION_COUNT][MOOD_COUNT][MAX_QUOTES_PER_MOOD] = {")
-    for name, _kind, _poses, quotes in companions:
-        add(f"    // {name}")
-        add("    {")
-        for mood in MOODS:
-            add(f"        // {mood}")
-            add("        {")
-            for quote in quotes[mood]:
-                add(f'            "{quote}",')
-            for _ in range(max_quotes - len(quotes[mood])):
-                add("            nullptr,")
-            add("        },")
-        add("    },")
-    add("};")
-    add("")
-    add("inline constexpr uint8_t COMPANION_QUOTE_COUNTS[COMPANION_COUNT][MOOD_COUNT] = {")
-    for name, _kind, _poses, quotes in companions:
-        counts = ", ".join(str(len(quotes[mood])) for mood in MOODS)
-        add(f"    {{{counts}}},  // {name}")
-    add("};")
-    add("")
-    max_ms = max(len(q["milestone"]) for _n, _k, _p, q in companions)
-    add(f"inline constexpr int MAX_MILESTONE_QUOTES = {max_ms};")
-    add("")
-    add("// Said once when the reader beats their own best streak.")
-    add("inline constexpr const char* COMPANION_MILESTONE_QUOTES[COMPANION_COUNT][MAX_MILESTONE_QUOTES] = {")
-    for name, _kind, _poses, quotes in companions:
-        add("    {")
-        for quote in quotes["milestone"]:
-            add(f'        "{quote}",')
-        for _ in range(max_ms - len(quotes["milestone"])):
-            add("        nullptr,")
-        add(f"    }},  // {name}")
-    add("};")
-    add("")
-    add("inline constexpr uint8_t COMPANION_MILESTONE_COUNTS[COMPANION_COUNT] = {")
-    for name, _kind, _poses, quotes in companions:
-        add(f'    {len(quotes["milestone"])},  // {name}')
     add("};")
     add("")
     add("}  // namespace companion")

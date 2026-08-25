@@ -71,9 +71,17 @@ class HomeActivity final : public Activity {
   // means one thing across the firmware.
   static constexpr unsigned long SYNC_ALL_HOLD_MS = 1000;
 
-  // Rotates the companion's line so each visit to Home gets a different one
-  // while it stays stable as the cursor moves around the menu.
-  uint32_t companionQuoteIndex = 0;
+  // Rolled once in onEnter() -- see quickpick::roll() -- and held stable while
+  // the cursor moves around the menu; a fresh visit to Home is what re-rolls
+  // it, not a redraw. Shown in the companion's speech bubble in place of a
+  // mood quote, and handed to QuickPickActivity unchanged when activated, so
+  // the two always agree about what was just suggested. Kept in sync with
+  // whatever QuickPickActivity ends up holding (its own Random action can
+  // change it) via its result on the way back -- see activateCompanion().
+  std::string homeSuggestionText;
+  std::string homeSuggestionItemId;
+  bool homeSuggestionIsHabit = false;
+  bool homeSuggestionPoolEmpty = true;
   // Advances on every home repaint to drive the walk cycle. Driven by redraws
   // rather than a timer, so the character only moves when the screen was going
   // to be painted anyway - a timer would keep the panel refreshing, block the
@@ -84,9 +92,10 @@ class HomeActivity final : public Activity {
   // theme set aside inside the cover card. No-op when disabled, or when the
   // theme handed back no room. Draws a focus outline when focused is true.
   void drawCompanion(Rect region, bool focused) const;
-  // Rolls a weighted-random pending task/habit and opens QuickPickActivity
-  // with it. No-op when the companion is off or has no room on this theme --
-  // there is nothing to have focused in that case.
+  // Opens QuickPickActivity showing homeSuggestion* -- the same pick already
+  // in the bubble, not a fresh roll, so entering the screen never surprises
+  // you with something different from what you just saw. No-op when the
+  // companion is off or has no room on this theme.
   void activateCompanion();
 
   void onSelectBook(const std::string& path);

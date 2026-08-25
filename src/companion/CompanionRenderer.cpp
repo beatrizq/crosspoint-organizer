@@ -187,34 +187,10 @@ const char* moodLabel(const Mood mood) {
       return tr(STR_COMPANION_MOOD_PECKISH);
     case Mood::Neglected:
       return tr(STR_COMPANION_MOOD_NEGLECTED);
+    case Mood::Milestone:
+      return tr(STR_COMPANION_MOOD_MILESTONE);
   }
   return tr(STR_COMPANION_MOOD_HAPPY);
-}
-
-const char* quoteFor(const CompanionId id, const Mood mood, const uint32_t rotation) {
-  const auto companionIndex = static_cast<uint8_t>(id);
-  const auto moodIndex = static_cast<uint8_t>(mood);
-  if (companionIndex >= COMPANION_COUNT || moodIndex >= MOOD_COUNT) return nullptr;
-
-  const uint8_t count = COMPANION_QUOTE_COUNTS[companionIndex][moodIndex];
-  if (count == 0) return nullptr;
-  return COMPANION_QUOTES[companionIndex][moodIndex][rotation % count];
-}
-
-uint8_t quoteCountFor(const CompanionId id, const Mood mood) {
-  const auto companionIndex = static_cast<uint8_t>(id);
-  const auto moodIndex = static_cast<uint8_t>(mood);
-  if (companionIndex >= COMPANION_COUNT || moodIndex >= MOOD_COUNT) return 0;
-  return COMPANION_QUOTE_COUNTS[companionIndex][moodIndex];
-}
-
-const char* milestoneQuoteFor(const CompanionId id, const uint32_t rotation) {
-  const auto companionIndex = static_cast<uint8_t>(id);
-  if (companionIndex >= COMPANION_COUNT) return nullptr;
-
-  const uint8_t count = COMPANION_MILESTONE_COUNTS[companionIndex];
-  if (count == 0) return nullptr;
-  return COMPANION_MILESTONE_QUOTES[companionIndex][rotation % count];
 }
 
 }  // namespace companion
