@@ -575,8 +575,17 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
                                     bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
   const int tileY = rect.y;
   const bool hasContinueReading = !recentBooks.empty();
+  // Drawn smaller than the card actually allows, and centred in the
+  // difference, so the selection frame below has real margin to sit in --
+  // full size left only ~8px of slack, not enough for the grey fill to read
+  // clearly. The thumbnail itself is still generated/cached at the full
+  // homeCoverHeight (see getCoverThumbPath below); only how it is drawn here
+  // shrinks, via drawBitmap's own scale-to-fit path.
+  constexpr int coverShrink = 20;
+  const int drawnCoverHeight = LyraMetrics::values.homeCoverHeight - coverShrink;
+  const int coverYOffset = coverShrink / 2;
   if (coverWidth == 0) {
-    coverWidth = LyraMetrics::values.homeCoverHeight * 0.6;
+    coverWidth = static_cast<int>(drawnCoverHeight * 0.6f);
   }
 
   // Draw book card regardless, fill with message based on `hasContinueReading`
@@ -598,9 +607,15 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
         if (Storage.openFileForRead("HOME", coverBmpPath, file)) {
           Bitmap bitmap(file);
           if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-            coverWidth = bitmap.getWidth();
-            renderer.drawBitmap(bitmap, tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,
-                                LyraMetrics::values.homeCoverHeight);
+            // Scaled from the thumbnail's native size (generated at the full
+            // homeCoverHeight) down to drawnCoverHeight, aspect preserved --
+            // coverWidth has to reflect the *drawn* size, not the source
+            // bitmap's, since the border/selection frame/companion column
+            // below all key off it.
+            coverWidth = static_cast<int>(bitmap.getWidth() *
+                                          (static_cast<float>(drawnCoverHeight) / static_cast<float>(bitmap.getHeight())));
+            renderer.drawBitmap(bitmap, tileX + hPaddingInSelection, tileY + hPaddingInSelection + coverYOffset,
+                                coverWidth, drawnCoverHeight);
           } else {
             hasCover = false;
           }
@@ -609,15 +624,15 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
       }
 
       // Draw either way
-      renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,
-                        LyraMetrics::values.homeCoverHeight, true);
+      renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection + coverYOffset, coverWidth,
+                        drawnCoverHeight, true);
 
       if (!hasCover) {
         // Render empty cover
-        renderer.fillRect(tileX + hPaddingInSelection,
-                          tileY + hPaddingInSelection + (LyraMetrics::values.homeCoverHeight / 3), coverWidth,
-                          2 * LyraMetrics::values.homeCoverHeight / 3, true);
-        renderer.drawIcon(CoverIcon, tileX + hPaddingInSelection + 24, tileY + hPaddingInSelection + 24, 32);
+        renderer.fillRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection + coverYOffset + drawnCoverHeight / 3,
+                          coverWidth, 2 * drawnCoverHeight / 3, true);
+        renderer.drawIcon(CoverIcon, tileX + hPaddingInSelection + 24, tileY + hPaddingInSelection + coverYOffset + 24,
+                          32);
       }
 
       coverBufferStored = storeCoverBuffer();
@@ -635,23 +650,16 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
       // HomeActivity::render()), so a fill spanning the artwork's own bounds
       // would paint straight over it. Four strips, each entirely outside
       // those bounds, avoid that without needing to redraw the cover.
-      //
-      // Padded out by only 3px: there is just ~8px of slack above and below
-      // the 226px cover in a 242px card, and drawHeader's own 3px divider
-      // lands 3px above it, so this is close to the most this edge can spare.
-      constexpr int selectionPad = 3;
+      constexpr int selectionPad = coverShrink / 2;
       const int coverX = tileX + hPaddingInSelection;
-      const int coverY = tileY + hPaddingInSelection;
+      const int coverY = tileY + hPaddingInSelection + coverYOffset;
       const int outerX = coverX - selectionPad;
       const int outerY = coverY - selectionPad;
       const int outerW = coverWidth + selectionPad * 2;
       renderer.fillRectDither(outerX, outerY, outerW, selectionPad, Color::LightGray);  // top
-      renderer.fillRectDither(outerX, coverY + LyraMetrics::values.homeCoverHeight, outerW, selectionPad,
-                              Color::LightGray);  // bottom
-      renderer.fillRectDither(outerX, coverY, selectionPad, LyraMetrics::values.homeCoverHeight,
-                              Color::LightGray);  // left
-      renderer.fillRectDither(coverX + coverWidth, coverY, selectionPad, LyraMetrics::values.homeCoverHeight,
-                              Color::LightGray);  // right
+      renderer.fillRectDither(outerX, coverY + drawnCoverHeight, outerW, selectionPad, Color::LightGray);  // bottom
+      renderer.fillRectDither(outerX, coverY, selectionPad, drawnCoverHeight, Color::LightGray);  // left
+      renderer.fillRectDither(coverX + coverWidth, coverY, selectionPad, drawnCoverHeight, Color::LightGray);  // right
     }
 
     // The title and author used to be drawn here, beside the cover. They are not
