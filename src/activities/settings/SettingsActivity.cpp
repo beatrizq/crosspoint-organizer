@@ -11,6 +11,9 @@
 #include "AppOrderActivity.h"
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
+#include "ClockOffsetActivity.h"
+#include "ClockSyncActivity.h"
+#include "CompanionSettingsActivity.h"
 #include "CrossPointSettings.h"
 #include "FontDownloadActivity.h"
 #include "GCalSettingsActivity.h"
@@ -87,6 +90,7 @@ void SettingsActivity::rebuildSettingsLists() {
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_COMPANION, SettingAction::Companion));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
   // After App Order, as asked: it is a property of the set of apps rather than of
   // any one of them, so it belongs with the other cross-app rows.
@@ -108,6 +112,11 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.insert(readerSettings.begin() + 1,
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  // Not reader-specific (see clockFormat's own comment in SettingsList.h), so
+  // the offset editor and manual sync live in Display rather than nested under
+  // the reader's status bar screen.
+  displaySettings.push_back(SettingInfo::Action(StrId::STR_CLOCK_UTC_OFFSET, SettingAction::ClockOffset));
+  displaySettings.push_back(SettingInfo::Action(StrId::STR_CLOCK_SYNC_NOW, SettingAction::ClockSync));
 
   // Update currentSettings pointer and count for the active category
   applyCategorySelection();
@@ -428,6 +437,9 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::Habitify:
         startActivityForResult(std::make_unique<HabitifySettingsActivity>(renderer, mappedInput), resultHandler);
         break;
+      case SettingAction::Companion:
+        startActivityForResult(std::make_unique<CompanionSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
       case SettingAction::AppOrder:
         startActivityForResult(std::make_unique<AppOrderActivity>(renderer, mappedInput), resultHandler);
         break;
@@ -463,6 +475,13 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::Language:
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::ClockOffset:
+        // Saves on exit itself, like it did nested under Customise Status Bar.
+        startActivityForResult(std::make_unique<ClockOffsetActivity>(renderer, mappedInput), nullptr);
+        break;
+      case SettingAction::ClockSync:
+        startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::None:
         // Do nothing

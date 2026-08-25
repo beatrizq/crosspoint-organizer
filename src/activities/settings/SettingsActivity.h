@@ -21,6 +21,7 @@ enum class SettingAction {
   GoogleCalendar,
   Ynab,
   Habitify,
+  Companion,
   AppOrder,
   OPDSBrowser,
   Network,
@@ -30,6 +31,8 @@ enum class SettingAction {
   Language,
   DownloadFonts,
   TextSettings,
+  ClockOffset,
+  ClockSync,
 };
 
 struct SettingInfo {
