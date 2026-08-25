@@ -42,6 +42,9 @@
 namespace {
 constexpr int hPaddingInSelection = 8;
 constexpr int cornerRadius = 6;
+// Shared with the selection box drawButtonGrid draws around a selected tile,
+// so a selected cover, companion, and app tile all read as the same gesture.
+constexpr int selectionLineWidth = 2;
 constexpr int topHintButtonY = 345;
 constexpr int maxListValueWidth = 200;
 constexpr int mainMenuIconSize = 32;
@@ -626,25 +629,15 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     const int tileX = LyraMetrics::values.contentSidePadding;
 
     if (bookSelected) {
-      // A rail down the left of the cover, not an outline around it.
-      //
-      // An outline was the obvious choice - it is how drawButtonGrid marks a
-      // selected tile - but this card has no room for one. The cover is 226px in
-      // a 242px card, so 8px of slack above and below, and drawHeader lays a 3px
-      // divider at y+height-3, which lands 3px above the cover. Any outline wide
-      // enough to read merges into that divider at the top and overruns the card
-      // at the bottom: measured, the most it could take is 3px, less than the 4
-      // that already looked cramped against the artwork.
-      //
-      // The gutter left of the cover is free, runs its full height, and sits next
-      // to nothing else. A rail there is unambiguous, costs a fraction of the ink
-      // the old dithered strips did, and leaves the companion column alone -
-      // which is what the dither used to ruin.
-      constexpr int railWidth = 4;
-      constexpr int railGap = 4;  // between the rail and the cover's edge
-      const int railX = tileX + hPaddingInSelection - railGap - railWidth;
-      renderer.fillRoundedRect(railX, tileY + hPaddingInSelection, railWidth, LyraMetrics::values.homeCoverHeight,
-                               railWidth / 2, Color::Black);
+      // Same language as a selected grid tile (drawButtonGrid) and the
+      // companion column: a rounded outline. Traced right at the cover art's
+      // own bounds rather than padded outward from them, since there is only
+      // ~8px of slack above and below the 226px cover in a 242px card, and
+      // drawHeader's own 3px divider lands 3px above it -- there is no room
+      // to pad a box around the artwork the way a grid tile pads one around
+      // its icon+label.
+      renderer.drawRoundedRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,
+                               LyraMetrics::values.homeCoverHeight, selectionLineWidth, cornerRadius, true);
     }
 
     // The title and author used to be drawn here, beside the cover. They are not
@@ -683,7 +676,6 @@ void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount
   // the box that marks the selection.
   constexpr int labelGap = 10;
   constexpr int selectionPadding = 8;
-  constexpr int selectionLineWidth = 2;
 
   const int labelHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int contentHeight = homeGridIconSize + labelGap + labelHeight;

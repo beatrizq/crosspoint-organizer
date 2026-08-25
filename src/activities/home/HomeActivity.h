@@ -56,6 +56,16 @@ class HomeActivity final : public Activity {
   // themes that carry reading as a menu entry instead.
   int leadingRecentCount() const;
 
+  // Where the companion sits in the cycle order, or -1 when it is off or the
+  // theme gave it no room. Not an entries[] index -- the companion is not a
+  // grid tile or a book, it is an extra stop inserted right after the
+  // leading cover(s) and before the first grid tile, so the same Prev/Next
+  // buttons and swipes that already cycle the menu pass through it too. Any
+  // selectorIndex at or past this value that isn't exactly this value maps to
+  // entries[selectorIndex - 1] instead of entries[selectorIndex] -- see
+  // toEntryIndex/fromEntryIndex in the .cpp.
+  int companionSlotIndex() const;
+
   // Hold threshold for "sync everything" on the Settings button. The same
   // 1000ms the organizer screens use for their hold-to-sync, so one gesture
   // means one thing across the firmware.
@@ -72,8 +82,12 @@ class HomeActivity final : public Activity {
 
   // Draws the companion, its speech bubble and its status into the column the
   // theme set aside inside the cover card. No-op when disabled, or when the
-  // theme handed back no room.
-  void drawCompanion(Rect region) const;
+  // theme handed back no room. Draws a focus outline when focused is true.
+  void drawCompanion(Rect region, bool focused) const;
+  // Rolls a weighted-random pending task/habit and opens QuickPickActivity
+  // with it. No-op when the companion is off or has no room on this theme --
+  // there is nothing to have focused in that case.
+  void activateCompanion();
 
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();

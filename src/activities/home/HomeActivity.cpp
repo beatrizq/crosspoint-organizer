@@ -5,17 +5,23 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <HabitifyHabitCache.h>
 #include <I18n.h>
+#include <QuickPick.h>
+#include <TodoistTaskCache.h>
 #include <Utf8.h>
 #include <Xtc.h>
+#include <esp_random.h>
 
 #include <cstring>
+#include <memory>
 #include <vector>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
+#include "QuickPickActivity.h"
 #include "RecentBooksStore.h"
 #include "companion/CompanionRenderer.h"
 #include "companion/CompanionState.h"
@@ -42,12 +48,41 @@ HomeMenuItem homeMenuItemFor(const homeAppOrder::AppId id) {
   }
   return HomeMenuItem::NONE;
 }
+
+// Expanded selectorIndex (which may point at the companion's own slot) ->
+// entries[] index, or -1 when selIdx *is* the companion slot. companionSlot
+// < 0 means there is no slot at all, so every index passes through unchanged.
+int toEntryIndex(const int selIdx, const int companionSlot) {
+  if (companionSlot < 0) return selIdx;
+  if (selIdx == companionSlot) return -1;
+  return selIdx > companionSlot ? selIdx - 1 : selIdx;
+}
+
+// Inverse of toEntryIndex: an entries[] index -> the expanded selectorIndex
+// that points at it, for code that already has an entries[] position (touch
+// hit-testing, the initial-menu-item lookup) and needs to place the cursor in
+// the expanded space instead.
+int fromEntryIndex(const int entryIdx, const int companionSlot) {
+  if (companionSlot < 0) return entryIdx;
+  return entryIdx >= companionSlot ? entryIdx + 1 : entryIdx;
+}
 }  // namespace
 
-int HomeActivity::getMenuItemCount() const { return static_cast<int>(entries.size()); }
+int HomeActivity::getMenuItemCount() const {
+  return static_cast<int>(entries.size()) + (companionSlotIndex() >= 0 ? 1 : 0);
+}
 
 int HomeActivity::leadingRecentCount() const {
   return UITheme::getInstance().getMetrics().homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
+}
+
+int HomeActivity::companionSlotIndex() const {
+  if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return -1;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Rect rect = GUI.getHomeCompanionRect(
+      Rect{0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight});
+  if (rect.width <= 0) return -1;
+  return leadingRecentCount();
 }
 
 void HomeActivity::buildEntries() {
@@ -86,9 +121,19 @@ void HomeActivity::buildEntries() {
   }
 }
 
-void HomeActivity::drawCompanion(const Rect region) const {
+void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
   if (region.width <= 0 || region.height <= 0) return;
+
+  // Same visual language as a selected grid tile (LyraTheme::drawButtonGrid):
+  // a rounded outline, not a fill -- inverting a region this size would be a
+  // lot of ink to move on every selection change.
+  if (focused) {
+    constexpr int SELECTION_LINE_WIDTH = 2;
+    constexpr int SELECTION_CORNER_RADIUS = 6;
+    renderer.drawRoundedRect(region.x, region.y, region.width, region.height, SELECTION_LINE_WIDTH,
+                             SELECTION_CORNER_RADIUS, true);
+  }
 
   // Ported from JoshuaMillerCode/crosspoint-reader-companion's
   // drawCompanionColumn. Only the column form is kept: on this home screen the
@@ -215,6 +260,47 @@ void HomeActivity::drawCompanion(const Rect region) const {
   }
 }
 
+void HomeActivity::activateCompanion() {
+  if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
+
+  // Pool: every pending task not clearly scheduled for a future day (overdue,
+  // due today, or undated all count -- "give me something to do right now"
+  // is not served by handing back a task due in three weeks), plus every
+  // habit not yet complete today.
+  const auto& tasks = TODOIST_TASKS.getTasks();
+  const bool knowToday = !TODOIST_TASKS.getSyncDate().empty();
+  const uint16_t today = todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
+
+  std::vector<quickpick::WeightedItem> candidates;
+  candidates.reserve(tasks.size());
+  for (size_t i = 0; i < tasks.size(); i++) {
+    const bool isUpcoming = knowToday && tasks[i].dueDays != todoist::DUE_NONE && tasks[i].dueDays > today;
+    if (isUpcoming) continue;
+    candidates.push_back({static_cast<int>(i), false, 1});
+  }
+
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  for (size_t i = 0; i < habits.size(); i++) {
+    if (habits[i].isComplete()) continue;
+    candidates.push_back(
+        {static_cast<int>(i), true, quickpick::habitWeight(habits[i].shownCurrent(), habits[i].target)});
+  }
+
+  const uint32_t total = quickpick::totalWeight(candidates);
+  const int picked = total == 0 ? -1 : quickpick::pick(candidates, esp_random() % total);
+
+  if (picked < 0) {
+    startActivityForResult(std::make_unique<QuickPickActivity>(renderer, mappedInput, "", false, true), nullptr);
+    return;
+  }
+
+  const auto& item = candidates[static_cast<size_t>(picked)];
+  const std::string text = item.isHabit ? habits[static_cast<size_t>(item.sourceIndex)].name
+                                        : tasks[static_cast<size_t>(item.sourceIndex)].content;
+  startActivityForResult(std::make_unique<QuickPickActivity>(renderer, mappedInput, text, item.isHabit, false),
+                         nullptr);
+}
+
 void HomeActivity::loadRecentBooks(int maxBooks) {
   recentBooks.clear();
   const auto& books = RECENT_BOOKS.getBooks();
@@ -311,9 +397,10 @@ void HomeActivity::onEnter() {
 
   selectorIndex = 0;
   if (initialMenuItem != HomeMenuItem::NONE) {
+    const int companionSlot = companionSlotIndex();
     for (int i = 0; i < static_cast<int>(entries.size()); i++) {
       if (entries[i].item == initialMenuItem) {
-        selectorIndex = i;
+        selectorIndex = fromEntryIndex(i, companionSlot);
         break;
       }
     }
@@ -367,12 +454,25 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
-  const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto pageWidth = renderer.getScreenWidth();
 
-  auto activateSelection = [this] {
-    if (selectorIndex < 0 || selectorIndex >= static_cast<int>(entries.size())) return;
-    const HomeEntry& entry = entries[selectorIndex];
+  const int companionSlot = companionSlotIndex();
+  const bool companionVisible = companionSlot >= 0;
+  const Rect companionRect =
+      companionVisible
+          ? GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight})
+          : Rect{};
+  const int menuCount = static_cast<int>(entries.size()) + (companionVisible ? 1 : 0);
+
+  auto activateSelection = [this, companionSlot] {
+    if (selectorIndex == companionSlot) {
+      activateCompanion();
+      return;
+    }
+    const int entryIdx = toEntryIndex(selectorIndex, companionSlot);
+    if (entryIdx < 0 || entryIdx >= static_cast<int>(entries.size())) return;
+    const HomeEntry& entry = entries[entryIdx];
 
     if (entry.recentIndex >= 0 && entry.recentIndex < static_cast<int>(recentBooks.size())) {
       onSelectBook(recentBooks[entry.recentIndex].path);
@@ -411,6 +511,9 @@ void HomeActivity::loop() {
     }
   };
 
+  // The companion, when visible, is one more stop in this same cycle -- see
+  // companionSlotIndex() -- so Next/Prev and swipes reach it automatically
+  // with no special-casing here.
   buttonNavigator.onNext([this, menuCount] {
     selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
     requestUpdate();
@@ -454,6 +557,27 @@ void HomeActivity::loop() {
     return;
   }
 
+  // Checked ahead of the cover's own touch zone below, which spans the whole
+  // band width: without this, a tap anywhere in the companion's column would
+  // fall through and open the book instead.
+  if (companionVisible) {
+    int cx = 0;
+    int cy = 0;
+    if (mappedInput.wasScreenTouchDown(cx, cy) && cx >= companionRect.x && cx < companionRect.x + companionRect.width &&
+        cy >= companionRect.y && cy < companionRect.y + companionRect.height) {
+      if (selectorIndex != companionSlot) {
+        selectorIndex = companionSlot;
+        requestUpdate();
+      }
+      return;
+    }
+    if (mappedInput.wasTapInRect(companionRect.x, companionRect.y, companionRect.width, companionRect.height)) {
+      selectorIndex = companionSlot;
+      activateCompanion();
+      return;
+    }
+  }
+
   int tx = 0;
   int ty = 0;
   if (!recentBooks.empty() && mappedInput.wasScreenTouchDown(tx, ty) && tx >= 0 && tx < renderer.getScreenWidth() &&
@@ -474,13 +598,16 @@ void HomeActivity::loop() {
 
   const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
   const int leadingRecents = leadingRecentCount();
-  const int renderedMenuCount = menuCount - leadingRecents;
+  const int renderedMenuCount = static_cast<int>(entries.size()) - leadingRecents;
 
   // Down highlights the entry under the finger, a tap opens it. Shared by both
   // layouts so the grid and the list behave identically to the touch.
-  auto handleMenuTouch = [this, leadingRecents, &activateSelection](MappedInputManager::RowTouch touch,
-                                                                    int renderedIndex) {
-    const int touchedIndex = renderedIndex + leadingRecents;
+  // touchedIndex is an entries[] position; translated to the expanded space
+  // before touching selectorIndex, same as everywhere else that starts from
+  // an entries[] index.
+  auto handleMenuTouch = [this, leadingRecents, companionSlot, &activateSelection](
+                             MappedInputManager::RowTouch touch, int renderedIndex) {
+    const int touchedIndex = fromEntryIndex(renderedIndex + leadingRecents, companionSlot);
     if (touch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
@@ -549,10 +676,13 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
+  const int companionSlot = companionSlotIndex();
+
   // After the card, deliberately: storeCoverBuffer() runs inside that call, so
   // the cached snapshot holds the cover alone. Restoring it each paint is what
   // erases the previous companion frame before this one is drawn.
-  drawCompanion(GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight}));
+  drawCompanion(GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight}),
+               companionSlot >= 0 && selectorIndex == companionSlot);
   companionFrame++;
 
   // A beaten personal best takes over the bubble once. Cleared after the paint
@@ -574,7 +704,8 @@ void HomeActivity::render(RenderLock&&) {
   const int menuHeight = pageHeight - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
   GUI.drawButtonGrid(
-      renderer, Rect{0, menuTop, pageWidth, menuHeight}, renderedCount, selectorIndex - leadingRecents,
+      renderer, Rect{0, menuTop, pageWidth, menuHeight}, renderedCount,
+      toEntryIndex(selectorIndex, companionSlot) - leadingRecents,
       [&rows, leadingRecents](int index) {
         const char* label = rows[index + leadingRecents].label;
         return std::string(label != nullptr ? label : "");
