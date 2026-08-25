@@ -40,6 +40,7 @@ void CompanionSettingsActivity::onEnter() {
   Activity::onEnter();
   if (SETTINGS.companionId >= companion::COMPANION_COUNT) SETTINGS.companionId = 0;
   selectedIndex = 0;
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
 }
 
@@ -77,7 +78,13 @@ void CompanionSettingsActivity::loop() {
     return;
   }
 
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      swallowConfirmRelease = false;
+      return;
+    }
     handleSelection();
     requestUpdate();
     return;
