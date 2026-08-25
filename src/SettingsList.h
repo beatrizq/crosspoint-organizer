@@ -289,6 +289,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         buildCompanionCharacterSetting(),
         SettingInfo::Toggle(StrId::STR_COMPANION_ON_HOME, &CrossPointSettings::companionOnHome, "companionOnHome",
                             StrId::STR_CAT_DISPLAY),
+        SettingInfo::Toggle(StrId::STR_COMPANION_SHOW_MOOD_LABEL, &CrossPointSettings::companionShowMoodLabel,
+                            "companionShowMoodLabel", StrId::STR_CAT_DISPLAY),
 
         // --- Reader ---
         // Built-in font-family entry. Replaced per-call with a registry-aware

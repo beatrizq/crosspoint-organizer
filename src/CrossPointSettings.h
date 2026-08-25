@@ -312,6 +312,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t companionId = 0;
   // Draw the companion on the home screen (0 = off, 1 = on).
   uint8_t companionOnHome = 1;
+  // Show the mood word and streak/progress line under the companion on Home
+  // (0 = off, 1 = on). Off gives the sprite the freed space to draw a scale
+  // step bigger.
+  uint8_t companionShowMoodLabel = 1;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
   // Dictionary folder name under /dictionaries (empty = no dictionary)

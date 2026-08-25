@@ -118,24 +118,28 @@ void HomeActivity::drawCompanion(const Rect region) const {
   const int colH = region.height - MARGIN * 2;
   if (colW < MIN_BUBBLE_W) return;
 
-  const int labelH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
-  const int subH = renderer.getTextHeight(SMALL_FONT_ID) + DESCENDER_ALLOWANCE;
+  const bool showLabel = SETTINGS.companionShowMoodLabel != 0;
+  const int labelH = showLabel ? renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE : 0;
+  const int subH = showLabel ? renderer.getTextHeight(SMALL_FONT_ID) + DESCENDER_ALLOWANCE : 0;
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
   const int textW = colW - PAD * 2;
 
   // The mood label, and under it the line answering "why?" and "what next?". A
   // reachable target beats a tally, so progress toward Thriving wins when there
-  // is progress to report.
+  // is progress to report. Skipped entirely when the setting is off, so the
+  // sprite gets that height back instead.
   const auto id = CompanionTracker::activeId();
   const auto mood = COMPANION.currentMood();
-  const char* label = companion::moodLabel(mood);
+  const char* label = showLabel ? companion::moodLabel(mood) : nullptr;
   char sub[40] = "";
-  const uint16_t points = COMPANION.pointsToday();
-  const companion::MoodThresholds thresholds;
-  if (points >= thresholds.happyPoints && points < thresholds.thrivingPoints) {
-    snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingPoints - points);
-  } else if (COMPANION.hasValidClock() && COMPANION_STATE.ledger.streakDays > 0) {
-    snprintf(sub, sizeof(sub), tr(STR_COMPANION_STREAK_FORMAT), COMPANION_STATE.ledger.streakDays);
+  if (showLabel) {
+    const uint16_t points = COMPANION.pointsToday();
+    const companion::MoodThresholds thresholds;
+    if (points >= thresholds.happyPoints && points < thresholds.thrivingPoints) {
+      snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingPoints - points);
+    } else if (COMPANION.hasValidClock() && COMPANION_STATE.ledger.streakDays > 0) {
+      snprintf(sub, sizeof(sub), tr(STR_COMPANION_STREAK_FORMAT), COMPANION_STATE.ledger.streakDays);
+    }
   }
 
   const char* quote = COMPANION_STATE.milestonePending ? companion::milestoneQuoteFor(id, companionQuoteIndex)
@@ -153,7 +157,7 @@ void HomeActivity::drawCompanion(const Rect region) const {
   }
   const int bubbleH = lines.empty() ? 0 : static_cast<int>(lines.size()) * lineH + PAD * 2;
   const int bubbleBlock = lines.empty() ? 0 : bubbleH + TAIL_LENGTH + BUBBLE_GAP;
-  const int statusBlock = LABEL_GAP + labelH + SUBLABEL_GAP + (sub[0] != '\0' ? subH : 0);
+  const int statusBlock = showLabel ? LABEL_GAP + labelH + SUBLABEL_GAP + (sub[0] != '\0' ? subH : 0) : 0;
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 0;
@@ -199,13 +203,15 @@ void HomeActivity::drawCompanion(const Rect region) const {
   companion::drawPose(renderer, id, mood, laneX + (restless ? walkX : WALK_TRAVEL / 2),
                       restless ? spriteTop + bob : spriteTop, scale, restless && walkingBack);
 
-  const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
-  const int subW = sub[0] != '\0' ? renderer.getTextWidth(SMALL_FONT_ID, sub) : 0;
-  const int labelY = spriteTop + spriteH + BOB_HEIGHT + LABEL_GAP;
-  const int centreX = colX + colW / 2;
-  renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
-  if (subW > 0) {
-    renderer.drawText(SMALL_FONT_ID, centreX - subW / 2, labelY + labelH + SUBLABEL_GAP, sub);
+  if (label != nullptr) {
+    const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
+    const int subW = sub[0] != '\0' ? renderer.getTextWidth(SMALL_FONT_ID, sub) : 0;
+    const int labelY = spriteTop + spriteH + BOB_HEIGHT + LABEL_GAP;
+    const int centreX = colX + colW / 2;
+    renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
+    if (subW > 0) {
+      renderer.drawText(SMALL_FONT_ID, centreX - subW / 2, labelY + labelH + SUBLABEL_GAP, sub);
+    }
   }
 }
 
