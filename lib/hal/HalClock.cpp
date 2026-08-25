@@ -127,8 +127,6 @@ bool HalClock::formatTime(char* buf, size_t bufSize, uint8_t utcOffsetQuarterHou
 }
 
 bool HalClock::syncFromNTP() {
-  if (!_available) return false;
-
   if (WiFi.status() != WL_CONNECTED) {
     LOG_ERR("CLK", "WiFi not connected, cannot sync NTP");
     return false;
@@ -144,6 +142,15 @@ bool HalClock::syncFromNTP() {
       time_t now = time(nullptr);
       struct tm timeinfo;
       gmtime_r(&now, &timeinfo);
+
+      if (!_available) {
+        // No hardware RTC to write: configTzTime() above already set the
+        // system clock, which is the only UTC source getTime()/getUtcDateTime()
+        // read from on these boards (see their fallback comment).
+        LOG_INF("CLK", "System clock synced to %04u-%02u-%02u %02u:%02u:%02u UTC", timeinfo.tm_year + 1900,
+                timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        return true;
+      }
 
       Rtc::DateTime dt;
       dt.year = static_cast<uint16_t>(timeinfo.tm_year + 1900);
