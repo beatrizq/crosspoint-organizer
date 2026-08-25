@@ -73,6 +73,9 @@ class HabitsActivity final : public OrganizerScreenActivity {
   void completeSelectedHabit();
   void performIncrement(int cacheIndex, float amount);
   void performSync();
+  // The Options menu's "Focus session" entry opens this: a duration picker,
+  // then organizerActions::beginFocusSession() for the same habit.
+  void offerFocusSession(int cacheIndex);
   // Renders progress as "x/y", or as a bare count for a habit with no goal.
   void formatProgress(const HabitifyHabit& habit, char* out, size_t outSize) const;
 };

@@ -101,13 +101,40 @@ void QuickPickActivity::showOptions() {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
-        if (std::get<OptionPickResult>(result.data).index != 0) return;  // Focus session: nothing yet.
-        if (isHabit) {
-          logSuggestedHabit();
-        } else {
-          completeSuggestedTask();
+        const int idx = std::get<OptionPickResult>(result.data).index;
+        if (idx == 0) {
+          if (isHabit) {
+            logSuggestedHabit();
+          } else {
+            completeSuggestedTask();
+          }
+        } else if (idx == 1) {
+          offerFocusSession();
         }
       });
+}
+
+void QuickPickActivity::offerFocusSession() {
+  const std::string capturedText = pickedText;
+  const std::string capturedItemId = itemId;
+  const bool capturedIsHabit = isHabit;
+
+  startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
+                                                               organizerActions::focusSessionDurationOptions()),
+                         [this, capturedText, capturedItemId, capturedIsHabit](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           const int idx = std::get<OptionPickResult>(result.data).index;
+                           if (idx < 0 || idx >= 3) return;
+                           organizerActions::beginFocusSession(capturedText, capturedItemId, capturedIsHabit,
+                                                               organizerActions::FOCUS_SESSION_DURATIONS_MINUTES[idx],
+                                                               renderer, mappedInput);
+                         });
 }
 
 void QuickPickActivity::completeSuggestedTask() {

@@ -98,6 +98,9 @@ class TasksActivity final : public OrganizerScreenActivity {
   void completeSelectedTask();
   void performTaskCompletion(int cacheIndex);
   void performTaskSync();
+  // The Options menu's "Focus session" entry opens this: a duration picker,
+  // then organizerActions::beginFocusSession() for the same task.
+  void offerFocusSession(int cacheIndex);
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};

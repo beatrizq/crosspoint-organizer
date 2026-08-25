@@ -1,9 +1,18 @@
 #include "OrganizerActions.h"
 
+#include <CompanionMood.h>
+#include <GfxRenderer.h>
 #include <HabitifyHabitCache.h>
+#include <HalClock.h>
+#include <I18n.h>
 #include <Logging.h>
 #include <TodoistTaskCache.h>
 
+#include <cstdio>
+#include <memory>
+
+#include "activities/ActivityManager.h"
+#include "activities/home/FocusSessionActivity.h"
 #include "companion/CompanionTracker.h"
 
 namespace organizerActions {
@@ -33,6 +42,47 @@ void logHabit(const size_t cacheIndex, const float amount) {
   // A completion is one of the two things the companion reacts to; credit it
   // immediately in case this press is what pushed a habit to isComplete().
   COMPANION.recordActivity();
+}
+
+bool computeFocusSessionEnd(const int durationMinutes, int32_t& endAbsMinutes, uint8_t& endHourUtc,
+                            uint8_t& endMinuteUtc) {
+  uint16_t year;
+  uint8_t month, day, hour, minute;
+  if (!halClock.getUtcDateTime(year, month, day, hour, minute)) return false;
+
+  // Offset 0: a plain UTC day number, since this value only ever gets
+  // compared against another one computed the same way (see
+  // FocusSessionActivity::onEnter()) -- the user's timezone plays no part in
+  // measuring elapsed time, only in how endHourUtc/endMinuteUtc get displayed.
+  const int32_t dayNumber = companion::localDayNumber(year, month, day, hour, minute, 0);
+  endAbsMinutes = dayNumber * 1440 + hour * 60 + minute + durationMinutes;
+
+  const int32_t endOfDayMinutes = ((hour * 60 + minute + durationMinutes) % 1440 + 1440) % 1440;
+  endHourUtc = static_cast<uint8_t>(endOfDayMinutes / 60);
+  endMinuteUtc = static_cast<uint8_t>(endOfDayMinutes % 60);
+  return true;
+}
+
+void beginFocusSession(const std::string& text, const std::string& itemId, const bool isHabit,
+                       const int durationMinutes, GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  int32_t endAbsMinutes = 0;
+  uint8_t endHourUtc = 0;
+  uint8_t endMinuteUtc = 0;
+  if (!computeFocusSessionEnd(durationMinutes, endAbsMinutes, endHourUtc, endMinuteUtc)) return;
+
+  activityManager.replaceActivity(std::make_unique<FocusSessionActivity>(renderer, mappedInput, text, itemId, isHabit,
+                                                                         endAbsMinutes, endHourUtc, endMinuteUtc));
+}
+
+std::vector<std::string> focusSessionDurationOptions() {
+  std::vector<std::string> options;
+  options.reserve(3);
+  for (const int minutes : FOCUS_SESSION_DURATIONS_MINUTES) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), tr(STR_SLEEP_TIMER_VALUE_FORMAT), static_cast<unsigned>(minutes));
+    options.emplace_back(buf);
+  }
+  return options;
 }
 
 }  // namespace organizerActions

@@ -34,6 +34,13 @@ void CrossPointState::toJson(JsonDocument& doc) const {
   doc["quickPickItemId"] = quickPickItemId;
   doc["quickPickIsHabit"] = quickPickIsHabit;
   doc["quickPickPoolEmpty"] = quickPickPoolEmpty;
+  doc["focusSessionActive"] = focusSessionActive;
+  doc["focusSessionText"] = focusSessionText;
+  doc["focusSessionItemId"] = focusSessionItemId;
+  doc["focusSessionIsHabit"] = focusSessionIsHabit;
+  doc["focusSessionEndAbsMinutes"] = focusSessionEndAbsMinutes;
+  doc["focusSessionEndHour"] = focusSessionEndHour;
+  doc["focusSessionEndMinute"] = focusSessionEndMinute;
 }
 
 bool CrossPointState::fromJson(JsonVariantConst doc) {
@@ -61,5 +68,12 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
   quickPickItemId = doc["quickPickItemId"] | "";
   quickPickIsHabit = doc["quickPickIsHabit"] | false;
   quickPickPoolEmpty = doc["quickPickPoolEmpty"] | false;
+  focusSessionActive = doc["focusSessionActive"] | false;
+  focusSessionText = doc["focusSessionText"] | "";
+  focusSessionItemId = doc["focusSessionItemId"] | "";
+  focusSessionIsHabit = doc["focusSessionIsHabit"] | false;
+  focusSessionEndAbsMinutes = doc["focusSessionEndAbsMinutes"] | static_cast<int32_t>(0);
+  focusSessionEndHour = doc["focusSessionEndHour"] | static_cast<uint8_t>(0);
+  focusSessionEndMinute = doc["focusSessionEndMinute"] | static_cast<uint8_t>(0);
   return true;
 }

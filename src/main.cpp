@@ -34,6 +34,7 @@
 #include "YnabStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/home/FocusSessionActivity.h"
 #include "activities/home/QuickPickActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "companion/CompanionState.h"
@@ -450,8 +451,19 @@ void setup() {
     // through to the sleep-wake "resume reader"/"resume quick-pick" logic
     // below, which fires on stale flags from a prior session.
     activityManager.goHome();
-  } else if (APP_STATE.lastSleepFromQuickPick &&
-             !mappedInputManager.isPressed(MappedInputManager::Button::Back)) {
+  } else if (APP_STATE.focusSessionActive) {
+    // No Back-held escape hatch here, unlike the branches below: a focus
+    // session is a deliberate commitment device (see FocusSessionActivity),
+    // and letting a reboot bypass it the same way the reader/quick-pick
+    // resumes do would make a reboot a free way around it. Whether the lock
+    // is actually still in effect (versus having quietly finished while the
+    // device was off) is resolved by FocusSessionActivity's own onEnter()
+    // against the wall clock, not here.
+    activityManager.replaceActivity(std::make_unique<FocusSessionActivity>(
+        renderer, mappedInputManager, APP_STATE.focusSessionText, APP_STATE.focusSessionItemId,
+        APP_STATE.focusSessionIsHabit, APP_STATE.focusSessionEndAbsMinutes, APP_STATE.focusSessionEndHour,
+        APP_STATE.focusSessionEndMinute));
+  } else if (APP_STATE.lastSleepFromQuickPick && !mappedInputManager.isPressed(MappedInputManager::Button::Back)) {
     // Same escape hatch as the reader branch below: holding Back on wake skips
     // straight to home instead of putting the old pick back up.
     activityManager.replaceActivity(std::make_unique<QuickPickActivity>(

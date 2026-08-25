@@ -1,5 +1,11 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+class GfxRenderer;
+class MappedInputManager;
 
 /**
  * The cache-mutating core of "complete a task" / "log a habit", shared by
@@ -26,5 +32,28 @@ void completeTask(size_t cacheIndex);
 // an out-of-range index, a non-positive amount, or a habit with no unit (see
 // HabitifyHabit::unitSymbol -- nothing to log against a goal-less habit).
 void logHabit(size_t cacheIndex, float amount);
+
+// The end time for a focus session starting now and running `durationMinutes`,
+// as (endAbsMinutes: a UTC day-number*1440 + minute-of-day, comparable across
+// a reboot with no calendar bookkeeping) and (endHourUtc/endMinuteUtc: the
+// same moment as a UTC hour/minute, for display -- see
+// HalClock::formatHourMinute()). Returns false, leaving the out-params
+// untouched, if there is no valid clock to time the session against.
+bool computeFocusSessionEnd(int durationMinutes, int32_t& endAbsMinutes, uint8_t& endHourUtc, uint8_t& endMinuteUtc);
+
+// Starts a locked focus session for (text, itemId, isHabit) running
+// `durationMinutes` from now, replacing the current activity with
+// FocusSessionActivity. No-op if there is no valid clock to time it against
+// (see computeFocusSessionEnd()) -- the caller's screen is simply left as is.
+void beginFocusSession(const std::string& text, const std::string& itemId, bool isHabit, int durationMinutes,
+                       GfxRenderer& renderer, MappedInputManager& mappedInput);
+
+// Durations a focus session can be started for, in minutes -- index-matched
+// with focusSessionDurationOptions()'s labels below.
+inline constexpr int FOCUS_SESSION_DURATIONS_MINUTES[3] = {10, 20, 40};
+
+// "10 min" / "20 min" / "40 min", translated -- the options every "Focus
+// session" entry point offers via an OptionsMenuActivity.
+std::vector<std::string> focusSessionDurationOptions();
 
 }  // namespace organizerActions

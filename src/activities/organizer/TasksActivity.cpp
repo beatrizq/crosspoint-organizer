@@ -256,7 +256,7 @@ void TasksActivity::showRowOptions() {
   std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION)};
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
-      [this](const ActivityResult& result) {
+      [this, cacheIndex](const ActivityResult& result) {
         // Confirm may still be physically down (the popup answers on the
         // press, this screen on the release) -- same dance completeSelectedTask()
         // does below for the popup it pushes in turn.
@@ -267,9 +267,36 @@ void TasksActivity::showRowOptions() {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
-        // idx 1 (Focus session) has nothing to do yet.
-        if (std::get<OptionPickResult>(result.data).index == 0) completeSelectedTask();
+        const int idx = std::get<OptionPickResult>(result.data).index;
+        if (idx == 0) {
+          completeSelectedTask();
+        } else if (idx == 1) {
+          offerFocusSession(cacheIndex);
+        }
       });
+}
+
+void TasksActivity::offerFocusSession(const int cacheIndex) {
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
+  const std::string text = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].content;
+  const std::string id = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].id;
+
+  startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
+                                                               organizerActions::focusSessionDurationOptions()),
+                         [this, text, id](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           const int idx = std::get<OptionPickResult>(result.data).index;
+                           if (idx < 0 || idx >= 3) return;
+                           organizerActions::beginFocusSession(text, id, /*isHabit=*/false,
+                                                               organizerActions::FOCUS_SESSION_DURATIONS_MINUTES[idx],
+                                                               renderer, mappedInput);
+                         });
 }
 
 void TasksActivity::completeSelectedTask() {
