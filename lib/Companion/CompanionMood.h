@@ -27,6 +27,12 @@ struct MoodInput {
   // (brand new companion), or a clock correction; 1 = one full day with zero
   // activity; 2 = two, and so on.
   uint16_t daysSinceLastActive = 0;
+  // True once the ledger has ever recorded a qualifying day, even if it
+  // wasn't today. False only for a companion that has never once qualified --
+  // distinguishes "brand new, nothing earned yet" from "already did enough
+  // today" or "clock corrected backwards", both of which also read
+  // daysSinceLastActive as 0 but have real history to grace.
+  bool everQualified = false;
   // False when the RTC is absent or was never set (see HalClock::getDate).
   // Day arithmetic is meaningless then, so the decay ladder is skipped.
   bool clockValid = false;
@@ -38,7 +44,9 @@ struct MoodInput {
 // some activity today -> Happy, otherwise Peckish immediately and Neglected
 // once neglectedDays quiet days have passed. Mood reflects only today's own
 // effort -- a streak from a previous day earns nothing today it did not also
-// earn today.
+// earn today. A brand new companion (nothing ever qualified) starts at
+// Peckish rather than Happy: it has done nothing yet either, so there is
+// nothing to grace.
 //
 // Without a clock, elapsed days cannot be measured, so neglect is unknowable
 // and the result never falls below Happy. Today's task/habit counts are

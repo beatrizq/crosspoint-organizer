@@ -278,12 +278,15 @@ TEST(CompanionLedger, MoodDecaysAcrossQuietDays) {
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 60, true, 0, 0)), companion::Mood::Neglected);
 }
 
-TEST(CompanionLedger, FreshCompanionIsHappyNotNeglected) {
-  // Nothing has ever qualified, so there is nothing to have neglected.
+TEST(CompanionLedger, FreshCompanionStartsPeckishNotHappy) {
+  // Nothing has ever qualified, so there is nothing earned to grace: a brand
+  // new companion starts the ladder at Peckish, the same as any other day
+  // with zero activity, rather than getting a free Happy on day one.
   const DayLedger led;
   const auto in = companion::moodInputFor(led, kDay, true, 0, 0);
   EXPECT_EQ(in.daysSinceLastActive, 0);
-  EXPECT_EQ(companion::evaluate(in), companion::Mood::Happy);
+  EXPECT_FALSE(in.everQualified);
+  EXPECT_EQ(companion::evaluate(in), companion::Mood::Peckish);
 }
 
 TEST(CompanionLedger, BackwardsClockDoesNotReadAsNeglect) {
