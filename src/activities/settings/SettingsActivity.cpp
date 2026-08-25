@@ -11,6 +11,9 @@
 #include "AppOrderActivity.h"
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
+#include "ClockOffsetActivity.h"
+#include "ClockSyncActivity.h"
+#include "CompanionSettingsActivity.h"
 #include "CrossPointSettings.h"
 #include "FontDownloadActivity.h"
 #include "GCalSettingsActivity.h"
@@ -87,6 +90,7 @@ void SettingsActivity::rebuildSettingsLists() {
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_COMPANION, SettingAction::Companion));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
   // After App Order, as asked: it is a property of the set of apps rather than of
   // any one of them, so it belongs with the other cross-app rows.
@@ -108,6 +112,11 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.insert(readerSettings.begin() + 1,
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
+  // Not reader-specific (see clockFormat's own comment in SettingsList.h), so
+  // the offset editor and manual sync live in Display rather than nested under
+  // the reader's status bar screen.
+  displaySettings.push_back(SettingInfo::Action(StrId::STR_CLOCK_UTC_OFFSET, SettingAction::ClockOffset));
+  displaySettings.push_back(SettingInfo::Action(StrId::STR_CLOCK_SYNC_NOW, SettingAction::ClockSync));
 
   // Update currentSettings pointer and count for the active category
   applyCategorySelection();
@@ -339,23 +348,39 @@ void SettingsActivity::toggleCurrentSetting() {
     SETTINGS.*(setting.valuePtr) = !currentValue;
   } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
-    if (setting.enumValues.size() > 2) {
+    // Options come from enumStringValues when the labels are runtime strings
+    // (character names, SD font families) and from enumValues otherwise. Both
+    // must be consulted: a member-pointer enum backed only by string values
+    // would otherwise skip the popup and then take a modulo by zero below.
+    const uint8_t totalValues = setting.enumStringValues.empty()
+                                    ? static_cast<uint8_t>(setting.enumValues.size())
+                                    : static_cast<uint8_t>(setting.enumStringValues.size());
+    if (totalValues == 0) return;
+
+    if (totalValues > 2) {
       const auto valuePtr = setting.valuePtr;
-      optionPopup.show(setting.nameId, setting.enumValues.data(), static_cast<int>(setting.enumValues.size()),
-                       currentValue,
-                       [this, valuePtr, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
-                         SETTINGS.*valuePtr = idx;
-                         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
-                         SETTINGS.saveToFile();
-                         // After the save, because reverting writes settings of
-                         // its own and must not be undone by this one.
-                         if (sleepAppChanged) revertSleepScreenIfOff();
-                         rebuildSettingsLists();
-                       });
+      // Their structure, with this branch's own side effect kept and
+      // applyUiSettingChange dropped - that arrives with an upstream commit this
+      // branch does not have.
+      auto onSelect = [this, valuePtr, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
+        SETTINGS.*valuePtr = idx;
+        syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
+        SETTINGS.saveToFile();
+        // After the save, because reverting writes settings of its own and must
+        // not be undone by this one.
+        if (sleepAppChanged) revertSleepScreenIfOff();
+        rebuildSettingsLists();
+      };
+      if (!setting.enumStringValues.empty()) {
+        optionPopup.show(setting.nameId, setting.enumStringValues, currentValue, std::move(onSelect));
+      } else {
+        optionPopup.show(setting.nameId, setting.enumValues.data(), static_cast<int>(setting.enumValues.size()),
+                         currentValue, std::move(onSelect));
+      }
       requestUpdate();
       return;
     }
-    SETTINGS.*(setting.valuePtr) = (currentValue + 1) % static_cast<uint8_t>(setting.enumValues.size());
+    SETTINGS.*(setting.valuePtr) = (currentValue + 1) % totalValues;
   } else if (setting.type == SettingType::ENUM && setting.valueGetter && setting.valueSetter) {
     const uint8_t totalValues = setting.enumStringValues.empty()
                                     ? static_cast<uint8_t>(setting.enumValues.size())
@@ -412,6 +437,9 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::Habitify:
         startActivityForResult(std::make_unique<HabitifySettingsActivity>(renderer, mappedInput), resultHandler);
         break;
+      case SettingAction::Companion:
+        startActivityForResult(std::make_unique<CompanionSettingsActivity>(renderer, mappedInput), resultHandler);
+        break;
       case SettingAction::AppOrder:
         startActivityForResult(std::make_unique<AppOrderActivity>(renderer, mappedInput), resultHandler);
         break;
@@ -447,6 +475,13 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::Language:
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::ClockOffset:
+        // Saves on exit itself, like it did nested under Customise Status Bar.
+        startActivityForResult(std::make_unique<ClockOffsetActivity>(renderer, mappedInput), nullptr);
+        break;
+      case SettingAction::ClockSync:
+        startActivityForResult(std::make_unique<ClockSyncActivity>(renderer, mappedInput), nullptr);
         break;
       case SettingAction::None:
         // Do nothing
@@ -557,7 +592,16 @@ void SettingsActivity::render(RenderLock&&) {
           valueText = value ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
         } else if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
           const uint8_t value = SETTINGS.*(setting.valuePtr);
-          valueText = I18N.get(setting.enumValues[value]);
+          // Both label sources, and bounds-checked, exactly as the valueGetter
+          // branch below already did. A member-pointer enum whose labels are
+          // runtime strings - the companion character picker, whose names come
+          // from the generated sprite table - leaves enumValues empty, and this
+          // read walked off the end of it into the string table.
+          if (!setting.enumStringValues.empty()) {
+            if (value < setting.enumStringValues.size()) valueText = setting.enumStringValues[value];
+          } else if (value < setting.enumValues.size()) {
+            valueText = I18N.get(setting.enumValues[value]);
+          }
         } else if (setting.type == SettingType::ENUM && setting.valueGetter) {
           const uint8_t value = setting.valueGetter();
           if (!setting.enumStringValues.empty() && value < setting.enumStringValues.size()) {

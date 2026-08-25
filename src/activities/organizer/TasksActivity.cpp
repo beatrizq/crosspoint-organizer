@@ -20,6 +20,7 @@
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
@@ -174,8 +175,8 @@ void TasksActivity::drawRow(const RowLayout& layout) const {
 void TasksActivity::formatStatus(char* out, const size_t outSize) const {
   char date[16];
   organizer::formatDayLabel(civil::dateFromIso(TODOIST_TASKS.getSyncDate().c_str()), date, sizeof(date));
-  char count[48];
-  snprintf(count, sizeof(count), "%s: %d", tabLabel(tab()), rowCount());
+  char count[32];
+  snprintf(count, sizeof(count), tr(STR_TODOIST_DONE_TODAY), static_cast<int>(TODOIST_TASKS.getCompletedToday()));
   if (TODOIST_TASKS.hasPending()) {
     char waiting[32];
     snprintf(waiting, sizeof(waiting), tr(STR_TODOIST_PENDING_COMPLETIONS),
@@ -219,10 +220,16 @@ void TasksActivity::completeSelectedTask() {
       std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
                                              TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].content),
       [this, cacheIndex](const ActivityResult& result) {
-        // The popup answered on the press; this screen acts on the release, and
-        // the button may still be down.
+        // Confirm may still be physically down (the popup answers on the press,
+        // this screen on the release). Back is swallowed whenever the result was
+        // cancelled at all, since dismissing the popup with Back can itself be
+        // release-triggered - by then the button is no longer down, but the
+        // release is still what this screen would see next.
         if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
           swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
         }
         if (result.isCancelled) {
           LOG_DBG("TASKS", "Task completion cancelled");
@@ -254,6 +261,9 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
   TODOIST_TASKS.saveToFile();
+  // A completion is one of the two things the companion reacts to; credit it
+  // immediately rather than waiting for the next sync or Home visit.
+  COMPANION.recordActivity();
   // The sleep screen tracks the list, not the sync: a task completed with the
   // radio off changes what is on screen just as much as a fetch does.
   updateSleepScreen();

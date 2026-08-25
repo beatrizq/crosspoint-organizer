@@ -203,7 +203,17 @@ void OrganizerScreenActivity::finishSync(const char* failureMessage) {
 void OrganizerScreenActivity::loop() {
   if (state == State::SYNCING) return;  // ignore input while the sync blocks
 
+  // A press seen here is a fresh one, so nothing is owed any more.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) swallowBackRelease = false;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (swallowBackRelease) {
+      // The tail of the press that cancelled a popup pushed from this screen.
+      // Acting on it would leave the screen entirely instead of just closing
+      // the popup that press already closed.
+      swallowBackRelease = false;
+      return;
+    }
     onGoHome(homeItem());
     return;
   }

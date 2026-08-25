@@ -159,7 +159,15 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       const uint8_t fieldDefault = s.*(info.valuePtr);  // struct-initializer default, read before we overwrite it
       uint8_t v = doc[info.key] | fieldDefault;
       if (info.type == SettingType::ENUM) {
-        v = clamp(v, (uint8_t)info.enumValues.size(), fieldDefault);
+        // Some ENUM settings (the companion picker) list their choices in
+        // enumStringValues rather than enumValues, since the labels are
+        // runtime strings, not StrIds. enumValues.size() alone would clamp
+        // those to zero options and silently reset every saved choice back
+        // to the struct default on every load. Same fallback SettingsActivity
+        // and the web settings API already use to size the popup/API range.
+        const uint8_t totalValues =
+            info.enumStringValues.empty() ? (uint8_t)info.enumValues.size() : (uint8_t)info.enumStringValues.size();
+        v = clamp(v, totalValues, fieldDefault);
       } else if (info.type == SettingType::TOGGLE) {
         v = clamp(v, (uint8_t)2, fieldDefault);
       } else if (info.type == SettingType::VALUE) {

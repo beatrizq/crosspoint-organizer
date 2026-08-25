@@ -1,0 +1,7 @@
+# Enum + persisted-id order. Append only: reordering invalidates saved choices.
+sophocles
+vellum
+octavo
+lumen
+sprig
+pankeeki

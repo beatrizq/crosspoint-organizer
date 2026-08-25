@@ -26,6 +26,7 @@
 
 #include "CrossPointSettings.h"
 #include "activities/RenderLock.h"
+#include "companion/CompanionTracker.h"
 #include "util/HomeAppOrder.h"
 #include "util/TaskWatchdog.h"
 
@@ -329,6 +330,9 @@ const char* runHabits() {
     HABITIFY_HABITS.setHabits(std::move(fetched), date);
   }
   HABITIFY_HABITS.saveToFile();
+  // Catches a habit completed elsewhere (the Habitify app itself, say) that
+  // this device never saw a local press for.
+  COMPANION.recordActivity();
   return error == HabitifyClient::OK ? nullptr : habitErrorText(error);
 }
 

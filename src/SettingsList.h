@@ -1,7 +1,6 @@
 #pragma once
 
 #include <BoardConfig.h>
-#include <HalClock.h>
 #include <HalTiltSensor.h>
 #include <I18n.h>
 #include <SdCardFontRegistry.h>
@@ -16,6 +15,7 @@
 #include "KOReaderCredentialStore.h"
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
+#include "companion/CompanionSprites.generated.h"
 #include "util/DictionaryRegistry.h"
 
 /**
@@ -197,6 +197,35 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
   return s;
 }
 
+// Companion picker. The options are the generated character names, so adding a
+// .grid file surfaces a new choice with no change here. Category is
+// STR_COMPANION, not STR_CAT_DISPLAY: it still needs to be in this list for
+// toJson()/fromJson() (persistence walks this list by key, not by category),
+// but the on-device UI reaches it through its own dedicated screen
+// (CompanionSettingsActivity, off the Organizer tab) rather than the generic
+// Display list, so it must not also match one of the five on-device buckets.
+inline SettingInfo buildCompanionCharacterSetting() {
+  SettingInfo s;
+  s.nameId = StrId::STR_COMPANION_CHARACTER;
+  s.type = SettingType::ENUM;
+  s.valuePtr = &CrossPointSettings::companionId;
+  s.key = "companionId";
+  s.category = StrId::STR_COMPANION;
+  // Name plus species, because a list of bare proper nouns tells you nothing
+  // about what you are choosing. The popup cannot show sprites: its FreeInkUI
+  // DialogOption has no icon slot, and adding one would mean patching the SDK
+  // submodule and losing it on the next update.
+  s.enumStringValues.reserve(companion::COMPANION_COUNT);
+  for (int i = 0; i < companion::COMPANION_COUNT; i++) {
+    std::string label = companion::COMPANION_NAMES[i];
+    label += " (";
+    label += companion::COMPANION_KINDS[i];
+    label += ")";
+    s.enumStringValues.emplace_back(std::move(label));
+  }
+  return s;
+}
+
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
@@ -254,6 +283,16 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           "uiTheme", StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
+
+        // --- Companion (persisted here, rendered by its own dedicated screen --
+        // see the comment on buildCompanionCharacterSetting()) ---
+        SettingInfo::Toggle(StrId::STR_COMPANION_ENABLED, &CrossPointSettings::companionEnabled, "companionEnabled",
+                            StrId::STR_COMPANION),
+        buildCompanionCharacterSetting(),
+        SettingInfo::Toggle(StrId::STR_COMPANION_ON_HOME, &CrossPointSettings::companionOnHome, "companionOnHome",
+                            StrId::STR_COMPANION),
+        SettingInfo::Toggle(StrId::STR_COMPANION_SHOW_MOOD_LABEL, &CrossPointSettings::companionShowMoodLabel,
+                            "companionShowMoodLabel", StrId::STR_COMPANION),
 
         // --- Reader ---
         // Built-in font-family entry. Replaced per-call with a registry-aware
@@ -435,15 +474,21 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &CrossPointSettings::xtcStatusBarMode,
                           {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP}, "xtcStatusBarMode",
                           StrId::STR_CUSTOMISE_STATUS_BAR),
-        // Clock entries (web settings only; device UI uses ClockOffsetActivity for the offset).
+        // Whether the reader status bar itself shows a clock, and on which side --
+        // reader-specific, so it stays grouped with the rest of the status bar.
         // Range 0..104 = quarter-hour steps from UTC-12:00 to UTC+14:00, biased by 48.
         SettingInfo::Enum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, std::move(statusBarClockValues),
                           "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR),
+        // The offset itself is web settings only; device UI uses ClockOffsetActivity,
+        // reached from Display (it needs a proper sign/hours/minutes editor, not a
+        // 105-step cycle through a plain value).
         SettingInfo::Value(StrId::STR_CLOCK_UTC_OFFSET, &CrossPointSettings::clockUtcOffsetQ, {0, 104, 1},
                            "clockUtcOffsetQ", StrId::STR_CUSTOMISE_STATUS_BAR),
+        // Not reader-specific -- also used by the Home header clock, sync, and the
+        // companion's day boundary -- so it lives in Display, not here.
         SettingInfo::Enum(StrId::STR_CLOCK_FORMAT, &CrossPointSettings::clockFormat,
                           {StrId::STR_CLOCK_FORMAT_24H, StrId::STR_CLOCK_FORMAT_12H}, "clockFormat",
-                          StrId::STR_CUSTOMISE_STATUS_BAR),
+                          StrId::STR_CAT_DISPLAY),
         // Persistence flag for NTP debounce. Resetting from the web UI forces a re-sync
         // on next WiFi connect, which is useful when crossing time zones.
         SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &CrossPointSettings::clockHasBeenSynced, "clockHasBeenSynced",

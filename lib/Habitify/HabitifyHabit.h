@@ -17,9 +17,9 @@
  * habit's unit is known.
  *
  * `pending` is progress added on the device and not yet pushed. It is added to
- * `current` for display, so a press moves the number immediately, and it is sent
- * as a single log entry on the next sync - one request per habit however many
- * times Select was pressed.
+ * `current` for display, so logging an amount moves the number immediately,
+ * and it is sent as a single log entry on the next sync - one request per
+ * habit however many separate amounts were logged in between.
  */
 struct HabitifyHabit {
   std::string id;          // Habitify habit id, needed for the log push
@@ -48,8 +48,3 @@ static constexpr size_t HABITIFY_MAX_HABITS = 40;
 // A habit id is a UUID-ish string; ids are cut to this length everywhere so one
 // stored against pending progress still matches the same habit next sync.
 static constexpr size_t HABITIFY_HABIT_ID_MAX_LEN = 48;
-
-// What one press of Select adds. Habitify's own "mark complete" endpoint fills
-// the whole goal at once, which is not what a "x/y" row wants: the point of
-// showing 1/3 is to be able to log the second and third separately.
-static constexpr float HABITIFY_INCREMENT = 1.0f;

@@ -343,6 +343,11 @@ void EpubReaderActivity::loop() {
     RenderLock lock;  // the page table must not change under the scan
     // Re-check under the lock: peek() and acquisition are not atomic, so the render
     // task may have reset/replaced the section or moved the page in between.
+    //
+    // cppcheck reads the outer `section &&` and calls this redundant. It is not:
+    // the outer test happened before the lock was taken, and the render task can
+    // null this out in between. Dropping it would be a real race.
+    // cppcheck-suppress knownConditionTrueFalse
     if (section && !section->isBuilding() &&
         (idlePrewarmSpine != currentSpineIndex || idlePrewarmPage != section->currentPage)) {
       idlePrewarmSpine = currentSpineIndex;
@@ -1963,7 +1968,8 @@ void EpubReaderActivity::addBookmark() {
   if (!section || !epub) {
     return;
   }
-  LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
+  // No ternary: the early return above already guaranteed a section.
+  LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section->currentPage);
   int currentPage;
   int pageCount;
   {

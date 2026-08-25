@@ -13,10 +13,16 @@ fi
 
 set -euo pipefail
 
-GIT_LS_FILES_FLAGS=""
-# -g scopes formatting to tracked files currently modified in git status.
+# --others: untracked-but-not-ignored files too, so a brand-new file that has
+# not been `git add`ed yet still gets formatted -- otherwise `git ls-files`
+# silently skips it (it only ever lists tracked files), the mistake looks
+# clean locally, and only shows up once CI runs on a fresh checkout where
+# every file is tracked.
+GIT_LS_FILES_FLAGS="--others"
+# -g scopes formatting to tracked files currently modified in git status (plus
+# untracked new ones, via --others above).
 if [[ "${1:-}" == "-g" ]]; then
-  GIT_LS_FILES_FLAGS="--modified"
+  GIT_LS_FILES_FLAGS="--modified --others"
 fi
 
 CLANG_FORMAT_VERSION_RAW="$(${CLANG_FORMAT_BIN} --version)"
@@ -34,9 +40,10 @@ fi
 
 # Format all files (or only modified files if -g is passed)
 
-# Use 'git ls-files' to get a list of all files tracked by git:
+# Use 'git ls-files' to get the file list:
 # --modified: files tracked by git that have been modified (staged or unstaged)
-# --exclude-standard: ignores files in .gitignore
+# --others: untracked files not yet added to git
+# --exclude-standard: ignores files in .gitignore (applies to --others too)
 # Additionally exclude files in 'lib/EpdFont/builtinFonts/' as they are script-generated.
 # Also exclude files in 'lib/Epub/Epub/hyphenation/generated/' as they are script-generated.
 # Keep the no-match case non-fatal: grep returns 1 when no files match,

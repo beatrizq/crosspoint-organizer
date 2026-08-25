@@ -22,6 +22,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "GCalStore.h"
+#include "HabitifyHabitCache.h"
 #include "HabitifyStore.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
@@ -29,10 +30,12 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "TodoistStore.h"
+#include "TodoistTaskCache.h"
 #include "YnabStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
+#include "companion/CompanionState.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
@@ -320,6 +323,20 @@ void setup() {
   GCAL_STORE.loadFromFile();
   YNAB_STORE.loadFromFile();
   HABITIFY_STORE.loadFromFile();
+  // Loaded unconditionally, not just when the companion is enabled: a wake from
+  // deep sleep re-runs setup(), so gating on the setting means turning the
+  // companion off, waking, then back on leaves the in-memory ledger at defaults
+  // — and the next save overwrites a real streak with zeroes. Missing file on
+  // first run is expected and leaves the defaults in place.
+  COMPANION_STATE.loadFromFile();
+  // The companion's mood is derived live from these two caches (today's
+  // completed tasks, today's completed habits), not from anything banked in
+  // CompanionState. Without this, Home would show a default-constructed
+  // (empty) count on every fresh boot until the user happened to open Tasks
+  // or Habits, which are the only other callers of loadFromFile() on these —
+  // making the mood look reset even though nothing was actually lost.
+  TODOIST_TASKS.loadFromFile();
+  HABITIFY_HABITS.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 

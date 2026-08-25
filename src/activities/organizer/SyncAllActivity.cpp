@@ -1,6 +1,7 @@
 #include "SyncAllActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
@@ -77,6 +78,12 @@ void SyncAllActivity::onExit() {
 }
 
 void SyncAllActivity::runAll() {
+  // Unconditional, ahead of the per-service loop: of the four services, only
+  // Tasks happens to sync the clock too (as a side effect of resolving its own
+  // "today"). A run without Tasks configured -- or one where it fails -- would
+  // otherwise leave the clock untouched even though WiFi is already up here.
+  halClock.syncFromNTP();
+
   for (int i = 0; i < organizerSync::SERVICE_COUNT; i++) {
     if (states[i] != RowState::Waiting) continue;
 
