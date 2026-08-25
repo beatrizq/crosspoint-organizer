@@ -629,15 +629,29 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     const int tileX = LyraMetrics::values.contentSidePadding;
 
     if (bookSelected) {
-      // Same language as a selected grid tile (drawButtonGrid) and the
-      // companion column: a rounded outline. Traced right at the cover art's
-      // own bounds rather than padded outward from them, since there is only
-      // ~8px of slack above and below the 226px cover in a 242px card, and
-      // drawHeader's own 3px divider lands 3px above it -- there is no room
-      // to pad a box around the artwork the way a grid tile pads one around
-      // its icon+label.
-      renderer.drawRoundedRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,
-                               LyraMetrics::values.homeCoverHeight, selectionLineWidth, cornerRadius, true);
+      // Same grey dither as a selected list row and the companion column, but
+      // as a frame around the cover rather than a fill behind it: this runs
+      // after the cover bitmap is already restored into the framebuffer (see
+      // HomeActivity::render()), so a fill spanning the artwork's own bounds
+      // would paint straight over it. Four strips, each entirely outside
+      // those bounds, avoid that without needing to redraw the cover.
+      //
+      // Padded out by only 3px: there is just ~8px of slack above and below
+      // the 226px cover in a 242px card, and drawHeader's own 3px divider
+      // lands 3px above it, so this is close to the most this edge can spare.
+      constexpr int selectionPad = 3;
+      const int coverX = tileX + hPaddingInSelection;
+      const int coverY = tileY + hPaddingInSelection;
+      const int outerX = coverX - selectionPad;
+      const int outerY = coverY - selectionPad;
+      const int outerW = coverWidth + selectionPad * 2;
+      renderer.fillRectDither(outerX, outerY, outerW, selectionPad, Color::LightGray);  // top
+      renderer.fillRectDither(outerX, coverY + LyraMetrics::values.homeCoverHeight, outerW, selectionPad,
+                              Color::LightGray);  // bottom
+      renderer.fillRectDither(outerX, coverY, selectionPad, LyraMetrics::values.homeCoverHeight,
+                              Color::LightGray);  // left
+      renderer.fillRectDither(coverX + coverWidth, coverY, selectionPad, LyraMetrics::values.homeCoverHeight,
+                              Color::LightGray);  // right
     }
 
     // The title and author used to be drawn here, beside the cover. They are not

@@ -125,14 +125,15 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
   if (region.width <= 0 || region.height <= 0) return;
 
-  // Same visual language as a selected grid tile (LyraTheme::drawButtonGrid):
-  // a rounded outline, not a fill -- inverting a region this size would be a
-  // lot of ink to move on every selection change.
+  // Same grey dithered fill LyraTheme::drawList uses behind a selected row --
+  // an outline read as too subtle here to double as a selection cue. Filled
+  // first so the bubble/sprite/text below draw over it; the bubble clears its
+  // own interior to paper regardless (see drawSpeechBubble), so the fill
+  // reads as a frame around it rather than muddying the text.
   if (focused) {
-    constexpr int SELECTION_LINE_WIDTH = 2;
     constexpr int SELECTION_CORNER_RADIUS = 6;
-    renderer.drawRoundedRect(region.x, region.y, region.width, region.height, SELECTION_LINE_WIDTH,
-                             SELECTION_CORNER_RADIUS, true);
+    renderer.fillRoundedRect(region.x, region.y, region.width, region.height, SELECTION_CORNER_RADIUS,
+                             Color::LightGray);
   }
 
   // Ported from JoshuaMillerCode/crosspoint-reader-companion's
