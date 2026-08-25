@@ -52,6 +52,13 @@ struct ThemeMetrics {
   int homeCoverTileHeight;
   int homeRecentBooksCount;
   bool homeContinueReadingInMenu;
+  // False when a theme's own drawRecentBookCover() has moved off Home
+  // entirely (see ReadMenuActivity, which calls the same per-theme function
+  // for its own leading row instead) -- distinct from
+  // homeContinueReadingInMenu, which is about whether the *menu* carries a
+  // "Read"/"Continue reading" entry, not about whether the cover card itself
+  // draws.
+  bool homeShowsCoverCard;
   int homeMenuTopOffset;
   // Home menu as tiles rather than rows: columns across, and the height of one
   // tile including its label. Zero columns keeps the list.
@@ -156,6 +163,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .homeCoverTileHeight = 400,
                                  .homeRecentBooksCount = 1,
                                  .homeContinueReadingInMenu = false,
+                                 .homeShowsCoverCard = true,
                                  .homeMenuTopOffset = 10,
                                  .buttonHintsHeight = 40,
                                  .sideButtonHintsWidth = 30,

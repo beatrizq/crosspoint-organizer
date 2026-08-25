@@ -559,12 +559,11 @@ void LyraTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
 }
 
 Rect LyraTheme::getHomeCompanionRect(const Rect coverCardRect) const {
-  // Same fallback drawRecentBookCover uses before a cover has been measured, so
-  // the two agree about where the cover ends on the very first paint.
-  if (coverWidth == 0) coverWidth = LyraMetrics::values.homeCoverHeight * 0.6;
-
-  const int coverRight = LyraMetrics::values.contentSidePadding + hPaddingInSelection + coverWidth;
-  const int x = coverRight + LyraMetrics::values.verticalSpacing;
+  // Full width: the cover card that used to share this band with the
+  // companion now lives at the top of the Read menu instead (see
+  // ReadMenuActivity, which calls drawRecentBookCover() below directly), so
+  // there is nothing left to share with here.
+  const int x = coverCardRect.x + LyraMetrics::values.contentSidePadding;
   const int right = coverCardRect.x + coverCardRect.width - LyraMetrics::values.contentSidePadding;
   if (right - x <= 0) return Rect{};
   return Rect{x, coverCardRect.y + hPaddingInSelection, right - x, LyraMetrics::values.homeCoverHeight};
@@ -573,6 +572,11 @@ Rect LyraTheme::getHomeCompanionRect(const Rect coverCardRect) const {
 void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                     const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                     bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
+  // No longer called from Home (see getHomeCompanionRect()'s comment) --
+  // ReadMenuActivity calls this directly for its own leading row instead, at
+  // whatever rect it hands in, so the two places show the exact same "cover
+  // together with author and title" rendering rather than a second one
+  // invented just for the menu.
   const int tileY = rect.y;
   const bool hasContinueReading = !recentBooks.empty();
   // Drawn smaller than the card actually allows, and centred in the
@@ -660,10 +664,32 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
       renderer.drawRoundedRect(outerX, outerY, outerW, outerH, selectionLineWidth, cornerRadius, true);
     }
 
-    // The title and author used to be drawn here, beside the cover. They are not
-    // any more: the cover is what identifies the book at a glance, and the words
-    // were the cheapest thing to give up for the column the companion needs.
-    // getHomeCompanionRect() hands that column out; HomeActivity draws into it.
+    // Title and author, beside the cover -- dropped from here back when Home
+    // still called this, to leave the companion column room beside it (see
+    // getHomeCompanionRect()'s comment). ReadMenuActivity hands this a
+    // full-width band with no column competing for it, so there is room for
+    // them again.
+    const int textX = tileX + hPaddingInSelection + coverWidth + LyraMetrics::values.contentSidePadding;
+    const int textRight = rect.x + rect.width - LyraMetrics::values.contentSidePadding;
+    const int textWidth = textRight - textX;
+    if (textWidth > 0) {
+      const auto lines = renderer.wrappedText(UI_12_FONT_ID, book.title.c_str(), textWidth, 3);
+      const auto truncatedAuthor =
+          book.author.empty() ? std::string{} : renderer.truncatedText(UI_10_FONT_ID, book.author.c_str(), textWidth);
+
+      int totalTextHeight = renderer.getLineHeight(UI_12_FONT_ID) * static_cast<int>(lines.size());
+      if (!truncatedAuthor.empty()) totalTextHeight += renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2;
+      int textY = tileY + hPaddingInSelection + coverYOffset + (drawnCoverHeight - totalTextHeight) / 2;
+
+      for (const auto& line : lines) {
+        renderer.drawText(UI_12_FONT_ID, textX, textY, line.c_str(), true, EpdFontFamily::BOLD);
+        textY += renderer.getLineHeight(UI_12_FONT_ID);
+      }
+      if (!truncatedAuthor.empty()) {
+        textY += renderer.getLineHeight(UI_10_FONT_ID) / 2;
+        renderer.drawText(UI_10_FONT_ID, textX, textY, truncatedAuthor.c_str(), true);
+      }
+    }
   } else {
     drawEmptyRecents(renderer, rect);
   }

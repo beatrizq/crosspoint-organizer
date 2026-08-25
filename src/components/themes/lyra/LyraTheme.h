@@ -28,6 +28,10 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .homeCoverTileHeight = 242,
                                  .homeRecentBooksCount = 1,
                                  .homeContinueReadingInMenu = false,
+                                 // The cover card moved to the top of the Read menu (see
+                                 // ReadMenuActivity, which calls drawRecentBookCover() itself
+                                 // now) -- Home gives the companion the full width instead.
+                                 .homeShowsCoverCard = false,
                                  .homeMenuTopOffset = 16,
                                  .homeGridColumns = 3,
                                  .homeGridTileHeight = 130,
@@ -106,6 +110,8 @@ class LyraTheme : public BaseTheme {
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                            const int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,
                            std::function<bool()> storeCoverBuffer) const override;
+  // Kept for Lyra3CoversTheme, which still shows its "no book yet" message
+  // through this on its own Home cover row.
   void drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) const;
   bool showsFileIcons() const override { return true; }
 };
