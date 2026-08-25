@@ -77,9 +77,16 @@ struct QuickPickResult {
   bool poolEmpty = true;
 };
 
-using ResultVariant =
-    std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult, IntervalResult,
-                 PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult, QuickPickResult>;
+// Which entry OptionsMenuActivity's popup was dismissed on. Only meaningful
+// when the result is not cancelled -- Back/tap-outside reports isCancelled
+// instead of an index.
+struct OptionPickResult {
+  int index = 0;
+};
+
+using ResultVariant = std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult,
+                                   IntervalResult, PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult,
+                                   FilePathResult, QuickPickResult, OptionPickResult>;
 
 struct ActivityResult {
   bool isCancelled = false;

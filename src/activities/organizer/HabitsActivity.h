@@ -66,6 +66,9 @@ class HabitsActivity final : public OrganizerScreenActivity {
   // See the constructor comment. Consumed and cleared in onEnter().
   std::string selectHabitId;
 
+  // Select opens this first, rather than completeSelectedHabit() directly --
+  // see rowConfirmLabel()/onRowConfirm().
+  void showRowOptions();
   // Opens the number entry; performIncrement() is what actually moves the number.
   void completeSelectedHabit();
   void performIncrement(int cacheIndex, float amount);

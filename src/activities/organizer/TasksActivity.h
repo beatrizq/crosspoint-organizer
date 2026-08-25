@@ -44,7 +44,7 @@ class TasksActivity final : public OrganizerScreenActivity {
   // initialTab/row 0 would otherwise land. One-shot -- cleared once applied,
   // so a later tab switch behaves normally.
   explicit TasksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialTab = 0,
-                        std::string selectTaskId = "")
+                         std::string selectTaskId = "")
       : OrganizerScreenActivity("Tasks", renderer, mappedInput, initialTab), selectTaskId(std::move(selectTaskId)) {}
 
   void onEnter() override;
@@ -91,6 +91,9 @@ class TasksActivity final : public OrganizerScreenActivity {
   // have to be rebuilt on every sync, tab switch and completion.
   int cacheIndexForRow(int row) const;
 
+  // Select opens this first, rather than completeSelectedTask() directly --
+  // see rowConfirmLabel()/onRowConfirm().
+  void showRowOptions();
   // Asks first; performTaskCompletion() is what actually closes the task.
   void completeSelectedTask();
   void performTaskCompletion(int cacheIndex);

@@ -612,8 +612,8 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
             // coverWidth has to reflect the *drawn* size, not the source
             // bitmap's, since the border/selection frame/companion column
             // below all key off it.
-            coverWidth = static_cast<int>(bitmap.getWidth() *
-                                          (static_cast<float>(drawnCoverHeight) / static_cast<float>(bitmap.getHeight())));
+            coverWidth = static_cast<int>(
+                bitmap.getWidth() * (static_cast<float>(drawnCoverHeight) / static_cast<float>(bitmap.getHeight())));
             renderer.drawBitmap(bitmap, tileX + hPaddingInSelection, tileY + hPaddingInSelection + coverYOffset,
                                 coverWidth, drawnCoverHeight);
           } else {
@@ -629,8 +629,9 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
       if (!hasCover) {
         // Render empty cover
-        renderer.fillRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection + coverYOffset + drawnCoverHeight / 3,
-                          coverWidth, 2 * drawnCoverHeight / 3, true);
+        renderer.fillRect(tileX + hPaddingInSelection,
+                          tileY + hPaddingInSelection + coverYOffset + drawnCoverHeight / 3, coverWidth,
+                          2 * drawnCoverHeight / 3, true);
         renderer.drawIcon(CoverIcon, tileX + hPaddingInSelection + 24, tileY + hPaddingInSelection + coverYOffset + 24,
                           32);
       }
@@ -644,22 +645,19 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     const int tileX = LyraMetrics::values.contentSidePadding;
 
     if (bookSelected) {
-      // Same grey dither as a selected list row and the companion column, but
-      // as a frame around the cover rather than a fill behind it: this runs
-      // after the cover bitmap is already restored into the framebuffer (see
-      // HomeActivity::render()), so a fill spanning the artwork's own bounds
-      // would paint straight over it. Four strips, each entirely outside
-      // those bounds, avoid that without needing to redraw the cover.
+      // Same outline convention as a selected grid tile (see
+      // drawButtonGrid's selectionLineWidth/cornerRadius): a stroke around
+      // the padded outer bounds, entirely outside the cover bitmap's own
+      // bounds (see coverShrink above), so it reads as a frame without
+      // needing to redraw the artwork underneath.
       constexpr int selectionPad = coverShrink / 2;
       const int coverX = tileX + hPaddingInSelection;
       const int coverY = tileY + hPaddingInSelection + coverYOffset;
       const int outerX = coverX - selectionPad;
       const int outerY = coverY - selectionPad;
       const int outerW = coverWidth + selectionPad * 2;
-      renderer.fillRectDither(outerX, outerY, outerW, selectionPad, Color::LightGray);  // top
-      renderer.fillRectDither(outerX, coverY + drawnCoverHeight, outerW, selectionPad, Color::LightGray);  // bottom
-      renderer.fillRectDither(outerX, coverY, selectionPad, drawnCoverHeight, Color::LightGray);  // left
-      renderer.fillRectDither(coverX + coverWidth, coverY, selectionPad, drawnCoverHeight, Color::LightGray);  // right
+      const int outerH = drawnCoverHeight + selectionPad * 2;
+      renderer.drawRoundedRect(outerX, outerY, outerW, outerH, selectionLineWidth, cornerRadius, true);
     }
 
     // The title and author used to be drawn here, beside the cover. They are not

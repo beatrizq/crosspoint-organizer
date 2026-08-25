@@ -16,10 +16,11 @@
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
 #include "activities/util/IntervalSelectionActivity.h"
-#include "companion/CompanionTracker.h"
+#include "activities/util/OptionsMenuActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
+#include "util/OrganizerActions.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
@@ -189,11 +190,36 @@ const char* HabitsActivity::rowConfirmLabel() const {
   const int cacheIndex = cacheIndexForRow(selectedRow());
   if (cacheIndex < 0) return "";
   // A habit with no goal has no unit either, so there is nothing to log against
-  // it; saying "Log" would promise an action that cannot happen.
-  return HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty() ? "" : tr(STR_HABITIFY_LOG);
+  // it; saying "Select" would promise an action that cannot happen.
+  return HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty() ? "" : tr(STR_SELECT);
 }
 
-void HabitsActivity::onRowConfirm() { completeSelectedHabit(); }
+void HabitsActivity::onRowConfirm() { showRowOptions(); }
+
+void HabitsActivity::showRowOptions() {
+  const int cacheIndex = cacheIndexForRow(selectedRow());
+  if (cacheIndex < 0) return;
+  // Mirrors rowConfirmLabel()'s own guard: nothing to log, so nothing to offer.
+  if (HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
+
+  std::vector<std::string> options{tr(STR_HABITIFY_LOG), tr(STR_FOCUS_SESSION)};
+  startActivityForResult(
+      std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
+      [this](const ActivityResult& result) {
+        // Confirm may still be physically down (the popup answers on the
+        // press, this screen on the release) -- same dance completeSelectedHabit()
+        // does below for the picker it pushes in turn.
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        // idx 1 (Focus session) has nothing to do yet.
+        if (std::get<OptionPickResult>(result.data).index == 0) completeSelectedHabit();
+      });
+}
 
 void HabitsActivity::completeSelectedHabit() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
@@ -244,15 +270,8 @@ void HabitsActivity::performIncrement(const int cacheIndex, const float amount) 
     // The render task reads the habit list; hold the lock across the change so it
     // never paints a half-updated row.
     RenderLock lock(*this);
-    const auto& habits = HABITIFY_HABITS.getHabits();
-    if (habits[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
-    LOG_DBG("HABITS", "+%g to %s", static_cast<double>(amount), habits[static_cast<size_t>(cacheIndex)].name.c_str());
-    HABITIFY_HABITS.addPending(static_cast<size_t>(cacheIndex), amount);
+    organizerActions::logHabit(static_cast<size_t>(cacheIndex), amount);
   }
-  HABITIFY_HABITS.saveToFile();
-  // A completion is one of the two things the companion reacts to; credit it
-  // immediately in case this press is what pushed a habit to isComplete().
-  COMPANION.recordActivity();
   requestUpdate(true);
   // A press with the radio off moves the number on screen, which is as much a
   // change as a sync is.

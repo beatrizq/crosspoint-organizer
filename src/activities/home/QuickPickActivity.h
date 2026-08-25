@@ -15,19 +15,21 @@
  * entry and on every reroll (see onEnter()/reroll()) rather than main.cpp
  * fishing it out reactively.
  *
- * Random rerolls the pick in place; Go jumps to it in Tasks/Habits; Back
- * returns to Home, reporting whatever is currently held as a QuickPickResult
- * so Home's own bubble can be kept in sync. setResult() has to be called
- * before finish(), not in onExit() -- ActivityManager::popActivity() reads
- * the result before it runs the outgoing activity's onExit().
+ * Random rerolls the pick in place; Go opens the same Options menu Tasks and
+ * Habits offer on a row -- Complete/Log, or Focus session -- acting on the
+ * suggested item directly rather than navigating there; Back returns to Home,
+ * reporting whatever is currently held as a QuickPickResult so Home's own
+ * bubble can be kept in sync. setResult() has to be called before finish(),
+ * not in onExit() -- ActivityManager::popActivity() reads the result before
+ * it runs the outgoing activity's onExit().
  */
 class QuickPickActivity final : public Activity {
  public:
   // itemId is the Todoist task id / Habitify habit id behind pickedText, so
-  // Confirm can jump straight to that row in Tasks/Habits instead of just the
-  // screen. Empty when poolEmpty is true (nothing was picked).
-  QuickPickActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string pickedText,
-                    std::string itemId, const bool isHabit, const bool poolEmpty)
+  // Go can act on that exact item. Empty when poolEmpty is true (nothing was
+  // picked).
+  QuickPickActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string pickedText, std::string itemId,
+                    const bool isHabit, const bool poolEmpty)
       : Activity("QuickPick", renderer, mappedInput),
         pickedText(std::move(pickedText)),
         itemId(std::move(itemId)),
@@ -44,8 +46,31 @@ class QuickPickActivity final : public Activity {
   // used -- and re-mirrors the result into CrossPointState.
   void reroll();
 
+  // Go opens this. Same [action, Focus session] choice Tasks/Habits show on
+  // a row, resolved against itemId rather than a selected row.
+  void showOptions();
+  void completeSuggestedTask();
+  void logSuggestedHabit();
+
+  // Whether the current pick is still a valid quickpick candidate: present in
+  // its cache and, for a habit, still short of its target. Checked once an
+  // action has actually mutated the cache -- a completed task is gone from
+  // the cache outright, and a habit logged to its target drops out the same
+  // way roll()'s own pool would exclude it. Only then is a fresh suggestion
+  // rolled; Focus session, a cancelled popup, or a habit log that leaves it
+  // still short of target all leave the bubble showing exactly what it did
+  // before.
+  bool currentPickStillEligible() const;
+
   std::string pickedText;
   std::string itemId;
   bool isHabit;
   bool poolEmpty;
+
+  // See OrganizerScreenActivity's own swallow flags for why these exist: the
+  // Options popup (and the confirmation or number entry it can lead to)
+  // answers on a button press, not its release, and that release is still
+  // owed to this screen once the sub-activity it was pushed from closes.
+  bool swallowConfirmRelease = false;
+  bool swallowBackRelease = false;
 };

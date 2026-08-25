@@ -20,10 +20,11 @@
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
 #include "activities/util/ConfirmationActivity.h"
-#include "companion/CompanionTracker.h"
+#include "activities/util/OptionsMenuActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
+#include "util/OrganizerActions.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
@@ -244,9 +245,32 @@ bool TasksActivity::rowsHaveSubtitle() const {
   return kind != TabKind::TODAY && kind != TabKind::NO_DATE;
 }
 
-const char* TasksActivity::rowConfirmLabel() const { return tr(STR_COMPLETE_TASK); }
+const char* TasksActivity::rowConfirmLabel() const { return tr(STR_SELECT); }
 
-void TasksActivity::onRowConfirm() { completeSelectedTask(); }
+void TasksActivity::onRowConfirm() { showRowOptions(); }
+
+void TasksActivity::showRowOptions() {
+  const int cacheIndex = cacheIndexForRow(selectedRow());
+  if (cacheIndex < 0) return;
+
+  std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION)};
+  startActivityForResult(
+      std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
+      [this](const ActivityResult& result) {
+        // Confirm may still be physically down (the popup answers on the
+        // press, this screen on the release) -- same dance completeSelectedTask()
+        // does below for the popup it pushes in turn.
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        // idx 1 (Focus session) has nothing to do yet.
+        if (std::get<OptionPickResult>(result.data).index == 0) completeSelectedTask();
+      });
+}
 
 void TasksActivity::completeSelectedTask() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
@@ -284,14 +308,11 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
   // took to answer, and an index is not a task.
   if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
 
-  LOG_DBG("TASKS", "Completing task: %s", TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].content.c_str());
   {
     // The render task reads the task list; hold the lock across the removal so
     // it never paints a half-updated list.
     RenderLock lock(*this);
-    // Queued locally and pushed on the next sync, so completing works with the
-    // radio off; the row leaves the list immediately either way.
-    TODOIST_TASKS.completeTaskAt(static_cast<size_t>(cacheIndex));
+    organizerActions::completeTask(static_cast<size_t>(cacheIndex));
     // Completing the last task in a tab takes that tab away, so the bar is rebuilt
     // before the selection is settled. rebuildTabs() keeps the same kind selected
     // where it survives and clamps the row selection itself.
@@ -300,10 +321,6 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
     if (selectedRow() >= remaining) selectedIndex = remaining;
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
-  TODOIST_TASKS.saveToFile();
-  // A completion is one of the two things the companion reacts to; credit it
-  // immediately rather than waiting for the next sync or Home visit.
-  COMPANION.recordActivity();
   // The sleep screen tracks the list, not the sync: a task completed with the
   // radio off changes what is on screen just as much as a fetch does.
   updateSleepScreen();

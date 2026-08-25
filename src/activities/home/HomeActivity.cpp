@@ -76,8 +76,8 @@ int HomeActivity::leadingRecentCount() const {
 int HomeActivity::companionSlotIndex() const {
   if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return -1;
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect rect = GUI.getHomeCompanionRect(
-      Rect{0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight});
+  const Rect rect =
+      GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight});
   if (rect.width <= 0) return -1;
   return leadingRecentCount();
 }
@@ -122,15 +122,15 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
   if (region.width <= 0 || region.height <= 0) return;
 
-  // Same grey dithered fill LyraTheme::drawList uses behind a selected row --
-  // an outline read as too subtle here to double as a selection cue. Filled
-  // first so the bubble/sprite/text below draw over it; the bubble clears its
-  // own interior to paper regardless (see drawSpeechBubble), so the fill
-  // reads as a frame around it rather than muddying the text.
+  // Same outline convention as a selected grid tile (see
+  // LyraTheme::drawButtonGrid's selectionLineWidth/cornerRadius): a stroke
+  // reads clearly here since the column gives it real margin, so there is no
+  // need for the heavier grey fill a tighter box would have to fall back on.
   if (focused) {
+    constexpr int SELECTION_LINE_WIDTH = 2;
     constexpr int SELECTION_CORNER_RADIUS = 6;
-    renderer.fillRoundedRect(region.x, region.y, region.width, region.height, SELECTION_CORNER_RADIUS,
-                             Color::LightGray);
+    renderer.drawRoundedRect(region.x, region.y, region.width, region.height, SELECTION_LINE_WIDTH,
+                             SELECTION_CORNER_RADIUS, true);
   }
 
   // Ported from JoshuaMillerCode/crosspoint-reader-companion's
@@ -591,8 +591,8 @@ void HomeActivity::loop() {
   // touchedIndex is an entries[] position; translated to the expanded space
   // before touching selectorIndex, same as everywhere else that starts from
   // an entries[] index.
-  auto handleMenuTouch = [this, leadingRecents, companionSlot, &activateSelection](
-                             MappedInputManager::RowTouch touch, int renderedIndex) {
+  auto handleMenuTouch = [this, leadingRecents, companionSlot, &activateSelection](MappedInputManager::RowTouch touch,
+                                                                                   int renderedIndex) {
     const int touchedIndex = fromEntryIndex(renderedIndex + leadingRecents, companionSlot);
     if (touch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
@@ -668,7 +668,7 @@ void HomeActivity::render(RenderLock&&) {
   // the cached snapshot holds the cover alone. Restoring it each paint is what
   // erases the previous companion frame before this one is drawn.
   drawCompanion(GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight}),
-               companionSlot >= 0 && selectorIndex == companionSlot);
+                companionSlot >= 0 && selectorIndex == companionSlot);
   companionFrame++;
 
   // A beaten personal best takes over the bubble once. Cleared after the paint
