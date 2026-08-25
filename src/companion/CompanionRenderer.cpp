@@ -41,35 +41,6 @@ void fillTriangle(const GfxRenderer& renderer, const int x0, const int y0, const
   }
 }
 
-// Midpoint circle, plotting all four corner arcs of a rounded rect in one pass.
-void strokeCornerArcs(const GfxRenderer& renderer, const int left, const int top, const int right, const int bottom,
-                      const int radius) {
-  int x = 0;
-  int y = radius;
-  int d = 1 - radius;
-  while (x <= y) {
-    const int lx = left + radius;
-    const int rx = right - radius;
-    const int ty = top + radius;
-    const int by = bottom - radius;
-    renderer.drawPixel(rx + x, by + y, true);
-    renderer.drawPixel(rx + y, by + x, true);
-    renderer.drawPixel(lx - x, by + y, true);
-    renderer.drawPixel(lx - y, by + x, true);
-    renderer.drawPixel(rx + x, ty - y, true);
-    renderer.drawPixel(rx + y, ty - x, true);
-    renderer.drawPixel(lx - x, ty - y, true);
-    renderer.drawPixel(lx - y, ty - x, true);
-    if (d < 0) {
-      d += 2 * x + 3;
-    } else {
-      d += 2 * (x - y) + 5;
-      y--;
-    }
-    x++;
-  }
-}
-
 }  // namespace
 
 void drawPose(const GfxRenderer& renderer, const CompanionId id, const Mood mood, const int x, const int y,
@@ -116,10 +87,15 @@ void drawPose(const GfxRenderer& renderer, const CompanionId id, const Mood mood
 }
 
 void drawSpeechBubble(const GfxRenderer& renderer, const int x, const int y, const int w, const int h,
-                      const int tailLength, const TailSide side) {
+                      const int tailLength, const TailSide side, const int lineWidth) {
   if (w <= 4 || h <= 4) return;
 
   const int radius = std::min({10, w / 3, h / 3});
+  // Never thicker than the corner radius itself -- same clamp
+  // GfxRenderer::drawRoundedRect applies to its own lineWidth, so a bubble
+  // asked for an implausibly thick border degrades the same way a tile's
+  // selection outline would rather than drawing outside the rounded corner.
+  const int stroke = std::max(1, std::min(lineWidth, radius));
   const int left = x;
   const int top = y;
   const int right = x + w - 1;
@@ -139,12 +115,16 @@ void drawSpeechBubble(const GfxRenderer& renderer, const int x, const int y, con
     renderer.fillRect(left + inset, top + row, w - 2 * inset, 1, false);
   }
 
-  // Straight runs between the corner arcs.
-  renderer.drawLine(left + radius, top, right - radius, top, true);
-  renderer.drawLine(left + radius, bottom, right - radius, bottom, true);
-  renderer.drawLine(left, top + radius, left, bottom - radius, true);
-  renderer.drawLine(right, top + radius, right, bottom - radius, true);
-  strokeCornerArcs(renderer, left, top, right, bottom, radius);
+  // Straight runs between the corner arcs, `stroke` pixels thick -- same
+  // technique GfxRenderer::drawRoundedRect uses for its own border.
+  renderer.fillRect(left + radius, top, w - 2 * radius, stroke, true);
+  renderer.fillRect(left + radius, bottom - stroke + 1, w - 2 * radius, stroke, true);
+  renderer.fillRect(left, top + radius, stroke, h - 2 * radius, true);
+  renderer.fillRect(right - stroke + 1, top + radius, stroke, h - 2 * radius, true);
+  renderer.drawArc(radius, left + radius, top + radius, -1, -1, stroke, true);
+  renderer.drawArc(radius, right - radius, top + radius, 1, -1, stroke, true);
+  renderer.drawArc(radius, right - radius, bottom - radius, 1, 1, stroke, true);
+  renderer.drawArc(radius, left + radius, bottom - radius, -1, 1, stroke, true);
 
   if (tailLength <= 0) return;
 
@@ -161,8 +141,8 @@ void drawSpeechBubble(const GfxRenderer& renderer, const int x, const int y, con
     const int tipY = bottom + tailLength;
     const int tipX = baseLeftX - tailLength / 3;
     fillTriangle(renderer, baseLeftX, bottom, baseRightX, bottom, tipX, tipY, false);
-    renderer.drawLine(baseLeftX, bottom, tipX, tipY, true);
-    renderer.drawLine(tipX, tipY, baseRightX, bottom, true);
+    renderer.drawLine(baseLeftX, bottom, tipX, tipY, stroke, true);
+    renderer.drawLine(tipX, tipY, baseRightX, bottom, stroke, true);
     return;
   }
 
@@ -173,8 +153,27 @@ void drawSpeechBubble(const GfxRenderer& renderer, const int x, const int y, con
   const int tipX = left - tailLength;
   const int tipY = baseBottomY + tailLength / 3;
   fillTriangle(renderer, left, baseTopY, left, baseBottomY, tipX, tipY, false);
-  renderer.drawLine(left, baseTopY, tipX, tipY, true);
-  renderer.drawLine(tipX, tipY, left, baseBottomY, true);
+  renderer.drawLine(left, baseTopY, tipX, tipY, stroke, true);
+  renderer.drawLine(tipX, tipY, left, baseBottomY, stroke, true);
+}
+
+BubbleFit fitBubbleText(const GfxRenderer& renderer, const int fontId, const std::string& text, const int maxTextWidth,
+                        const int minTextWidth, const int maxLines) {
+  BubbleFit fit;
+  if (text.empty()) {
+    fit.textWidth = minTextWidth;
+    return fit;
+  }
+
+  const int naturalWidth = renderer.getTextWidth(fontId, text.c_str());
+  if (naturalWidth <= maxTextWidth) {
+    fit.lines.push_back(text);
+    fit.textWidth = std::max(minTextWidth, naturalWidth);
+  } else {
+    fit.lines = renderer.wrappedText(fontId, text.c_str(), maxTextWidth, maxLines);
+    fit.textWidth = maxTextWidth;
+  }
+  return fit;
 }
 
 const char* moodLabel(const Mood mood) {

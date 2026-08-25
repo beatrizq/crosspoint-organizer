@@ -70,7 +70,13 @@ int HomeActivity::getMenuItemCount() const {
 }
 
 int HomeActivity::leadingRecentCount() const {
-  return UITheme::getInstance().getMetrics().homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  // Nothing to lead with when this theme's cover card isn't drawn on Home at
+  // all (see ThemeMetrics::homeShowsCoverCard) -- these entries exist only to
+  // be the thing the card represents, and a theme with no card has nowhere
+  // for them to be selected from.
+  if (!metrics.homeShowsCoverCard) return 0;
+  return metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
 }
 
 int HomeActivity::companionSlotIndex() const {
@@ -87,10 +93,13 @@ void HomeActivity::buildEntries() {
   entries.reserve(8);
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  if (!metrics.homeContinueReadingInMenu) {
+  if (metrics.homeShowsCoverCard && !metrics.homeContinueReadingInMenu) {
     // Cover-tile themes: the recent books own the leading slots and are drawn
     // by the tile rather than the menu, but they are still entries, so one
-    // list describes the whole screen.
+    // list describes the whole screen. Skipped when this theme's cover card
+    // doesn't draw on Home at all (see leadingRecentCount()) -- with no card
+    // to represent them, these would otherwise be selectable slots nothing
+    // draws, rather than absent as reading itself now is on the Read tile.
     for (int i = 0; i < static_cast<int>(recentBooks.size()); i++) {
       entries.push_back({nullptr, Book, HomeMenuItem::NONE, i});
     }
@@ -154,6 +163,11 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   constexpr int BOB_HEIGHT = 3;
   constexpr int MAX_SCALE = 4;
   constexpr int MIN_BUBBLE_W = 90;
+  // Floor on the bubble's own text column (narrower than MIN_BUBBLE_W above,
+  // which is a bail-out on the whole column being too tight to bother with),
+  // so a one-word suggestion still leaves room for the tail and rounded
+  // corners rather than shrinking to fit it exactly.
+  constexpr int MIN_BUBBLE_TEXT_WIDTH = 70;
 
   const int colX = region.x + MARGIN;
   const int colW = region.width - MARGIN * 2;
@@ -194,16 +208,13 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
 
   // The bubble is measured before the character is sized: the suggestion needs
   // however many lines it needs, and the character takes what is left.
-  std::vector<std::string> lines;
-  if (!suggestion.empty()) {
-    if (renderer.getTextWidth(UI_10_FONT_ID, suggestion.c_str()) <= textW) {
-      lines.emplace_back(suggestion);
-    } else {
-      lines = renderer.wrappedText(UI_10_FONT_ID, suggestion.c_str(), textW, 3);
-    }
-  }
-  const int bubbleH = lines.empty() ? 0 : static_cast<int>(lines.size()) * lineH + PAD * 2;
-  const int bubbleBlock = lines.empty() ? 0 : bubbleH + TAIL_LENGTH + BUBBLE_GAP;
+  const auto textFit = suggestion.empty() ? companion::BubbleFit{}
+                                          : companion::fitBubbleText(renderer, UI_10_FONT_ID, suggestion, textW,
+                                                                     MIN_BUBBLE_TEXT_WIDTH, 3);
+  const bool hasBubble = !textFit.lines.empty();
+  const int bubbleH = hasBubble ? static_cast<int>(textFit.lines.size()) * lineH + PAD * 2 : 0;
+  const int bubbleBlock = hasBubble ? bubbleH + TAIL_LENGTH + BUBBLE_GAP : 0;
+  const int bubbleWidth = hasBubble ? textFit.textWidth + PAD * 2 : 0;
   const int statusBlock = showLabel ? LABEL_GAP + labelH + SUBLABEL_GAP + (sub[0] != '\0' ? subH : 0) : 0;
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
@@ -223,13 +234,17 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   const int blockH = bubbleBlock + spriteH + BOB_HEIGHT + statusBlock;
   const int blockTop = colTop + (colH - blockH) / 2;
 
-  // Bubble across the column with its tail pointing down at the character below,
-  // so nothing reaches sideways toward the cover.
-  if (!lines.empty()) {
-    companion::drawSpeechBubble(renderer, colX, blockTop, colW, bubbleH, TAIL_LENGTH, companion::TailSide::Bottom);
-    const Rect textBounds{colX + PAD, blockTop, textW, bubbleH};
+  // Bubble centred in the column with its tail pointing down at the character
+  // below, so nothing reaches sideways toward the cover -- sized to the text
+  // rather than always spanning the column, so a short suggestion doesn't
+  // stretch the bubble out to the column's full width.
+  if (hasBubble) {
+    const int bubbleX = colX + (colW - bubbleWidth) / 2;
+    companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
+                                companion::TailSide::Bottom);
+    const Rect textBounds{bubbleX + PAD, blockTop, textFit.textWidth, bubbleH};
     int textY = blockTop + PAD;
-    for (const auto& line : lines) {
+    for (const auto& line : textFit.lines) {
       UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, textY, line.c_str());
       textY += lineH;
     }

@@ -28,6 +28,10 @@ constexpr int PAD = 8;
 constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
+// Floor on the bubble's text column, so a one-word habit name still leaves
+// room for the tail and rounded corners rather than shrinking to fit it
+// exactly.
+constexpr int MIN_BUBBLE_TEXT_WIDTH = 80;
 
 // Same bounds HabitsActivity's own number entry uses -- see its own comment
 // for why 50/1/5.
@@ -130,7 +134,7 @@ void QuickPickActivity::offerFocusSession() {
                            }
                            if (result.isCancelled) return;
                            const int idx = std::get<OptionPickResult>(result.data).index;
-                           if (idx < 0 || idx >= 3) return;
+                           if (idx < 0 || idx >= organizerActions::FOCUS_SESSION_DURATIONS_COUNT) return;
                            organizerActions::beginFocusSession(capturedText, capturedItemId, capturedIsHabit,
                                                                organizerActions::FOCUS_SESSION_DURATIONS_MINUTES[idx],
                                                                renderer, mappedInput);
@@ -276,21 +280,17 @@ void QuickPickActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
   const int contentWidth = pageWidth - MARGIN * 2;
-  const int textWidth = contentWidth - PAD * 2;
+  const int maxTextWidth = contentWidth - PAD * 2;
 
   const auto id = CompanionTracker::activeId();
   const auto mood = COMPANION.currentMood();
 
   const std::string text = poolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : pickedText;
-  std::vector<std::string> lines;
-  if (renderer.getTextWidth(UI_10_FONT_ID, text.c_str()) <= textWidth) {
-    lines.push_back(text);
-  } else {
-    lines = renderer.wrappedText(UI_10_FONT_ID, text.c_str(), textWidth, 4);
-  }
+  const auto textFit = companion::fitBubbleText(renderer, UI_10_FONT_ID, text, maxTextWidth, MIN_BUBBLE_TEXT_WIDTH, 4);
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
-  const int bubbleH = static_cast<int>(lines.size()) * lineH + PAD * 2;
+  const int bubbleH = static_cast<int>(textFit.lines.size()) * lineH + PAD * 2;
   const int bubbleBlock = bubbleH + TAIL_LENGTH + BUBBLE_GAP;
+  const int bubbleWidth = textFit.textWidth + PAD * 2;
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 1;
@@ -307,13 +307,13 @@ void QuickPickActivity::render(RenderLock&&) {
   const int blockH = bubbleBlock + spriteH;
   const int blockTop = contentTop + (contentHeight - blockH) / 2;
   const int centreX = pageWidth / 2;
-  const int bubbleX = centreX - contentWidth / 2;
+  const int bubbleX = centreX - bubbleWidth / 2;
 
-  companion::drawSpeechBubble(renderer, bubbleX, blockTop, contentWidth, bubbleH, TAIL_LENGTH,
+  companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
                               companion::TailSide::Bottom);
-  const Rect textBounds{bubbleX + PAD, blockTop, textWidth, bubbleH};
+  const Rect textBounds{bubbleX + PAD, blockTop, textFit.textWidth, bubbleH};
   int textY = blockTop + PAD;
-  for (const auto& line : lines) {
+  for (const auto& line : textFit.lines) {
     UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, textY, line.c_str());
     textY += lineH;
   }

@@ -76,7 +76,7 @@ void beginFocusSession(const std::string& text, const std::string& itemId, const
 
 std::vector<std::string> focusSessionDurationOptions() {
   std::vector<std::string> options;
-  options.reserve(3);
+  options.reserve(FOCUS_SESSION_DURATIONS_COUNT);
   for (const int minutes : FOCUS_SESSION_DURATIONS_MINUTES) {
     char buf[16];
     snprintf(buf, sizeof(buf), tr(STR_SLEEP_TIMER_VALUE_FORMAT), static_cast<unsigned>(minutes));

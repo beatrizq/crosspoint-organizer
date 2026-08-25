@@ -50,7 +50,9 @@ void beginFocusSession(const std::string& text, const std::string& itemId, bool 
 
 // Durations a focus session can be started for, in minutes -- index-matched
 // with focusSessionDurationOptions()'s labels below.
-inline constexpr int FOCUS_SESSION_DURATIONS_MINUTES[3] = {10, 20, 40};
+inline constexpr int FOCUS_SESSION_DURATIONS_MINUTES[] = {5, 10, 20, 40};
+inline constexpr int FOCUS_SESSION_DURATIONS_COUNT =
+    sizeof(FOCUS_SESSION_DURATIONS_MINUTES) / sizeof(FOCUS_SESSION_DURATIONS_MINUTES[0]);
 
 // "10 min" / "20 min" / "40 min", translated -- the options every "Focus
 // session" entry point offers via an OptionsMenuActivity.

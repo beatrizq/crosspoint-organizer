@@ -28,6 +28,10 @@ constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
 // Between the character's feet and the "until hh:mm" line.
 constexpr int UNTIL_GAP = 4;
+// Floor on the bubble's text column, so a one-word habit name still leaves
+// room for the tail and rounded corners rather than shrinking to fit it
+// exactly.
+constexpr int MIN_BUBBLE_TEXT_WIDTH = 80;
 }  // namespace
 
 void FocusSessionActivity::onEnter() {
@@ -98,27 +102,25 @@ void FocusSessionActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
   const int contentWidth = pageWidth - MARGIN * 2;
-  const int textWidth = contentWidth - PAD * 2;
+  const int maxTextWidth = contentWidth - PAD * 2;
 
   const auto id = CompanionTracker::activeId();
   const auto mood = COMPANION.currentMood();
 
-  std::vector<std::string> lines;
-  if (renderer.getTextWidth(UI_10_FONT_ID, text.c_str()) <= textWidth) {
-    lines.push_back(text);
-  } else {
-    lines = renderer.wrappedText(UI_10_FONT_ID, text.c_str(), textWidth, 4);
-  }
+  const auto textFit = companion::fitBubbleText(renderer, UI_10_FONT_ID, text, maxTextWidth, MIN_BUBBLE_TEXT_WIDTH, 4);
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
-  const int bubbleH = static_cast<int>(lines.size()) * lineH + PAD * 2;
+  const int bubbleH = static_cast<int>(textFit.lines.size()) * lineH + PAD * 2;
   const int bubbleBlock = bubbleH + TAIL_LENGTH + BUBBLE_GAP;
+  const int bubbleWidth = textFit.textWidth + PAD * 2;
 
   char untilTime[16] = "";
   HalClock::formatHourMinute(untilTime, sizeof(untilTime), endHourUtc, endMinuteUtc, SETTINGS.clockUtcOffsetQ,
                              SETTINGS.clockFormat == 1);
   char untilLine[48];
   snprintf(untilLine, sizeof(untilLine), tr(STR_FOCUS_SESSION_UNTIL), untilTime);
-  const int untilLineH = renderer.getLineHeight(SMALL_FONT_ID);
+  // Same size as the header's own title, so this reads as a second line of
+  // header rather than incidental caption text.
+  const int untilLineH = renderer.getLineHeight(UI_12_FONT_ID);
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 1;
@@ -135,13 +137,13 @@ void FocusSessionActivity::render(RenderLock&&) {
   const int blockH = bubbleBlock + spriteH + UNTIL_GAP + untilLineH;
   const int blockTop = contentTop + (contentHeight - blockH) / 2;
   const int centreX = pageWidth / 2;
-  const int bubbleX = centreX - contentWidth / 2;
+  const int bubbleX = centreX - bubbleWidth / 2;
 
-  companion::drawSpeechBubble(renderer, bubbleX, blockTop, contentWidth, bubbleH, TAIL_LENGTH,
+  companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
                               companion::TailSide::Bottom);
-  const Rect textBounds{bubbleX + PAD, blockTop, textWidth, bubbleH};
+  const Rect textBounds{bubbleX + PAD, blockTop, textFit.textWidth, bubbleH};
   int textY = blockTop + PAD;
-  for (const auto& line : lines) {
+  for (const auto& line : textFit.lines) {
     UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, textY, line.c_str());
     textY += lineH;
   }
@@ -149,8 +151,9 @@ void FocusSessionActivity::render(RenderLock&&) {
   const int spriteTop = blockTop + bubbleBlock;
   companion::drawPose(renderer, id, mood, centreX - spriteW / 2, spriteTop, scale);
 
-  const int untilW = renderer.getTextWidth(SMALL_FONT_ID, untilLine);
-  renderer.drawText(SMALL_FONT_ID, centreX - untilW / 2, spriteTop + spriteH + UNTIL_GAP, untilLine);
+  const int untilW = renderer.getTextWidth(UI_12_FONT_ID, untilLine, EpdFontFamily::BOLD);
+  renderer.drawText(UI_12_FONT_ID, centreX - untilW / 2, spriteTop + spriteH + UNTIL_GAP, untilLine, true,
+                    EpdFontFamily::BOLD);
 
   // Nothing is navigable while locked -- Back and Home are both swallowed
   // (see preventAutoSleep()/handleHomeGesture()), so there is nothing to hint.
