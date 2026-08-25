@@ -104,10 +104,13 @@ class ActivityManager {
   // name those types without pulling the activities in. Out-of-range values are
   // clamped to the first tab by OrganizerScreenActivity::onEnter(), which matters
   // for Budget: its tab count follows how many accounts are cached.
-  void goToTasks(uint8_t initialTab = 0);  // 0 = All
+  // selectTaskId/selectHabitId, when non-empty, land the screen on that
+  // specific task/habit's row instead of row 0 -- see TasksActivity's and
+  // HabitsActivity's own constructor comments.
+  void goToTasks(uint8_t initialTab = 0, std::string selectTaskId = "");  // 0 = All
   void goToCalendar();
   void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
-  void goToHabits();
+  void goToHabits(std::string selectHabitId = "");
   // Syncs every configured integration over one Wi-Fi association.
   void goToSyncAll();
   void goToReadMenu();
@@ -128,6 +131,7 @@ class ActivityManager {
 
   bool preventAutoSleep() const;
   bool isReaderActivity() const;
+  bool isQuickPickActivity() const;
   bool handleForcedRefresh();
   bool skipLoopDelay() const;
   ScreenshotInfo getScreenshotInfo() const;

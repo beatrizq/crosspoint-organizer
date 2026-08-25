@@ -32,8 +32,13 @@ class HabitsActivity final : public OrganizerScreenActivity {
   enum class Tab : uint8_t { TODAY = 0 };
   static constexpr int TAB_COUNT = 1;
 
-  explicit HabitsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : OrganizerScreenActivity("Habits", renderer, mappedInput, static_cast<int>(Tab::TODAY)) {}
+  // selectHabitId, when non-empty, selects that habit's row on first paint
+  // instead of row 0. One-shot -- cleared once applied.
+  explicit HabitsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string selectHabitId = "")
+      : OrganizerScreenActivity("Habits", renderer, mappedInput, static_cast<int>(Tab::TODAY)),
+        selectHabitId(std::move(selectHabitId)) {}
+
+  void onEnter() override;
 
  protected:
   const char* screenTitle() const override;
@@ -57,6 +62,9 @@ class HabitsActivity final : public OrganizerScreenActivity {
   // setting makes these differ, so the scan is over at most HABITIFY_MAX_HABITS.
   int cacheIndexForRow(int row) const;
   bool isVisible(size_t cacheIndex) const;
+
+  // See the constructor comment. Consumed and cleared in onEnter().
+  std::string selectHabitId;
 
   // Opens the number entry; performIncrement() is what actually moves the number.
   void completeSelectedHabit();

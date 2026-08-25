@@ -1,11 +1,12 @@
 #include "QuickPick.h"
 
+#include <numeric>
+
 namespace quickpick {
 
 uint32_t totalWeight(const std::vector<WeightedItem>& items) {
-  uint32_t total = 0;
-  for (const auto& item : items) total += item.weight;
-  return total;
+  return std::accumulate(items.begin(), items.end(), uint32_t{0},
+                         [](const uint32_t sum, const WeightedItem& item) { return sum + item.weight; });
 }
 
 int pick(const std::vector<WeightedItem>& items, const uint32_t draw) {

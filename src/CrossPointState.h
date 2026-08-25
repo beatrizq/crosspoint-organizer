@@ -20,6 +20,19 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
+  // Mirrors lastSleepFromReader for the companion's quick-pick reveal screen,
+  // so waking from sleep can put the same pick back up instead of dropping to
+  // Home. The pick's own content lives in the three fields below, kept in
+  // sync by QuickPickActivity itself (written on entry) rather than fished
+  // out reactively at sleep time -- there is no RTTI in this build to safely
+  // downcast the current Activity and read it that way.
+  bool lastSleepFromQuickPick = false;
+  std::string quickPickText;
+  // Todoist task id / Habitify habit id behind quickPickText, so resuming
+  // this screen after sleep can still jump straight to that row.
+  std::string quickPickItemId;
+  bool quickPickIsHabit = false;
+  bool quickPickPoolEmpty = false;
 
   static const char* getFilePath() { return "/.crosspoint/state.json"; }
   void toJson(JsonDocument& doc) const;

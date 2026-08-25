@@ -39,8 +39,15 @@ class TasksActivity final : public OrganizerScreenActivity {
   // what the filter returned, so the two are mapped through `visibleTabs`.
   enum class TabKind : uint8_t { ALL, OVERDUE, TODAY, UPCOMING, NO_DATE };
 
-  explicit TasksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialTab = 0)
-      : OrganizerScreenActivity("Tasks", renderer, mappedInput, initialTab) {}
+  // selectTaskId, when non-empty, jumps straight to that task on first paint:
+  // whichever tab it falls in, at its own row, rather than wherever
+  // initialTab/row 0 would otherwise land. One-shot -- cleared once applied,
+  // so a later tab switch behaves normally.
+  explicit TasksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialTab = 0,
+                        std::string selectTaskId = "")
+      : OrganizerScreenActivity("Tasks", renderer, mappedInput, initialTab), selectTaskId(std::move(selectTaskId)) {}
+
+  void onEnter() override;
 
  protected:
   const char* screenTitle() const override;
@@ -91,4 +98,7 @@ class TasksActivity final : public OrganizerScreenActivity {
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};
+
+  // See the constructor comment. Consumed and cleared in onEnter().
+  std::string selectTaskId;
 };

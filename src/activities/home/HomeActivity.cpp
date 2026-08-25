@@ -290,15 +290,17 @@ void HomeActivity::activateCompanion() {
   const int picked = total == 0 ? -1 : quickpick::pick(candidates, esp_random() % total);
 
   if (picked < 0) {
-    startActivityForResult(std::make_unique<QuickPickActivity>(renderer, mappedInput, "", false, true), nullptr);
+    startActivityForResult(std::make_unique<QuickPickActivity>(renderer, mappedInput, "", "", false, true), nullptr);
     return;
   }
 
   const auto& item = candidates[static_cast<size_t>(picked)];
   const std::string text = item.isHabit ? habits[static_cast<size_t>(item.sourceIndex)].name
                                         : tasks[static_cast<size_t>(item.sourceIndex)].content;
-  startActivityForResult(std::make_unique<QuickPickActivity>(renderer, mappedInput, text, item.isHabit, false),
-                         nullptr);
+  const std::string itemId =
+      item.isHabit ? habits[static_cast<size_t>(item.sourceIndex)].id : tasks[static_cast<size_t>(item.sourceIndex)].id;
+  startActivityForResult(
+      std::make_unique<QuickPickActivity>(renderer, mappedInput, text, itemId, item.isHabit, false), nullptr);
 }
 
 void HomeActivity::loadRecentBooks(int maxBooks) {

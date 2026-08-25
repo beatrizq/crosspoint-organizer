@@ -37,6 +37,34 @@ void HabitsActivity::loadCaches() {
   HABITIFY_STORE.loadFromFile();
 }
 
+void HabitsActivity::onEnter() {
+  OrganizerScreenActivity::onEnter();
+  if (selectHabitId.empty()) return;
+
+  const std::string targetId = std::move(selectHabitId);
+  selectHabitId.clear();  // one-shot, regardless of whether the id is still found below
+
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  int targetCacheIndex = -1;
+  for (size_t i = 0; i < habits.size(); i++) {
+    if (habits[i].id == targetId) {
+      targetCacheIndex = static_cast<int>(i);
+      break;
+    }
+  }
+  // Gone, or hidden by "hide completed" since the pick was made: leave
+  // onEnter()'s default selection (row 0) rather than landing on nothing.
+  if (targetCacheIndex < 0 || !isVisible(static_cast<size_t>(targetCacheIndex))) return;
+
+  const int rows = rowCount();
+  for (int row = 0; row < rows; row++) {
+    if (cacheIndexForRow(row) == targetCacheIndex) {
+      selectedIndex = row + 1;
+      break;
+    }
+  }
+}
+
 const char* HabitsActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Habits); }
 
 const char* HabitsActivity::tabLabel(const int index) const {

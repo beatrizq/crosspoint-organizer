@@ -47,6 +47,9 @@ class Activity {
   // Returns true when the activity schedules its own forced refresh.
   virtual bool handleForcedRefresh() { return false; }
   virtual bool isHomeActivity() const { return false; }
+  // For the sleep-wake resume flag: whether this is the companion's
+  // quick-pick reveal screen, mirroring isReaderActivity() above.
+  virtual bool isQuickPickActivity() const { return false; }
   virtual bool handleHomeGesture() { return false; }
   virtual ScreenshotInfo getScreenshotInfo() const { return {}; }
 

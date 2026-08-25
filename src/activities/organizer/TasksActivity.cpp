@@ -33,6 +33,46 @@ void TasksActivity::loadCaches() {
   rebuildTabs();
 }
 
+void TasksActivity::onEnter() {
+  OrganizerScreenActivity::onEnter();
+  if (selectTaskId.empty()) return;
+
+  const std::string targetId = std::move(selectTaskId);
+  selectTaskId.clear();  // one-shot, regardless of whether the id is still found below
+
+  const auto& tasks = TODOIST_TASKS.getTasks();
+  int targetCacheIndex = -1;
+  for (size_t i = 0; i < tasks.size(); i++) {
+    if (tasks[i].id == targetId) {
+      targetCacheIndex = static_cast<int>(i);
+      break;
+    }
+  }
+  // Gone (completed/deleted since the pick was made): leave onEnter()'s
+  // default selection (tab 0, row 0) rather than landing on nothing.
+  if (targetCacheIndex < 0) return;
+
+  // ALL (always visibleTabs[0]) matches everything, so it is only used as the
+  // fallback -- a more specific tab, when one matches, is what the task
+  // actually belongs to.
+  int targetTab = 0;
+  for (size_t t = 1; t < visibleTabs.size(); t++) {
+    if (matchesKind(visibleTabs[t], static_cast<size_t>(targetCacheIndex))) {
+      targetTab = static_cast<int>(t);
+      break;
+    }
+  }
+  setTab(targetTab);
+
+  const int rows = rowCount();
+  for (int row = 0; row < rows; row++) {
+    if (cacheIndexForRow(row) == targetCacheIndex) {
+      selectedIndex = row + 1;
+      break;
+    }
+  }
+}
+
 const char* TasksActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Tasks); }
 
 TasksActivity::TabKind TasksActivity::kindAt(const int index) const {

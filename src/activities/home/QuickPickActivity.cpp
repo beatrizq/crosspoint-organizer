@@ -5,6 +5,7 @@
 
 #include <vector>
 
+#include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
 #include "companion/CompanionRenderer.h"
@@ -24,6 +25,21 @@ constexpr int MARGIN = 24;
 
 void QuickPickActivity::onEnter() {
   Activity::onEnter();
+
+  // Mirrored here rather than fished out reactively when sleep happens: keeps
+  // whatever the screen is showing durable at all times it's up, and needs no
+  // RTTI to read back out of a generic Activity* later (this build has none).
+  // Guarded so a resume-from-sleep re-entry (already holding this exact pick)
+  // does not cost a redundant SD write.
+  if (APP_STATE.quickPickText != pickedText || APP_STATE.quickPickItemId != itemId ||
+      APP_STATE.quickPickIsHabit != isHabit || APP_STATE.quickPickPoolEmpty != poolEmpty) {
+    APP_STATE.quickPickText = pickedText;
+    APP_STATE.quickPickItemId = itemId;
+    APP_STATE.quickPickIsHabit = isHabit;
+    APP_STATE.quickPickPoolEmpty = poolEmpty;
+    APP_STATE.saveToFile();
+  }
+
   requestUpdate(true);
 }
 
@@ -40,9 +56,9 @@ void QuickPickActivity::loop() {
       return;
     }
     if (isHabit) {
-      activityManager.goToHabits();
+      activityManager.goToHabits(itemId);
     } else {
-      activityManager.goToTasks();
+      activityManager.goToTasks(0, itemId);
     }
   }
 }
