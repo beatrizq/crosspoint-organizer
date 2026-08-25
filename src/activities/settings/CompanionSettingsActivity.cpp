@@ -8,8 +8,8 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
-#include "components/UITheme.h"
 #include "companion/CompanionSprites.generated.h"
+#include "components/UITheme.h"
 #include "fontIds.h"
 
 namespace {
