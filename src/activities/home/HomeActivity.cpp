@@ -147,7 +147,7 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   // companion always gets the tall gap beside the cover, never a strip under a
   // menu, so the fork's compact and side-by-side fallbacks have nothing to pick
   // between.
-  constexpr int PAD = 6;  // bubble inner padding
+  constexpr int PAD = 10;  // bubble inner padding
   constexpr int TAIL_LENGTH = 12;
   constexpr int BUBBLE_GAP = 2;  // between the tail tip and the character's head
   constexpr int LABEL_GAP = 2;

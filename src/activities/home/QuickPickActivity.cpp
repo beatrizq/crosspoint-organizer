@@ -24,7 +24,7 @@ namespace {
 // More headroom than Home's own companion column gets, since this screen has
 // nothing else competing for space.
 constexpr int MAX_SCALE = 6;
-constexpr int PAD = 8;
+constexpr int PAD = 14;
 constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;

@@ -22,7 +22,7 @@ namespace {
 // Same layout constants QuickPickActivity's own bubble+companion screen
 // uses -- this is the locked lead-in to exactly that screen.
 constexpr int MAX_SCALE = 6;
-constexpr int PAD = 8;
+constexpr int PAD = 14;
 constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
