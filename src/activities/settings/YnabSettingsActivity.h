@@ -42,4 +42,11 @@ class YnabSettingsActivity final : public Activity {
 
   State state = State::MENU;
   const char* statusMessage = nullptr;  // Translated; only read in FAILED state
+
+  // SettingsActivity dispatches this screen on Confirm going down, so the
+  // matching release lands here instead, once this screen is already active.
+  // Unswallowed, it reads as a fresh Confirm-release on row 0 (Nickname) and
+  // opens the keyboard before the user has touched anything. Armed in
+  // onEnter() only when Confirm is still physically down at that point.
+  bool swallowConfirmRelease = false;
 };
