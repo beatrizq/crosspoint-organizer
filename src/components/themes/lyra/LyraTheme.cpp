@@ -597,6 +597,20 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
   // Only load from SD on first render, then use stored buffer
   if (hasContinueReading) {
     RecentBook book = recentBooks[0];
+    const bool bookSelected = (selectorIndex == 0);
+
+    // Grey background behind the whole row when selected -- same fill and
+    // the same contentSidePadding inset drawButtonMenu's own selected row
+    // uses, so this reads as one more row in the list it sits above rather
+    // than a different selection idiom. Drawn before the cover art below, so
+    // the art paints over its own footprint on top of it rather than being
+    // erased by it.
+    if (bookSelected) {
+      const int fillX = rect.x + LyraMetrics::values.contentSidePadding;
+      const int fillWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
+      renderer.fillRoundedRect(fillX, rect.y, fillWidth, rect.height, cornerRadius, Color::LightGray);
+    }
+
     if (!coverRendered) {
       std::string coverPath = book.coverBmpPath;
       bool hasCover = true;
@@ -644,25 +658,7 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
       coverRendered = coverBufferStored;  // Only consider it rendered if we successfully stored the buffer
     }
 
-    bool bookSelected = (selectorIndex == 0);
-
     const int tileX = LyraMetrics::values.contentSidePadding;
-
-    if (bookSelected) {
-      // Same outline convention as a selected grid tile (see
-      // drawButtonGrid's selectionLineWidth/cornerRadius): a stroke around
-      // the padded outer bounds, entirely outside the cover bitmap's own
-      // bounds (see coverShrink above), so it reads as a frame without
-      // needing to redraw the artwork underneath.
-      constexpr int selectionPad = coverShrink / 2;
-      const int coverX = tileX + hPaddingInSelection;
-      const int coverY = tileY + hPaddingInSelection + coverYOffset;
-      const int outerX = coverX - selectionPad;
-      const int outerY = coverY - selectionPad;
-      const int outerW = coverWidth + selectionPad * 2;
-      const int outerH = drawnCoverHeight + selectionPad * 2;
-      renderer.drawRoundedRect(outerX, outerY, outerW, outerH, selectionLineWidth, cornerRadius, true);
-    }
 
     // Title and author, beside the cover -- dropped from here back when Home
     // still called this, to leave the companion column room beside it (see
