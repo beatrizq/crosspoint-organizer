@@ -86,15 +86,16 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
+  // App Order and Sleep Screen App lead the individual apps, as asked: both
+  // are properties of the set of apps rather than of any one of them, so
+  // they come first rather than trailing after it.
+  organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
+  organizerSettings.push_back(buildOrganizerSleepAppSetting(StrId::STR_CAT_ORGANIZER));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_TODOIST, SettingAction::Todoist));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_COMPANION, SettingAction::Companion));
-  organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
-  // After App Order, as asked: it is a property of the set of apps rather than of
-  // any one of them, so it belongs with the other cross-app rows.
-  organizerSettings.push_back(buildOrganizerSleepAppSetting(StrId::STR_CAT_ORGANIZER));
   // A footnote, not an action: the hold on the home screen's Settings button is
   // the only way to reach a sync-everything, and nothing on that screen advertises
   // it. A None action draws the row and does nothing when it is selected, which is
