@@ -17,8 +17,11 @@ RollResult roll() {
   std::vector<WeightedItem> candidates;
   candidates.reserve(tasks.size());
   for (size_t i = 0; i < tasks.size(); i++) {
-    const bool isUpcoming = knowToday && tasks[i].dueDays != todoist::DUE_NONE && tasks[i].dueDays > today;
-    if (isUpcoming) continue;
+    // Overdue or due today only - not undated (nothing says it needs doing
+    // right now) and not a future date. Today unknown excludes everything
+    // dated, since neither overdue nor due-today can be told apart from it.
+    const bool dueTodayOrOverdue = knowToday && (tasks[i].overdue || tasks[i].dueDays == today);
+    if (!dueTodayOrOverdue) continue;
     candidates.push_back({static_cast<int>(i), false, 1});
   }
 

@@ -15,11 +15,11 @@ struct RollResult {
   bool poolEmpty = true;
 };
 
-// Pool: every pending task not clearly scheduled for a future day (overdue,
-// due today, or undated all count -- "give me something to do right now" is
-// not served by handing back a task due in three weeks), plus every habit not
-// yet complete today. All equally likely among themselves except habits,
-// which are weighted toward whichever is closest to its own target.
+// Pool: every task due today or overdue (undated and future-dated tasks are
+// left out - "give me something to do right now" is not served by a task with
+// no date at all, or one due in three weeks), plus every habit not yet
+// complete today. All equally likely among themselves except habits, which
+// are weighted toward whichever is closest to its own target.
 RollResult roll();
 
 }  // namespace quickpick
