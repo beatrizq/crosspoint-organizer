@@ -105,7 +105,8 @@ class LyraTheme : public BaseTheme {
   int getGridRowStep(int contentHeight, int buttonCount) const override;
   void drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                       const std::function<std::string(int index)>& buttonLabel,
-                      const std::function<UIIcon(int index)>& rowIcon) const override;
+                      const std::function<UIIcon(int index)>& rowIcon,
+                      const std::function<int(int index)>& badgeCount = nullptr) const override;
   Rect getHomeCompanionRect(Rect coverCardRect) const override;
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                            const int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,

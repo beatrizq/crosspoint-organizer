@@ -43,6 +43,9 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
 
   const std::vector<TodoistTask>& getTasks() const { return tasks; }
   size_t getOverdueCount() const;
+  // Overdue plus due exactly today, per syncDate's notion of "today" - the
+  // Home screen's notification-style badge for this app.
+  size_t getDueTodayOrOverdueCount() const;
   const std::string& getSyncDate() const { return syncDate; }
   bool hasSynced() const { return !syncDate.empty(); }
 

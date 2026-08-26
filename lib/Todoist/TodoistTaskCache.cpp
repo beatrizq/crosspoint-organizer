@@ -65,6 +65,13 @@ size_t TodoistTaskCache::getOverdueCount() const {
   return static_cast<size_t>(std::count_if(tasks.begin(), tasks.end(), [](const TodoistTask& t) { return t.overdue; }));
 }
 
+size_t TodoistTaskCache::getDueTodayOrOverdueCount() const {
+  const uint16_t today = todoist::dueDaysFromIso(syncDate.c_str());
+  if (today == todoist::DUE_NONE) return getOverdueCount();
+  return static_cast<size_t>(std::count_if(tasks.begin(), tasks.end(),
+                                           [today](const TodoistTask& t) { return t.overdue || t.dueDays == today; }));
+}
+
 void TodoistTaskCache::setTasks(std::vector<TodoistTask>&& fetched, const std::string& date) {
   tasks = std::move(fetched);
   if (tasks.size() > MAX_TASKS) tasks.resize(MAX_TASKS);

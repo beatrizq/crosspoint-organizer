@@ -290,9 +290,13 @@ class BaseTheme {
   // Vertical step between tile rows, given the height the grid has to fill and
   // how many tiles go in it. The activity hit-tests with this too.
   virtual int getGridRowStep(int contentHeight, int buttonCount) const;
+  // badgeCount, when given, returns a notification-style count for a tile (0 =
+  // no badge). A theme that has no room to draw one - anything falling back to
+  // drawButtonMenu's row list - is free to ignore it.
   virtual void drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon) const;
+                              const std::function<UIIcon(int index)>& rowIcon,
+                              const std::function<int(int index)>& badgeCount = nullptr) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
                                int selectedIndex) const;

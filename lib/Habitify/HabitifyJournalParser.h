@@ -14,6 +14,11 @@ struct HabitifyParsedHabit {
   const char* unitSymbol;  // progress.unit; "" when the habit has no goal
   float current;           // progress.current
   float target;            // progress.target
+  // Habitify's own verdict for the day - "status" == "completed". The only
+  // signal available for a goal-less (target == 0) habit, where current/target
+  // can never say so; also true for a numeric habit the user marked done in
+  // Habitify itself without necessarily reaching the target through this app.
+  bool completed;
 };
 
 /**
@@ -25,9 +30,10 @@ struct HabitifyParsedHabit {
  *                         "periodicity":"daily"},
  *             "logInfo":{"type":"manual"}, ...}]}
  *
- * Only what the row draws survives: the id (needed to log against), the name,
- * and the three progress fields behind "x/y". Colour, icon, streak, areas,
- * reminders and goals are dropped at parse time.
+ * Only what the row draws (and what marks a habit done) survives: the id
+ * (needed to log against), the name, the three progress fields behind "x/y",
+ * and status. Colour, icon, streak, areas, reminders and goals are dropped at
+ * parse time.
  *
  * Streamed rather than buffered because a habit carries a dozen nested objects
  * it does not need - reminders, end conditions, goals, areas - and forty of them
@@ -70,6 +76,7 @@ class HabitifyJournalParser {
     DATA,
     HABIT_ID,
     HABIT_NAME,
+    HABIT_STATUS,
     PROGRESS,
     PROGRESS_CURRENT,
     PROGRESS_TARGET,
@@ -107,4 +114,5 @@ class HabitifyJournalParser {
   char currentUnit[HabitifyHabit::UNIT_MAX_LEN + 1];
   float currentValue;
   float currentTarget;
+  bool currentCompleted;
 };

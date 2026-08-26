@@ -88,6 +88,7 @@ void collectHabit(void* ctx, const HabitifyParsedHabit& parsed) {
   habit.unitSymbol = parsed.unitSymbol;
   habit.current = parsed.current;
   habit.target = parsed.target;
+  habit.completedByStatus = parsed.completed;
   collector->out->push_back(std::move(habit));
 }
 

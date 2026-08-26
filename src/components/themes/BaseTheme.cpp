@@ -844,9 +844,10 @@ int BaseTheme::getGridRowStep(int contentHeight, int buttonCount) const {
 
 void BaseTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon) const {
+                               const std::function<UIIcon(int index)>& rowIcon,
+                               const std::function<int(int index)>& /*badgeCount*/) const {
   // A theme only draws tiles if it has artwork sized for them; the rest keep
-  // the rows they already had.
+  // the rows they already had, which have no icon to badge in the first place.
   drawButtonMenu(renderer, rect, buttonCount, selectedIndex, buttonLabel, rowIcon);
 }
 

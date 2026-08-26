@@ -58,6 +58,7 @@ void HabitifyJournalParser::clearCurrent() {
   currentUnit[0] = '\0';
   currentValue = 0.0f;
   currentTarget = 0.0f;
+  currentCompleted = false;
 }
 
 void HabitifyJournalParser::commitHabit() {
@@ -66,7 +67,8 @@ void HabitifyJournalParser::commitHabit() {
   if (currentId[0] != '\0') {
     habitsSeen++;
     if (sink) {
-      const HabitifyParsedHabit habit{currentId, currentName, currentUnit, currentValue, currentTarget};
+      const HabitifyParsedHabit habit{currentId,    currentName,   currentUnit,
+                                      currentValue, currentTarget, currentCompleted};
       sink(sinkCtx, habit);
     }
   }
@@ -98,6 +100,8 @@ void HabitifyJournalParser::sOnKey(void* ctx, const char* key, const size_t len)
           self->lastKey = LastKey::HABIT_ID;
         else if (keyIs(key, len, "name", 4))
           self->lastKey = LastKey::HABIT_NAME;
+        else if (keyIs(key, len, "status", 6))
+          self->lastKey = LastKey::HABIT_STATUS;
         else if (keyIs(key, len, "progress", 8))
           self->lastKey = LastKey::PROGRESS;
         else
@@ -131,6 +135,8 @@ void HabitifyJournalParser::sOnString(void* ctx, const char* value, const size_t
       safeCopy(self->currentId, sizeof(self->currentId), value, len);
     } else if (self->lastKey == LastKey::HABIT_NAME) {
       safeCopy(self->currentName, sizeof(self->currentName), value, len);
+    } else if (self->lastKey == LastKey::HABIT_STATUS) {
+      self->currentCompleted = keyIs(value, len, "completed", 9);
     }
   } else if (self->position == Position::IN_PROGRESS_OBJECT && self->progressDepth == 1 &&
              self->lastKey == LastKey::PROGRESS_UNIT) {

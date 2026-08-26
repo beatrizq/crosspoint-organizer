@@ -21,6 +21,7 @@ void HabitifyHabitCache::toJson(JsonDocument& doc) const {
     // Written even when zero: a press made with the radio off has to survive a
     // reboot, which is the whole point of queueing it.
     obj["pending"] = habit.pending;
+    obj["completedByStatus"] = habit.completedByStatus;
   }
 }
 
@@ -44,6 +45,7 @@ bool HabitifyHabitCache::fromJson(JsonVariantConst doc) {
     habit.target = obj["target"] | 0.0f;
     habit.pending = obj["pending"] | 0.0f;
     if (habit.pending < 0.0f) habit.pending = 0.0f;
+    habit.completedByStatus = obj["completedByStatus"] | false;
     habits.push_back(std::move(habit));
   }
 
