@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -31,12 +32,11 @@ constexpr int ROW_ACTIVE_FOR = 5;
 // "N/5" set, for the Mood Wallpapers row's value column -- digits need no
 // translation, so this skips adding a format string just for them.
 std::string wallpaperCountValue() {
-  int count = 0;
-  for (const auto& path : COMPANION_WALLPAPERS.pathForMood) {
-    if (!path.empty()) count++;
-  }
+  const auto* begin = COMPANION_WALLPAPERS.pathForMood;
+  const auto* end = begin + companion::MOOD_COUNT;
+  const auto count = std::count_if(begin, end, [](const std::string& path) { return !path.empty(); });
   char buf[8];
-  snprintf(buf, sizeof(buf), "%d/%d", count, static_cast<int>(companion::MOOD_COUNT));
+  snprintf(buf, sizeof(buf), "%d/%d", static_cast<int>(count), static_cast<int>(companion::MOOD_COUNT));
   return std::string(buf);
 }
 
