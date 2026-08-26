@@ -1,7 +1,9 @@
 #include "OrganizerSleepScreen.h"
 
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <Logging.h>
+#include <Memory.h>
 
 #include "CrossPointSettings.h"
 #include "util/ScreenshotUtil.h"
@@ -11,8 +13,13 @@ namespace organizerSleepScreen {
 namespace {
 
 // The sleep screen SleepActivity renders in CUSTOM mode, and the file the image
-// viewer's "Set Cover" action writes.
+// viewer's "Set Cover" action and installCustomWallpaper() write.
 constexpr char SLEEP_SCREEN_PATH[] = "/sleep.bmp";
+
+// One SD block-aligned chunk, on the heap rather than the stack for the same
+// reason as SleepWallpaperBackup's own copy buffer: 2KB is an order of magnitude
+// past what a task stack here should carry.
+constexpr size_t COPY_CHUNK = 2048;
 
 // The setting value that selects a given app, or SLEEP_APP_OFF for one that
 // cannot be chosen. Read is not an organizer app and has no screen to snapshot.
@@ -30,6 +37,19 @@ uint8_t settingValueFor(const homeAppOrder::AppId id) {
       break;
   }
   return CrossPointSettings::SLEEP_APP_OFF;
+}
+
+// Switches the sleep mode to CUSTOM, remembering the mode it replaces - and only
+// the first time, so a later call does not record CUSTOM itself as the mode to
+// go back to. No-op once already CUSTOM.
+void switchToCustomMode() {
+  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM) return;
+  if (SETTINGS.previousSleepScreenMode == CrossPointSettings::NO_PREVIOUS_SLEEP_SCREEN) {
+    SETTINGS.previousSleepScreenMode = SETTINGS.sleepScreen;
+  }
+  SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
+  SETTINGS.saveToFile();
+  LOG_INF("OSLEEP", "Sleep screen mode switched to custom");
 }
 
 }  // namespace
@@ -64,19 +84,48 @@ void capture(const GfxRenderer& renderer) {
   }
   LOG_DBG("OSLEEP", "Sleep screen updated from an organizer screen");
 
-  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM) return;
-
-  // Remembered before it is overwritten, and only the first time: a later
-  // snapshot would otherwise record CUSTOM as the mode to go back to.
-  if (SETTINGS.previousSleepScreenMode == CrossPointSettings::NO_PREVIOUS_SLEEP_SCREEN) {
-    SETTINGS.previousSleepScreenMode = SETTINGS.sleepScreen;
-  }
   // The wallpaper is only shown in CUSTOM mode; switching is what makes the
   // snapshot visible at all.
-  SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-  SETTINGS.saveToFile();
-  LOG_INF("OSLEEP", "Sleep screen mode switched to custom");
+  switchToCustomMode();
 }
+
+bool installCustomWallpaper(const std::string& sourcePath) {
+  bool success = false;
+  HalFile inFile, outFile;
+  if (Storage.openFileForRead("OSLEEP", sourcePath, inFile)) {
+    if (Storage.openFileForWrite("OSLEEP", SLEEP_SCREEN_PATH, outFile)) {
+      auto buffer = makeUniqueNoThrow<uint8_t[]>(COPY_CHUNK);
+      if (buffer) {
+        success = true;
+        int bytesRead;
+        while ((bytesRead = inFile.read(buffer.get(), COPY_CHUNK)) > 0) {
+          if (outFile.write(buffer.get(), static_cast<size_t>(bytesRead)) != static_cast<size_t>(bytesRead)) {
+            LOG_ERR("OSLEEP", "Short write installing %s", sourcePath.c_str());
+            success = false;
+            break;
+          }
+        }
+      } else {
+        LOG_ERR("OSLEEP", "OOM: %zu bytes", COPY_CHUNK);
+      }
+      outFile.flush();
+    }
+  }
+
+  if (!success) {
+    LOG_ERR("OSLEEP", "Failed to install %s as the sleep wallpaper", sourcePath.c_str());
+    return false;
+  }
+
+  // The user has just said what the wallpaper should be, so any copy an
+  // organizer app's screenshot was holding is no longer theirs to put back.
+  SleepWallpaperBackup::discard();
+  switchToCustomMode();
+  LOG_INF("OSLEEP", "Sleep screen wallpaper installed from %s", sourcePath.c_str());
+  return true;
+}
+
+void activateMoodWallpaperMode() { switchToCustomMode(); }
 
 bool revert() {
   // The file first: it is the part the user cares about keeping, and the one they

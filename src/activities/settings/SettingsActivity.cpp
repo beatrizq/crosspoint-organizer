@@ -30,6 +30,7 @@
 #include "TextSettingsActivity.h"
 #include "TodoistSettingsActivity.h"
 #include "YnabSettingsActivity.h"
+#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
@@ -369,7 +370,12 @@ void SettingsActivity::toggleCurrentSetting() {
         SETTINGS.saveToFile();
         // After the save, because reverting writes settings of its own and must
         // not be undone by this one.
-        if (sleepAppChanged) revertSleepScreenIfOff();
+        if (sleepAppChanged) {
+          revertSleepScreenIfOff();
+          activateMoodWallpaperSleepScreenIfChosen();
+          // Starts the file browser; its own result handler rebuilds the list.
+          if (openCustomSleepScreenPickerIfChosen()) return;
+        }
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -393,7 +399,11 @@ void SettingsActivity::toggleCurrentSetting() {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
-        if (sleepAppChanged) revertSleepScreenIfOff();
+        if (sleepAppChanged) {
+          revertSleepScreenIfOff();
+          activateMoodWallpaperSleepScreenIfChosen();
+          if (openCustomSleepScreenPickerIfChosen()) return;
+        }
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -496,18 +506,23 @@ void SettingsActivity::toggleCurrentSetting() {
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
   // After the save, because reverting writes settings of its own. Reached by the
-  // inline-cycle path, which a two-value enum takes; the sleep-screen app has five
+  // inline-cycle path, which a two-value enum takes; the sleep-screen app has six
   // and so goes through the popup above, but the flag is honoured either way.
-  if (sleepAppChanged) revertSleepScreenIfOff();
+  if (sleepAppChanged) {
+    revertSleepScreenIfOff();
+    activateMoodWallpaperSleepScreenIfChosen();
+    if (openCustomSleepScreenPickerIfChosen()) return;
+  }
   rebuildSettingsLists();
   selectedSettingIndex = std::min(selectedSettingIndex, settingsCount);
 }
 
 void SettingsActivity::revertSleepScreenIfOff() {
   if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return;
-  // Switched off: hand back the wallpaper this feature displaced. That file may be
-  // one the user transferred to the device themselves, so getting it back is the
-  // whole reason a copy was kept.
+  // Switched to Custom: hand back the wallpaper this feature displaced, before
+  // the picker below offers to replace it with something else. That file may be
+  // one the user picked themselves, so getting it back is the whole reason a
+  // copy was kept.
   const bool hadWallpaper = organizerSleepScreen::hasBackup();
   // The copy is ~48KB off the SD card, so the screen says something is happening.
   if (hadWallpaper) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
@@ -516,6 +531,29 @@ void SettingsActivity::revertSleepScreenIfOff() {
   GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
   delay(1000);
   requestUpdate(true);
+}
+
+void SettingsActivity::activateMoodWallpaperSleepScreenIfChosen() {
+  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_MOOD_WALLPAPERS) return;
+  organizerSleepScreen::activateMoodWallpaperMode();
+}
+
+bool SettingsActivity::openCustomSleepScreenPickerIfChosen() {
+  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return false;
+  startActivityForResult(
+      std::make_unique<FileBrowserActivity>(renderer, mappedInput, "/", FileBrowserActivity::Mode::PickImage),
+      [this](const ActivityResult& result) {
+        if (!result.isCancelled) {
+          if (const auto* picked = std::get_if<FilePathResult>(&result.data)) {
+            GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+            const bool success = organizerSleepScreen::installCustomWallpaper(picked->path);
+            GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
+            delay(1000);
+          }
+        }
+        rebuildSettingsLists();
+      });
+  return true;
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {

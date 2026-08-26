@@ -23,7 +23,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     QUICK_RESUME = 6,
     SLEEP_SCREEN_MODE_COUNT
   };
-  // Which organizer app, if any, paints the sleep screen from its first tab.
+  // What feeds the sleep screen: a user-picked file (SLEEP_APP_OFF, labelled
+  // "Custom" - the name is legacy, kept because it is persisted), an organizer
+  // app's first tab, or the companion's per-mood wallpapers (CompanionWallpaperStore).
   // Values are persisted, so append rather than renumber.
   enum ORGANIZER_SLEEP_APP {
     SLEEP_APP_OFF = 0,
@@ -31,6 +33,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     SLEEP_APP_CALENDAR = 2,
     SLEEP_APP_BUDGET = 3,
     SLEEP_APP_HABITS = 4,
+    SLEEP_APP_MOOD_WALLPAPERS = 5,
     ORGANIZER_SLEEP_APP_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -154,10 +157,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
-  // Which app repaints /sleep.bmp from its first tab whenever its contents
-  // change - a sync, or a change made on the device with the radio off. Off by
-  // default: this overwrites a file the user may have put there themselves, so it
-  // is never on until asked for. See util/OrganizerSleepScreen.h.
+  // What the sleep screen shows: a user-picked file (SLEEP_APP_OFF/"Custom",
+  // the default), an organizer app repainting /sleep.bmp from its first tab
+  // whenever its contents change, or the companion's per-mood wallpapers. See
+  // util/OrganizerSleepScreen.h.
   uint8_t organizerSleepApp = SLEEP_APP_OFF;
   // The sleep screen mode in force before an app's screenshot switched it to
   // CUSTOM, so switching the app off can put it back. NO_PREVIOUS_SLEEP_SCREEN

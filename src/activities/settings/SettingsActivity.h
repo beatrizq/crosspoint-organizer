@@ -188,8 +188,15 @@ class SettingsActivity final : public Activity {
   // Points currentSettings at the bucket for selectedCategoryIndex.
   void applyCategorySelection();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
-  // Hands the user's own wallpaper back when the sleep-screen app is set to Off.
+  // Hands the user's own wallpaper back when the sleep screen is set to Custom.
   void revertSleepScreenIfOff();
+  // Switches the sleep mode to CUSTOM when the sleep screen is set to Mood
+  // Wallpapers, so the companion's per-mood wallpapers (once assigned) are what shows.
+  void activateMoodWallpaperSleepScreenIfChosen();
+  // Opens the SD file browser to pick the Custom sleep-screen file when the sleep
+  // screen is set to Custom. Returns true when it did, so the caller can skip its
+  // own post-selection work: the browser's own result handler takes over.
+  bool openCustomSleepScreenPickerIfChosen();
 
  public:
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
