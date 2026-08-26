@@ -294,8 +294,6 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_COMPANION_ENABLED, &CrossPointSettings::companionEnabled, "companionEnabled",
                             StrId::STR_COMPANION),
         buildCompanionCharacterSetting(),
-        SettingInfo::Toggle(StrId::STR_COMPANION_ON_HOME, &CrossPointSettings::companionOnHome, "companionOnHome",
-                            StrId::STR_COMPANION),
         SettingInfo::Toggle(StrId::STR_COMPANION_SHOW_MOOD_LABEL, &CrossPointSettings::companionShowMoodLabel,
                             "companionShowMoodLabel", StrId::STR_COMPANION),
 

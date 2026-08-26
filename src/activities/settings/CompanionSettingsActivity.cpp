@@ -24,10 +24,9 @@
 namespace {
 constexpr int ROW_ENABLED = 0;
 constexpr int ROW_CHARACTER = 1;
-constexpr int ROW_ON_HOME = 2;
-constexpr int ROW_SHOW_MOOD_LABEL = 3;
-constexpr int ROW_MOOD_WALLPAPERS = 4;
-constexpr int ROW_ACTIVE_FOR = 5;
+constexpr int ROW_SHOW_MOOD_LABEL = 2;
+constexpr int ROW_MOOD_WALLPAPERS = 3;
+constexpr int ROW_ACTIVE_FOR = 4;
 
 // "N/5" set, for the Mood Wallpapers row's value column -- digits need no
 // translation, so this skips adding a format string just for them.
@@ -137,9 +136,6 @@ void CompanionSettingsActivity::handleSelection() {
       });
       requestUpdate();
       return;
-    case ROW_ON_HOME:
-      SETTINGS.companionOnHome = (SETTINGS.companionOnHome + 1) % 2;
-      break;
     case ROW_SHOW_MOOD_LABEL:
       SETTINGS.companionShowMoodLabel = (SETTINGS.companionShowMoodLabel + 1) % 2;
       break;
@@ -244,8 +240,6 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return std::string(tr(STR_COMPANION_ENABLED));
           case ROW_CHARACTER:
             return std::string(tr(STR_COMPANION_CHARACTER));
-          case ROW_ON_HOME:
-            return std::string(tr(STR_COMPANION_ON_HOME));
           case ROW_SHOW_MOOD_LABEL:
             return std::string(tr(STR_COMPANION_SHOW_MOOD_LABEL));
           case ROW_MOOD_WALLPAPERS:
@@ -261,8 +255,6 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_CHARACTER:
             return characterValue;
-          case ROW_ON_HOME:
-            return SETTINGS.companionOnHome ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_SHOW_MOOD_LABEL:
             return SETTINGS.companionShowMoodLabel ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_MOOD_WALLPAPERS:

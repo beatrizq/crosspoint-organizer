@@ -7,18 +7,22 @@
 #include "util/ButtonNavigator.h"
 
 /**
- * Settings submenu for the organizing companion: enable/disable, character
- * picker, and Home screen placement. Reached from the Organizer tab like the
- * other integrations (Todoist, Habitify, etc.), even though there is nothing
- * to sync here -- everything it controls is local, not an account to connect.
+ * Settings submenu for the organizing companion: enable/disable and character
+ * picker. Reached from the Organizer tab like the other integrations (Todoist,
+ * Habitify, etc.), even though there is nothing to sync here -- everything it
+ * controls is local, not an account to connect.
+ *
+ * Enabling the companion is what puts it on Home -- there is no separate
+ * placement toggle, so a companion the user turned on is never missing from
+ * the screen it exists to be seen on.
  */
 class CompanionSettingsActivity final : public Activity {
  public:
   explicit CompanionSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("CompanionSettings", renderer, mappedInput) {}
 
-  // Enabled, Character, Show on Home, Show mood label, Mood Wallpapers, Active for.
-  static constexpr int MENU_ITEMS = 6;
+  // Enabled, Character, Show mood label, Mood Wallpapers, Active for.
+  static constexpr int MENU_ITEMS = 5;
 
   void onEnter() override;
   void onExit() override;

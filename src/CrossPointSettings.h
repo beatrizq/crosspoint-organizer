@@ -313,8 +313,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Index into companion::COMPANION_SPRITES (0 = the first companion).
   // Persisted numerically, so sprites/order.txt is append-only.
   uint8_t companionId = 0;
-  // Draw the companion on the home screen (0 = off, 1 = on).
-  uint8_t companionOnHome = 1;
   // Show the mood word and streak/progress line under the companion on Home
   // (0 = off, 1 = on). Off gives the sprite the freed space to draw a scale
   // step bigger.

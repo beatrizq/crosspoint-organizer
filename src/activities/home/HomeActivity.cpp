@@ -80,7 +80,7 @@ int HomeActivity::leadingRecentCount() const {
 }
 
 int HomeActivity::companionSlotIndex() const {
-  if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return -1;
+  if (!SETTINGS.companionEnabled) return -1;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect rect =
       GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight});
@@ -128,7 +128,7 @@ void HomeActivity::buildEntries() {
 }
 
 void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
-  if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
+  if (!SETTINGS.companionEnabled) return;
   if (region.width <= 0 || region.height <= 0) return;
 
   // Same outline convention as a selected grid tile (see
@@ -276,7 +276,7 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
 }
 
 void HomeActivity::activateCompanion() {
-  if (!SETTINGS.companionEnabled || !SETTINGS.companionOnHome) return;
+  if (!SETTINGS.companionEnabled) return;
 
   // Shows exactly what the bubble is already showing -- no fresh roll here,
   // see homeSuggestionText's own comment. The result handler folds back
