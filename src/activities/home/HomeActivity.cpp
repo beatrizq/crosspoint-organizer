@@ -155,7 +155,6 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   constexpr int TAIL_LENGTH = 12;
   constexpr int BUBBLE_GAP = 2;  // between the tail tip and the character's head
   constexpr int LABEL_GAP = 2;
-  constexpr int SUBLABEL_GAP = 0;
   // getTextHeight() reports the ascender only, but drawText() takes y as the top
   // and descenders hang below it.
   constexpr int DESCENDER_ALLOWANCE = 3;
@@ -172,10 +171,6 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   // so a one-word suggestion still leaves room for the tail and rounded
   // corners rather than shrinking to fit it exactly.
   constexpr int MIN_BUBBLE_TEXT_WIDTH = 70;
-  // Between the character's own lane and the stats column, and between the
-  // stats column's two lines.
-  constexpr int STATS_GAP = 16;
-  constexpr int STATS_LINE_GAP = 6;
 
   const int colX = region.x + MARGIN;
   const int colW = region.width - MARGIN * 2;
@@ -183,54 +178,14 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   const int colH = region.height - MARGIN * 2;
   if (colW < MIN_BUBBLE_W) return;
 
-  // Today's completed tasks and habits, as their own column beside the
-  // character - measured first so the character's lane knows how much width
-  // is left once this column has taken what it needs.
-  char taskCount[24];
-  const int tasksToday = static_cast<int>(TODOIST_TASKS.getCompletedToday());
-  snprintf(taskCount, sizeof(taskCount), tasksToday == 1 ? tr(STR_COMPANION_STATS_TASK) : tr(STR_COMPANION_STATS_TASKS),
-           tasksToday);
-  char habitCount[24];
-  const auto& habits = HABITIFY_HABITS.getHabits();
-  const int habitsToday = static_cast<int>(
-      std::count_if(habits.begin(), habits.end(), [](const HabitifyHabit& h) { return h.isComplete(); }));
-  snprintf(habitCount, sizeof(habitCount),
-           habitsToday == 1 ? tr(STR_COMPANION_STATS_HABIT) : tr(STR_COMPANION_STATS_HABITS), habitsToday);
-  // A plain bullet rather than a translated prefix: it marks a list item in
-  // any language, so it does not belong in the format strings above.
-  const std::string taskStatLine = std::string("\xE2\x80\xA2 ") + taskCount;
-  const std::string habitStatLine = std::string("\xE2\x80\xA2 ") + habitCount;
-  const int statsLineH = renderer.getLineHeight(SMALL_FONT_ID);
-  const int statsColW = std::max(renderer.getTextWidth(SMALL_FONT_ID, taskStatLine.c_str()),
-                                 renderer.getTextWidth(SMALL_FONT_ID, habitStatLine.c_str()));
-
-  const int charColX = colX;
-  const int charColW = colW - statsColW - STATS_GAP;
-  if (charColW < MIN_BUBBLE_W) return;
-
   const bool showLabel = SETTINGS.companionShowMoodLabel != 0;
   const int labelH = showLabel ? renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE : 0;
-  const int subH = showLabel ? renderer.getTextHeight(SMALL_FONT_ID) + DESCENDER_ALLOWANCE : 0;
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
-  const int textW = charColW - PAD * 2;
+  const int textW = colW - PAD * 2;
 
-  // The mood label, and under it the line answering "why?" and "what next?". A
-  // reachable target beats a tally, so progress toward Thriving wins when there
-  // is progress to report. Skipped entirely when the setting is off, so the
-  // sprite gets that height back instead.
   const auto id = CompanionTracker::activeId();
   const auto mood = COMPANION.currentMood();
   const char* label = showLabel ? companion::moodLabel(mood) : nullptr;
-  char sub[40] = "";
-  if (showLabel) {
-    const uint16_t points = COMPANION.pointsToday();
-    const companion::MoodThresholds thresholds;
-    if (points >= thresholds.happyPoints && points < thresholds.thrivingPoints) {
-      snprintf(sub, sizeof(sub), tr(STR_COMPANION_TO_THRIVING_FORMAT), thresholds.thrivingPoints - points);
-    } else if (COMPANION.hasValidClock() && COMPANION_STATE.ledger.streakDays > 0) {
-      snprintf(sub, sizeof(sub), tr(STR_COMPANION_STREAK_FORMAT), COMPANION_STATE.ledger.streakDays);
-    }
-  }
 
   // Suggests a task/habit instead of a mood quote -- rolled once in onEnter()
   // (see homeSuggestionText's own comment) and reused verbatim here on every
@@ -246,12 +201,12 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   const int bubbleH = hasBubble ? static_cast<int>(textFit.lines.size()) * lineH + PAD * 2 : 0;
   const int bubbleBlock = hasBubble ? bubbleH + TAIL_LENGTH + BUBBLE_GAP : 0;
   const int bubbleWidth = hasBubble ? textFit.textWidth + PAD * 2 : 0;
-  const int statusBlock = showLabel ? LABEL_GAP + labelH + SUBLABEL_GAP + (sub[0] != '\0' ? subH : 0) : 0;
+  const int statusBlock = showLabel ? LABEL_GAP + labelH : 0;
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 0;
   for (int candidate = MAX_SCALE; candidate >= 1; candidate--) {
-    if (companion::poseWidth(candidate) + WALK_TRAVEL > charColW) continue;
+    if (companion::poseWidth(candidate) + WALK_TRAVEL > colW) continue;
     if (bubbleBlock + companion::poseHeight(candidate) + BOB_HEIGHT + statusBlock <= colH) {
       scale = candidate;
       break;
@@ -270,7 +225,7 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   // rather than always spanning the column, so a short suggestion doesn't
   // stretch the bubble out to the column's full width.
   if (hasBubble) {
-    const int bubbleX = charColX + (charColW - bubbleWidth) / 2;
+    const int bubbleX = colX + (colW - bubbleWidth) / 2;
     companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
                                 companion::TailSide::Bottom);
     const Rect textBounds{bubbleX + PAD, blockTop, textFit.textWidth, bubbleH};
@@ -291,30 +246,17 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   const bool restless = mood != companion::Mood::Neglected;
   // Centred on the range it walks rather than on its own width, so it does not
   // appear to drift.
-  const int laneX = charColX + (charColW - spriteW - WALK_TRAVEL) / 2;
+  const int laneX = colX + (colW - spriteW - WALK_TRAVEL) / 2;
   const int spriteTop = blockTop + bubbleBlock;
   companion::drawPose(renderer, id, mood, laneX + (restless ? walkX : WALK_TRAVEL / 2),
                       restless ? spriteTop + bob : spriteTop, scale, restless && walkingBack);
 
   if (label != nullptr) {
     const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
-    const int subW = sub[0] != '\0' ? renderer.getTextWidth(SMALL_FONT_ID, sub) : 0;
     const int labelY = spriteTop + spriteH + BOB_HEIGHT + LABEL_GAP;
-    const int centreX = charColX + charColW / 2;
+    const int centreX = colX + colW / 2;
     renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
-    if (subW > 0) {
-      renderer.drawText(SMALL_FONT_ID, centreX - subW / 2, labelY + labelH + SUBLABEL_GAP, sub);
-    }
   }
-
-  // The stats column: its own independent block, vertically centred in the
-  // same span the character's block is, rather than stacked under the label -
-  // so a big character (a high scale) never has to shrink to make room for it.
-  const int statsX = colX + colW - statsColW;
-  const int statsBlockH = statsLineH * 2 + STATS_LINE_GAP;
-  const int statsBlockTop = colTop + (colH - statsBlockH) / 2;
-  renderer.drawText(SMALL_FONT_ID, statsX, statsBlockTop, taskStatLine.c_str());
-  renderer.drawText(SMALL_FONT_ID, statsX, statsBlockTop + statsLineH + STATS_LINE_GAP, habitStatLine.c_str());
 }
 
 void HomeActivity::activateCompanion() {

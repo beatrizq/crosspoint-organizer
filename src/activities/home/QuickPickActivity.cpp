@@ -5,6 +5,8 @@
 #include <I18n.h>
 #include <TodoistTaskCache.h>
 
+#include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -28,6 +30,14 @@ constexpr int PAD = 14;
 constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
+// Between the character and the mood label, and between the label and the
+// stats list below it.
+constexpr int LABEL_GAP = 4;
+constexpr int STATS_GAP = 4;
+constexpr int STATS_LINE_GAP = 4;
+// getTextHeight() reports the ascender only, but drawText() takes y as the
+// top and descenders hang below it.
+constexpr int DESCENDER_ALLOWANCE = 3;
 // Floor on the bubble's text column, so a one-word habit name still leaves
 // room for the tail and rounded corners rather than shrinking to fit it
 // exactly.
@@ -284,6 +294,22 @@ void QuickPickActivity::render(RenderLock&&) {
 
   const auto id = CompanionTracker::activeId();
   const auto mood = COMPANION.currentMood();
+  const char* label = companion::moodLabel(mood);
+
+  // Today's completed tasks and habits, as a bulleted list under the mood
+  // label - same font and weight as the label itself, one line each.
+  char taskCount[24];
+  const int tasksToday = static_cast<int>(TODOIST_TASKS.getCompletedToday());
+  snprintf(taskCount, sizeof(taskCount), tasksToday == 1 ? tr(STR_COMPANION_STATS_TASK) : tr(STR_COMPANION_STATS_TASKS),
+           tasksToday);
+  char habitCount[24];
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  const int habitsToday = static_cast<int>(
+      std::count_if(habits.begin(), habits.end(), [](const HabitifyHabit& h) { return h.isComplete(); }));
+  snprintf(habitCount, sizeof(habitCount),
+           habitsToday == 1 ? tr(STR_COMPANION_STATS_HABIT) : tr(STR_COMPANION_STATS_HABITS), habitsToday);
+  const std::string taskStatLine = std::string("\xE2\x80\xA2 ") + taskCount;
+  const std::string habitStatLine = std::string("\xE2\x80\xA2 ") + habitCount;
 
   const std::string text = poolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : pickedText;
   const auto textFit = companion::fitBubbleText(renderer, UI_10_FONT_ID, text, maxTextWidth, MIN_BUBBLE_TEXT_WIDTH, 4);
@@ -292,11 +318,15 @@ void QuickPickActivity::render(RenderLock&&) {
   const int bubbleBlock = bubbleH + TAIL_LENGTH + BUBBLE_GAP;
   const int bubbleWidth = textFit.textWidth + PAD * 2;
 
+  const int labelH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
+  const int statsLineH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
+  const int statusBlock = LABEL_GAP + labelH + STATS_GAP + statsLineH * 2 + STATS_LINE_GAP;
+
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 1;
   for (int candidate = MAX_SCALE; candidate >= 1; candidate--) {
     if (companion::poseWidth(candidate) > contentWidth) continue;
-    if (bubbleBlock + companion::poseHeight(candidate) <= contentHeight) {
+    if (bubbleBlock + companion::poseHeight(candidate) + statusBlock <= contentHeight) {
       scale = candidate;
       break;
     }
@@ -304,7 +334,7 @@ void QuickPickActivity::render(RenderLock&&) {
 
   const int spriteW = companion::poseWidth(scale);
   const int spriteH = companion::poseHeight(scale);
-  const int blockH = bubbleBlock + spriteH;
+  const int blockH = bubbleBlock + spriteH + statusBlock;
   const int blockTop = contentTop + (contentHeight - blockH) / 2;
   const int centreX = pageWidth / 2;
   const int bubbleX = centreX - bubbleWidth / 2;
@@ -318,7 +348,19 @@ void QuickPickActivity::render(RenderLock&&) {
     textY += lineH;
   }
 
-  companion::drawPose(renderer, id, mood, centreX - spriteW / 2, blockTop + bubbleBlock, scale);
+  const int spriteTop = blockTop + bubbleBlock;
+  companion::drawPose(renderer, id, mood, centreX - spriteW / 2, spriteTop, scale);
+
+  const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
+  const int labelY = spriteTop + spriteH + LABEL_GAP;
+  renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
+
+  const int taskLineW = renderer.getTextWidth(UI_10_FONT_ID, taskStatLine.c_str(), EpdFontFamily::BOLD);
+  const int habitLineW = renderer.getTextWidth(UI_10_FONT_ID, habitStatLine.c_str(), EpdFontFamily::BOLD);
+  const int statsTop = labelY + labelH + STATS_GAP;
+  renderer.drawText(UI_10_FONT_ID, centreX - taskLineW / 2, statsTop, taskStatLine.c_str(), true, EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, centreX - habitLineW / 2, statsTop + statsLineH + STATS_LINE_GAP,
+                    habitStatLine.c_str(), true, EpdFontFamily::BOLD);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), "",
                                             poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM));

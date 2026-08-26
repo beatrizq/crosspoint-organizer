@@ -712,9 +712,6 @@ void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon,
                                const std::function<int(int index)>& badgeCount) const {
-  // Diameter of the notification-style badge, and its font - the smallest UI
-  // face available, so a two-digit count still fits comfortably inside it.
-  constexpr int badgeSize = 18;
   const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
   const int tileHeight = getGridRowStep(rect.height, buttonCount);
   const int tileWidth = rect.width / columns;
@@ -763,19 +760,16 @@ void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount
                       label.c_str(), true, style);
 
     // Drawn after the icon and the selection outline, so it always reads on
-    // top rather than being cut off by either - a small, deliberate overlap
-    // with the selection box's corner when the tile is selected, the same
-    // trade real notification badges make against a focus ring.
+    // top rather than being cut off by either. Plain digits, no shape behind
+    // them - just black text straddling the icon's top-right corner.
     const int badge = badgeCount != nullptr ? badgeCount(i) : 0;
     if (badge > 0) {
-      const int badgeX = iconX + homeGridIconSize - badgeSize / 2;
-      const int badgeY = contentTop - badgeSize / 2;
-      renderer.fillRoundedRect(badgeX, badgeY, badgeSize, badgeSize, badgeSize / 2, Color::Black);
       const std::string badgeText = std::to_string(badge);
       const int badgeTextWidth = renderer.getTextWidth(SMALL_FONT_ID, badgeText.c_str());
       const int badgeTextHeight = renderer.getTextHeight(SMALL_FONT_ID);
-      renderer.drawText(SMALL_FONT_ID, badgeX + (badgeSize - badgeTextWidth) / 2,
-                        badgeY + (badgeSize - badgeTextHeight) / 2, badgeText.c_str(), false);
+      const int badgeX = iconX + homeGridIconSize - badgeTextWidth / 2;
+      const int badgeY = contentTop - badgeTextHeight / 2;
+      renderer.drawText(SMALL_FONT_ID, badgeX, badgeY, badgeText.c_str());
     }
   }
 }
