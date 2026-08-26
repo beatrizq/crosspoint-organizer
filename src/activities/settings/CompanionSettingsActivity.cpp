@@ -11,10 +11,12 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/settings/CompanionWallpaperSettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "companion/CompanionSprites.generated.h"
 #include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
+#include "companion/CompanionWallpaperStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -23,7 +25,20 @@ constexpr int ROW_ENABLED = 0;
 constexpr int ROW_CHARACTER = 1;
 constexpr int ROW_ON_HOME = 2;
 constexpr int ROW_SHOW_MOOD_LABEL = 3;
-constexpr int ROW_ACTIVE_FOR = 4;
+constexpr int ROW_MOOD_WALLPAPERS = 4;
+constexpr int ROW_ACTIVE_FOR = 5;
+
+// "N/5" set, for the Mood Wallpapers row's value column -- digits need no
+// translation, so this skips adding a format string just for them.
+std::string wallpaperCountValue() {
+  int count = 0;
+  for (const auto& path : COMPANION_WALLPAPERS.pathForMood) {
+    if (!path.empty()) count++;
+  }
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d/%d", count, static_cast<int>(companion::MOOD_COUNT));
+  return std::string(buf);
+}
 
 // Name plus species, because a list of six bare proper nouns tells you nothing
 // about what you are choosing. The popup cannot show sprites: its FreeInkUI
@@ -94,25 +109,25 @@ void CompanionSettingsActivity::handleSelection() {
   switch (selectedIndex) {
     case ROW_ENABLED: {
       const bool turningOn = SETTINGS.companionEnabled == 0;
-      startActivityForResult(
-          std::make_unique<ConfirmationActivity>(
-              renderer, mappedInput, turningOn ? tr(STR_COMPANION_ENABLE_CONFIRM) : tr(STR_COMPANION_DISABLE_CONFIRM),
-              ""),
-          [this](const ActivityResult& result) {
-            // The popup answers on the button going down, so its release lands
-            // back here once this screen is active again -- same reasoning as
-            // swallowConfirmRelease in onEnter(), just armed from this result
-            // instead.
-            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = true;
-            if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
-              swallowBackRelease = true;
-            }
-            if (result.isCancelled) return;
-            SETTINGS.companionEnabled = (SETTINGS.companionEnabled + 1) % 2;
-            stampActivationIfNeeded();
-            SETTINGS.saveToFile();
-            requestUpdate();
-          });
+      startActivityForResult(std::make_unique<ConfirmationActivity>(
+                                 renderer, mappedInput,
+                                 turningOn ? tr(STR_COMPANION_ENABLE_CONFIRM) : tr(STR_COMPANION_DISABLE_CONFIRM), ""),
+                             [this](const ActivityResult& result) {
+                               // The popup answers on the button going down, so its release lands
+                               // back here once this screen is active again -- same reasoning as
+                               // swallowConfirmRelease in onEnter(), just armed from this result
+                               // instead.
+                               if (mappedInput.isPressed(MappedInputManager::Button::Confirm))
+                                 swallowConfirmRelease = true;
+                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                                 swallowBackRelease = true;
+                               }
+                               if (result.isCancelled) return;
+                               SETTINGS.companionEnabled = (SETTINGS.companionEnabled + 1) % 2;
+                               stampActivationIfNeeded();
+                               SETTINGS.saveToFile();
+                               requestUpdate();
+                             });
       return;
     }
     case ROW_CHARACTER:
@@ -128,6 +143,21 @@ void CompanionSettingsActivity::handleSelection() {
     case ROW_SHOW_MOOD_LABEL:
       SETTINGS.companionShowMoodLabel = (SETTINGS.companionShowMoodLabel + 1) % 2;
       break;
+    case ROW_MOOD_WALLPAPERS:
+      startActivityForResult(std::make_unique<CompanionWallpaperSettingsActivity>(renderer, mappedInput),
+                             [this](const ActivityResult& result) {
+                               // Same reasoning as ROW_ENABLED's popup above: this
+                               // sub-screen answers Back/Confirm on the button going
+                               // down in places, so a release can still land here.
+                               if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                                 swallowConfirmRelease = true;
+                               }
+                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                                 swallowBackRelease = true;
+                               }
+                               requestUpdate();
+                             });
+      return;
     default:
       // ROW_ACTIVE_FOR is a read-only info row.
       return;
@@ -218,6 +248,8 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return std::string(tr(STR_COMPANION_ON_HOME));
           case ROW_SHOW_MOOD_LABEL:
             return std::string(tr(STR_COMPANION_SHOW_MOOD_LABEL));
+          case ROW_MOOD_WALLPAPERS:
+            return std::string(tr(STR_COMPANION_MOOD_WALLPAPERS));
           default:
             return std::string(tr(STR_COMPANION_ACTIVE_FOR));
         }
@@ -233,6 +265,8 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return SETTINGS.companionOnHome ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_SHOW_MOOD_LABEL:
             return SETTINGS.companionShowMoodLabel ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+          case ROW_MOOD_WALLPAPERS:
+            return wallpaperCountValue();
           default:
             return ageValue;
         }

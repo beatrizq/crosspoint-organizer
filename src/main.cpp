@@ -38,6 +38,7 @@
 #include "activities/home/QuickPickActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "companion/CompanionState.h"
+#include "companion/CompanionWallpaperStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
@@ -335,6 +336,11 @@ void setup() {
   // — and the next save overwrites a real streak with zeroes. Missing file on
   // first run is expected and leaves the defaults in place.
   COMPANION_STATE.loadFromFile();
+  // Same reasoning as COMPANION_STATE above: SleepActivity needs this on any
+  // sleep, including straight after a deep-sleep wake reruns setup(), without
+  // depending on the wallpaper settings screen having been opened this
+  // session.
+  COMPANION_WALLPAPERS.loadFromFile();
   // The companion's mood is derived live from these two caches (today's
   // completed tasks, today's completed habits), not from anything banked in
   // CompanionState. Without this, Home would show a default-constructed

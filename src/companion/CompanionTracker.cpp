@@ -82,7 +82,15 @@ companion::MoodInput CompanionTracker::buildMoodInput() const {
   return companion::moodInputFor(COMPANION_STATE.ledger, localDay, clockValid, tasksToday, habitsToday);
 }
 
-companion::Mood CompanionTracker::currentMood() const { return companion::evaluate(buildMoodInput()); }
+companion::Mood CompanionTracker::currentMood() const {
+  // A beaten streak record holds the companion at the Milestone mood for the
+  // rest of the day it was earned (see CompanionState::milestoneDay), ahead
+  // of the usual ladder. Gated on clockValid: without a fresh reading,
+  // localDay is whatever the last valid one was, and comparing a stale day
+  // against milestoneDay could match (or fail to) by accident.
+  if (clockValid && COMPANION_STATE.milestoneDay == localDay) return companion::Mood::Milestone;
+  return companion::evaluate(buildMoodInput());
+}
 
 uint16_t CompanionTracker::pointsToday() const {
   const auto in = buildMoodInput();

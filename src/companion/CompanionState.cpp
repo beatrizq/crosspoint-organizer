@@ -4,7 +4,7 @@ void CompanionState::toJson(JsonDocument& doc) const {
   doc["lastQualifyingDay"] = ledger.lastQualifyingDay;
   doc["streakDays"] = ledger.streakDays;
   doc["bestStreakDays"] = ledger.bestStreakDays;
-  doc["milestonePending"] = milestonePending;
+  doc["milestoneDay"] = milestoneDay;
   doc["activatedDay"] = activatedDay;
 }
 
@@ -12,7 +12,7 @@ bool CompanionState::fromJson(JsonVariantConst doc) {
   ledger.lastQualifyingDay = doc["lastQualifyingDay"] | companion::DayLedger::NEVER;
   ledger.streakDays = doc["streakDays"] | static_cast<uint16_t>(0);
   ledger.bestStreakDays = doc["bestStreakDays"] | static_cast<uint16_t>(0);
-  milestonePending = doc["milestonePending"] | false;
+  milestoneDay = doc["milestoneDay"] | companion::DayLedger::NEVER;
   activatedDay = doc["activatedDay"] | companion::DayLedger::NEVER;
 
   // A hand-edited or truncated file must not leave best below current.
@@ -28,7 +28,7 @@ bool CompanionState::recordActivity(const int32_t localDay, const bool clockVali
   if (!companion::creditQualifyingDay(ledger, localDay, tasksCompletedToday, habitsCompletedToday)) return false;
   // A first-ever qualifying day sets best to 1, which is not an achievement
   // worth interrupting for; only a genuine improvement on an existing record
-  // earns the milestone line.
-  if (bestBefore > 1 && ledger.bestStreakDays > bestBefore) milestonePending = true;
+  // earns the milestone mood.
+  if (bestBefore > 1 && ledger.bestStreakDays > bestBefore) milestoneDay = localDay;
   return true;
 }

@@ -186,9 +186,7 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   // is progress to report. Skipped entirely when the setting is off, so the
   // sprite gets that height back instead.
   const auto id = CompanionTracker::activeId();
-  // One-shot: overrides the ladder mood for exactly the paint that follows,
-  // then clears below once it has actually been seen (see the comment there).
-  const auto mood = COMPANION_STATE.milestonePending ? companion::Mood::Milestone : COMPANION.currentMood();
+  const auto mood = COMPANION.currentMood();
   const char* label = showLabel ? companion::moodLabel(mood) : nullptr;
   char sub[40] = "";
   if (showLabel) {
@@ -691,13 +689,6 @@ void HomeActivity::render(RenderLock&&) {
   drawCompanion(GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight}),
                 companionSlot >= 0 && selectorIndex == companionSlot);
   companionFrame++;
-
-  // A beaten personal best takes over the bubble once. Cleared after the paint
-  // that showed it, so a repaint mid-visit cannot swallow it unseen.
-  if (SETTINGS.companionEnabled && COMPANION_STATE.milestonePending) {
-    COMPANION_STATE.milestonePending = false;
-    COMPANION_STATE.saveToFile();
-  }
 
   // The menu draws the entries the cover tile does not own.
   const int leadingRecents = leadingRecentCount();

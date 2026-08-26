@@ -17,8 +17,8 @@ class CompanionSettingsActivity final : public Activity {
   explicit CompanionSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("CompanionSettings", renderer, mappedInput) {}
 
-  // Enabled, Character, Show on Home, Show mood label, Active for.
-  static constexpr int MENU_ITEMS = 5;
+  // Enabled, Character, Show on Home, Show mood label, Mood Wallpapers, Active for.
+  static constexpr int MENU_ITEMS = 6;
 
   void onEnter() override;
   void onExit() override;
