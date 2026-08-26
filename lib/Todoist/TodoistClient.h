@@ -10,8 +10,10 @@
  * Base URL: https://api.todoist.com/api/v1
  *
  * Endpoints used:
- *   GET  /tasks/filter?query=<user filter>  - the Tasks screen's list
- *   POST /tasks/{id}/close                  - mark a task complete
+ *   GET  /tasks/filter?query=<user filter>              - the Tasks screen's list
+ *   POST /tasks/{id}/close                              - mark a task complete
+ *   GET  /tasks/completed/by_completion_date?filter_query=<user filter>
+ *                                                        - today's completions, for the companion
  *
  * The query is the Filter setting verbatim, in Todoist's own filter syntax (the
  * same strings the app's filter view takes: "view all", "today | overdue",
@@ -64,6 +66,27 @@ class TodoistClient {
    * server (completed elsewhere), which is the state the caller wants.
    */
   static Error closeTask(const std::string& taskId);
+
+  /**
+   * Counts tasks matching the Filter setting that Todoist recorded as completed
+   * on `isoDate` ("YYYY-MM-DD") - on this device, in the Todoist app, or on the
+   * web. Unlike fetchTasks(), which only ever sees tasks still open, this asks
+   * Todoist's own completed-tasks record directly, so a task finished anywhere
+   * but this device is still counted once this call succeeds.
+   *
+   * Counts a single page, capped at the endpoint's own page limit (50 - see
+   * COMPLETED_PAGE_LIMIT in the .cpp): the companion's mood ladder tops out at
+   * 3 combined completions for the day, so an exact count past a few dozen buys
+   * nothing worth a second round trip.
+   *
+   * The since/until window is `isoDate`'s UTC day (00:00:00 to 23:59:59) - the
+   * same level of day-boundary precision every other syncDate-derived figure in
+   * this codebase already accepts; a completion made right around midnight in
+   * the user's own timezone can land on the wrong side of it.
+   *
+   * @param outCount Output: 0 on any error.
+   */
+  static Error fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */
   static const char* errorString(Error error);

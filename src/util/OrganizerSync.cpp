@@ -201,6 +201,31 @@ const char* runTasks() {
     RenderLock lock;
     TODOIST_TASKS.setTasks(std::move(fetched), today);
   }
+
+  // A completed task never shows up in the open-task fetch above, so a task
+  // finished in the Todoist app - not on this device - would otherwise never
+  // be counted. This asks Todoist directly for today's completions matching
+  // the same Filter setting, so app-side completions credit the companion the
+  // same way Habitify's already do. Best-effort: the open-task list above is
+  // this sync's real job, so a failure here does not fail the sync itself -
+  // it just leaves today's completed count and the companion's credit stale
+  // until the next attempt.
+  if (error == TodoistClient::OK && !today.empty()) {
+    resetTaskWatchdogIfSubscribed();
+    uint16_t completedCount = 0;
+    const TodoistClient::Error countError = TodoistClient::fetchCompletedCountForDay(today, completedCount);
+    resetTaskWatchdogIfSubscribed();
+    if (countError == TodoistClient::OK) {
+      RenderLock lock;
+      TODOIST_TASKS.setCompletedToday(completedCount, today);
+      // Gated on success: a failed fetch means nothing here actually changed,
+      // so there is nothing new to credit.
+      COMPANION.recordActivity();
+    } else {
+      LOG_ERR("OSYNC", "Completed-count fetch failed: %s", TodoistClient::errorString(countError));
+    }
+  }
+
   // Persists the fetched list and whatever the queue push managed to clear, so a
   // failed fetch after a successful push is still recorded.
   TODOIST_TASKS.saveToFile();
@@ -307,9 +332,22 @@ const char* runHabits() {
   HabitifyClient::Error error = HabitifyClient::OK;
   for (const auto& entry : owed) {
     resetTaskWatchdogIfSubscribed();
-    error = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
-    if (error != HabitifyClient::OK) {
-      LOG_ERR("OSYNC", "Habit push failed for %s: %s", entry.id.c_str(), HabitifyClient::errorString(error));
+    const HabitifyClient::Error pushError = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
+    if (pushError == HabitifyClient::NOT_FOUND) {
+      // The habit no longer exists server-side - deleted, or replaced with a new
+      // one in the app. There is nowhere left to push this progress, and unlike
+      // Todoist's closeTask() (a 404 there means "already done", so it counts as
+      // success) a missing habit can never accept a log. Holding it "owed"
+      // forever would wedge every future sync behind it: the fetch below only
+      // runs once every entry here has pushed clean, so the same dead id would
+      // fail again next time, and again after that.
+      LOG_ERR("OSYNC", "Habit %s no longer exists; dropping its unpushed progress", entry.id.c_str());
+      HABITIFY_HABITS.clearPending(entry.id, entry.amount);
+      continue;
+    }
+    if (pushError != HabitifyClient::OK) {
+      error = pushError;
+      LOG_ERR("OSYNC", "Habit push failed for %s: %s", entry.id.c_str(), HabitifyClient::errorString(pushError));
       break;  // keep the rest owed for the next attempt
     }
     HABITIFY_HABITS.clearPending(entry.id, entry.amount);
@@ -328,11 +366,14 @@ const char* runHabits() {
     // Carries over anything still owed - a press that landed between the push
     // above and this fetch.
     HABITIFY_HABITS.setHabits(std::move(fetched), date);
+    // Catches a habit completed elsewhere (the Habitify app itself, say) that
+    // this device never saw a local press for. Gated on success: a failed
+    // fetch means the cache did not change, so there is nothing new to credit,
+    // and running it anyway would just cost a needless SD write on a sync that
+    // already failed.
+    COMPANION.recordActivity();
   }
   HABITIFY_HABITS.saveToFile();
-  // Catches a habit completed elsewhere (the Habitify app itself, say) that
-  // this device never saw a local press for.
-  COMPANION.recordActivity();
   return error == HabitifyClient::OK ? nullptr : habitErrorText(error);
 }
 

@@ -67,11 +67,20 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // Called once the server accepted (or already knew about) the completion.
   void clearPending(const std::string& id);
 
-  // Tasks completed on this device today, per syncDate's notion of "today".
+  // Tasks completed today, per syncDate's notion of "today" - on this device,
+  // or anywhere else once a sync has confirmed it (see setCompletedToday).
   // Stale until the next sync if the day rolled over with no completion yet
   // to trigger the rollover - the same staleness every other syncDate-derived
   // figure in this class already tolerates between syncs.
   uint16_t getCompletedToday() const { return completedToday; }
+
+  // Sets today's completed count directly, from a fetch that already reflects
+  // the whole day: this device's own presses once pushed, and anything
+  // finished in the Todoist app or on the web. Replaces rather than adds -
+  // the fetch is authoritative for the day, not incremental - and marks
+  // completedDay resolved so a completion pressed on-device later the same
+  // day still adds on top of this baseline instead of rolling over first.
+  void setCompletedToday(uint16_t count, const std::string& date);
 
  private:
   // Recomputes every task's overdue flag against syncDate. The flag is derived

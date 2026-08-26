@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <utility>
 
+#include "TodoistCompletedCountParser.h"
 #include "TodoistStore.h"
 #include "TodoistTasksParser.h"
 
@@ -23,6 +24,13 @@ constexpr char API_BASE[] = "https://api.todoist.com/api/v1";
 // firmware what the screen was for; the setting moves the decision to the user,
 // and the Tasks tabs now split whatever comes back rather than defining it.
 constexpr char FILTER_URL_BASE[] = "https://api.todoist.com/api/v1/tasks/filter?limit=200&query=";
+
+// The completed-tasks-by-completion-date endpoint. since/until bound the
+// query to one UTC day; filter_query scopes it to the same Filter setting
+// fetchTasks() uses, so a completion outside the user's own filter never
+// counts. limit is the endpoint's own page cap - see fetchCompletedCountForDay.
+constexpr char COMPLETED_URL_BASE[] = "https://api.todoist.com/api/v1/tasks/completed/by_completion_date";
+constexpr int COMPLETED_PAGE_LIMIT = 50;
 
 // Percent-encodes everything outside the unreserved set. The filter is typed by
 // hand and Todoist's syntax is built from characters that mean something else in
@@ -226,6 +234,48 @@ TodoistClient::Error TodoistClient::closeTask(const std::string& taskId) {
   // Already completed (or deleted) elsewhere is the state we wanted anyway.
   if (httpCode == 404) return OK;
   return errorForStatus(httpCode);
+}
+
+TodoistClient::Error TodoistClient::fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount) {
+  lastHttpCode = 0;
+  outCount = 0;
+  if (!TODOIST_STORE.hasToken()) {
+    LOG_DBG("TDA", "No API token configured");
+    return NO_TOKEN;
+  }
+  if (insufficientHeap()) return LOW_MEMORY;
+
+  const std::string url = std::string(COMPLETED_URL_BASE) + "?since=" + isoDate + "T00:00:00Z&until=" + isoDate +
+                          "T23:59:59Z&limit=" + std::to_string(COMPLETED_PAGE_LIMIT) +
+                          "&filter_query=" + urlEncode(TODOIST_STORE.getFilter());
+
+  TodoistCompletedCountParser parser;
+
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  if (!http.begin(url)) {
+    LOG_ERR("TDA", "Bad completed-count URL");
+    return NETWORK_ERROR;
+  }
+  applyAuthHeaders(http);
+
+  const int httpCode = http.GET([&parser](const uint8_t* data, const size_t len) {
+    parser.feed(reinterpret_cast<const char*>(data), len);
+    return true;
+  });
+  http.end();
+  lastHttpCode = httpCode;
+  LOG_DBG("TDA", "Completed-count response: %d (%zu items)", httpCode, parser.count());
+
+  const Error status = errorForStatus(httpCode);
+  if (status != OK) return status;
+  if (parser.hasError()) {
+    LOG_ERR("TDA", "Malformed completed-tasks JSON");
+    return PARSE_ERROR;
+  }
+
+  outCount = static_cast<uint16_t>(std::min<size_t>(parser.count(), UINT16_MAX));
+  return OK;
 }
 
 const char* TodoistClient::errorString(const Error error) {

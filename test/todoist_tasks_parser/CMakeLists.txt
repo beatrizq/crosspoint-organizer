@@ -1,7 +1,9 @@
 add_executable(TodoistTasksParserTest
   TodoistTasksParserTest.cpp
+  TodoistCompletedCountParserTest.cpp
   TodoistDateTest.cpp
   ${REPO_ROOT}/lib/Todoist/TodoistTasksParser.cpp
+  ${REPO_ROOT}/lib/Todoist/TodoistCompletedCountParser.cpp
   ${REPO_ROOT}/lib/JsonParser/StreamingJsonParser.cpp
 )
 

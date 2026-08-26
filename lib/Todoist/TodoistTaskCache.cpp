@@ -102,6 +102,12 @@ void TodoistTaskCache::completeTaskAt(const size_t index) {
   if (completedToday < UINT16_MAX) completedToday++;
 }
 
+void TodoistTaskCache::setCompletedToday(const uint16_t count, const std::string& date) {
+  if (!date.empty()) syncDate = date;
+  completedToday = count;
+  completedDay = todoist::dueDaysFromIso(syncDate.c_str());
+}
+
 void TodoistTaskCache::clearPending(const std::string& id) {
   pendingIds.erase(std::remove(pendingIds.begin(), pendingIds.end(), id), pendingIds.end());
 }
