@@ -29,6 +29,7 @@ constexpr int ROW_HAPPY_POINTS = 4;
 constexpr int ROW_SATISFIED_POINTS = 5;
 constexpr int ROW_NEGLECTED_DAYS = 6;
 constexpr int ROW_AGE = 7;
+constexpr int ROW_RESET = 8;
 
 // "HH:MM" for a Sleep start/end row's value column -- digits need no
 // translation.
@@ -116,6 +117,27 @@ void CompanionSettingsActivity::handleSelection() {
     case ROW_SATISFIED_POINTS:
     case ROW_NEGLECTED_DAYS:
       offerThresholdPicker(selectedIndex);
+      return;
+    case ROW_RESET:
+      startActivityForResult(
+          std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPANION_RESET_CONFIRM), ""),
+          [this](const ActivityResult& result) {
+            // Same reasoning as ROW_ENABLED's popup above.
+            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+              swallowConfirmRelease = true;
+            }
+            if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+              swallowBackRelease = true;
+            }
+            if (result.isCancelled) return;
+            COMPANION_STATE.reset();
+            // Immediately re-stamped rather than left at "Not yet": the
+            // companion is still enabled, so a reset should read as
+            // freshly active, not as if it had never been turned on.
+            stampActivationIfNeeded();
+            COMPANION_STATE.saveToFile();
+            requestUpdate();
+          });
       return;
     default:
       // ROW_AGE is a read-only info row.
@@ -282,8 +304,10 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return std::string(tr(STR_COMPANION_SATISFIED_AT));
           case ROW_NEGLECTED_DAYS:
             return std::string(tr(STR_COMPANION_NEGLECTED_AFTER));
-          default:
+          case ROW_AGE:
             return std::string(tr(STR_COMPANION_AGE));
+          default:
+            return std::string(tr(STR_COMPANION_RESET));
         }
       },
       nullptr, nullptr,
@@ -303,8 +327,11 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return thresholdValue(StrId::STR_COMPANION_POINTS_FORMAT, SETTINGS.companionSatisfiedPoints);
           case ROW_NEGLECTED_DAYS:
             return thresholdValue(StrId::STR_COMPANION_DAYS_FORMAT, SETTINGS.companionNeglectedDays);
-          default:
+          case ROW_AGE:
             return ageValue;
+          default:
+            // ROW_RESET is an action row with nothing to show in this column.
+            return std::string();
         }
       },
       true, [](int index) -> bool { return index == ROW_AGE; });

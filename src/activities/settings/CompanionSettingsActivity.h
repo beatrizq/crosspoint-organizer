@@ -22,8 +22,8 @@ class CompanionSettingsActivity final : public Activity {
       : Activity("CompanionSettings", renderer, mappedInput) {}
 
   // Enabled, Show mood label, Sleep start, Sleep end,
-  // Happy at, Satisfied at, Neglected after, Age.
-  static constexpr int MENU_ITEMS = 8;
+  // Happy at, Satisfied at, Neglected after, Age, Reset.
+  static constexpr int MENU_ITEMS = 9;
 
   void onEnter() override;
   void onExit() override;

@@ -29,3 +29,9 @@ bool CompanionState::recordActivity(const int32_t localDay, const bool clockVali
   if (bestBefore > 0 && ledger.bestDayPoints > bestBefore) milestoneDay = localDay;
   return true;
 }
+
+void CompanionState::reset() {
+  ledger = companion::DayLedger{};
+  milestoneDay = companion::DayLedger::NEVER;
+  activatedDay = companion::DayLedger::NEVER;
+}

@@ -51,6 +51,17 @@ class CompanionState : public PersistableStore<CompanionState> {
   // Returns true when something changed and the caller should persist.
   bool recordActivity(int32_t localDay, bool clockValid, uint16_t tasksCompletedToday, uint16_t habitsCompletedToday,
                       const companion::MoodThresholds& thresholds = {});
+
+  // Clears everything earned back to a companion that has never done
+  // anything: the day-qualifying marker, the best-day-points record, the
+  // milestone flag, and the activation date -- an explicit override of
+  // activatedDay's usual "stamped once, never moved" rule, for a user who
+  // wants a clean slate (repeated testing, a device changing hands, etc.).
+  // Caller's job to persist and to re-stamp activatedDay if the companion is
+  // still enabled (see CompanionSettingsActivity::stampActivationIfNeeded).
+  // Does not touch today's live task/habit counts -- those are read fresh
+  // from their own caches, never stored here.
+  void reset();
 };
 
 #define COMPANION_STATE CompanionState::getInstance()
