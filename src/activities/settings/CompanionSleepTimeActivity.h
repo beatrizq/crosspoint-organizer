@@ -9,7 +9,7 @@ struct Rect;
 
 // Sleep window boundary picker (start or end), modelled directly on
 // ClockOffsetActivity's hours/minutes picker minus the sign field: two
-// editable fields (hours 0-23, minutes 0-59); Confirm cycles fields, Up/Down
+// editable fields (hours 0-23, minutes 0-59); Confirm cycles fields, -/+
 // adjust the active one by 1. A settings screen, so it commits passively on
 // exit the same way ClockOffsetActivity does, rather than reporting back via
 // ActivityResult.
