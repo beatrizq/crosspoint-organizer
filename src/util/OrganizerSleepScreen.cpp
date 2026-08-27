@@ -125,8 +125,6 @@ bool installCustomWallpaper(const std::string& sourcePath) {
   return true;
 }
 
-void activateMoodWallpaperMode() { switchToCustomMode(); }
-
 bool revert() {
   // The file first: it is the part the user cares about keeping, and the one they
   // may have transferred to the device themselves.

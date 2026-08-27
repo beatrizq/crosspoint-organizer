@@ -12,8 +12,6 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "activities/reader/ReaderUtils.h"
-#include "companion/CompanionTracker.h"
-#include "companion/CompanionWallpaperStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -58,32 +56,7 @@ void SleepActivity::onEnter() {
   }
 }
 
-bool SleepActivity::renderMoodWallpaperIfAssigned() const {
-  if (!SETTINGS.companionEnabled) return false;
-
-  const auto mood = COMPANION.currentMood();
-  const auto moodIndex = static_cast<size_t>(mood);
-  if (moodIndex >= companion::MOOD_COUNT) return false;
-
-  const std::string& path = COMPANION_WALLPAPERS.pathForMood[moodIndex];
-  if (path.empty()) return false;
-
-  HalFile file;
-  if (!Storage.openFileForRead("SLP", path, file)) return false;
-  Bitmap bitmap(file, true);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok) {
-    file.close();
-    return false;
-  }
-  LOG_DBG("SLP", "Loading mood wallpaper: %s", path.c_str());
-  renderBitmapSleepScreen(bitmap);
-  file.close();
-  return true;
-}
-
 void SleepActivity::renderCustomSleepScreen() const {
-  if (renderMoodWallpaperIfAssigned()) return;
-
   // Check if we have a /.sleep (preferred) or /sleep directory
   const char* sleepDir = nullptr;
   auto dir = Storage.open("/.sleep");

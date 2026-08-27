@@ -372,7 +372,6 @@ void SettingsActivity::toggleCurrentSetting() {
         // not be undone by this one.
         if (sleepAppChanged) {
           revertSleepScreenIfOff();
-          activateMoodWallpaperSleepScreenIfChosen();
           // Starts the file browser; its own result handler rebuilds the list.
           if (openCustomSleepScreenPickerIfChosen()) return;
         }
@@ -401,7 +400,6 @@ void SettingsActivity::toggleCurrentSetting() {
         SETTINGS.saveToFile();
         if (sleepAppChanged) {
           revertSleepScreenIfOff();
-          activateMoodWallpaperSleepScreenIfChosen();
           if (openCustomSleepScreenPickerIfChosen()) return;
         }
         rebuildSettingsLists();
@@ -506,11 +504,10 @@ void SettingsActivity::toggleCurrentSetting() {
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
   // After the save, because reverting writes settings of its own. Reached by the
-  // inline-cycle path, which a two-value enum takes; the sleep-screen app has six
-  // and so goes through the popup above, but the flag is honoured either way.
+  // inline-cycle path, which a two-value enum takes; the sleep-screen app has
+  // five and so goes through the popup above, but the flag is honoured either way.
   if (sleepAppChanged) {
     revertSleepScreenIfOff();
-    activateMoodWallpaperSleepScreenIfChosen();
     if (openCustomSleepScreenPickerIfChosen()) return;
   }
   rebuildSettingsLists();
@@ -531,11 +528,6 @@ void SettingsActivity::revertSleepScreenIfOff() {
   GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
   delay(1000);
   requestUpdate(true);
-}
-
-void SettingsActivity::activateMoodWallpaperSleepScreenIfChosen() {
-  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_MOOD_WALLPAPERS) return;
-  organizerSleepScreen::activateMoodWallpaperMode();
 }
 
 bool SettingsActivity::openCustomSleepScreenPickerIfChosen() {

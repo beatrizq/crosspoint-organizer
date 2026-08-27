@@ -7,8 +7,8 @@
 class GfxRenderer;
 
 /**
- * Feeds the sleep screen from one of: a user-picked file, one organizer app's
- * first tab, or the companion's per-mood wallpapers.
+ * Feeds the sleep screen from one of: a user-picked file, or one organizer
+ * app's first tab.
  *
  * Settings -> Organizer -> Sleep Screen picks which. Whenever an organizer app's
  * contents change - a sync, or a change made on the device with the radio off,
@@ -56,13 +56,6 @@ void capture(const GfxRenderer& renderer);
  * the copy failed part-way.
  */
 bool installCustomWallpaper(const std::string& sourcePath);
-
-/**
- * Switches the sleep mode to CUSTOM, remembering the mode it replaced, without
- * touching /sleep.bmp - the companion's per-mood wallpapers are what CUSTOM mode
- * shows once assigned (see SleepActivity::renderMoodWallpaperIfAssigned()).
- */
-void activateMoodWallpaperMode();
 
 /**
  * Puts the user's own wallpaper and sleep mode back, and drops the copy.

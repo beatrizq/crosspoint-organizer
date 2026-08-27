@@ -27,18 +27,15 @@
  *
  * Labelled with the services rather than with the nicknames: every other row in
  * Settings names the service, and a list of user-chosen names would not tell you
- * which account each one is. Two entries are the odd ones out: Custom has no
- * service to name and picking it opens the SD file browser (SettingsActivity)
- * rather than just recording the choice, and Mood Wallpapers reuses the same
- * label as CompanionSettingsActivity's own row - it is the same per-mood image
- * set (CompanionWallpaperStore), just also selectable as the sleep screen
- * source, not a second feature.
+ * which account each one is. Custom is the odd one out: it has no service to
+ * name, and picking it opens the SD file browser (SettingsActivity) rather
+ * than just recording the choice.
  */
 inline SettingInfo buildOrganizerSleepAppSetting(const StrId category = StrId::STR_NONE_OPT) {
-  return SettingInfo::Enum(StrId::STR_SLEEP_SCREEN_APP, &CrossPointSettings::organizerSleepApp,
-                           {StrId::STR_CUSTOM, StrId::STR_TODOIST, StrId::STR_GOOGLE_CALENDAR, StrId::STR_YNAB,
-                            StrId::STR_HABITIFY, StrId::STR_COMPANION_MOOD_WALLPAPERS},
-                           "organizerSleepApp", category);
+  return SettingInfo::Enum(
+      StrId::STR_SLEEP_SCREEN_APP, &CrossPointSettings::organizerSleepApp,
+      {StrId::STR_CUSTOM, StrId::STR_TODOIST, StrId::STR_GOOGLE_CALENDAR, StrId::STR_YNAB, StrId::STR_HABITIFY},
+      "organizerSleepApp", category);
 }
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts

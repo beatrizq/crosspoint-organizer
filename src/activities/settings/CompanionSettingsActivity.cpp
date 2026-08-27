@@ -12,26 +12,23 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/settings/CompanionSleepTimeActivity.h"
-#include "activities/settings/CompanionWallpaperSettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "companion/CompanionSprites.generated.h"
 #include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
-#include "companion/CompanionWallpaperStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
 namespace {
 constexpr int ROW_ENABLED = 0;
 constexpr int ROW_SHOW_MOOD_LABEL = 1;
-constexpr int ROW_MOOD_WALLPAPERS = 2;
-constexpr int ROW_SLEEP_START = 3;
-constexpr int ROW_SLEEP_END = 4;
-constexpr int ROW_HAPPY_POINTS = 5;
-constexpr int ROW_SATISFIED_POINTS = 6;
-constexpr int ROW_NEGLECTED_DAYS = 7;
-constexpr int ROW_AGE = 8;
+constexpr int ROW_SLEEP_START = 2;
+constexpr int ROW_SLEEP_END = 3;
+constexpr int ROW_HAPPY_POINTS = 4;
+constexpr int ROW_SATISFIED_POINTS = 5;
+constexpr int ROW_NEGLECTED_DAYS = 6;
+constexpr int ROW_AGE = 7;
 
 // "HH:MM" for a Sleep start/end row's value column -- digits need no
 // translation.
@@ -46,17 +43,6 @@ std::string sleepTimeValue(const uint8_t hour, const uint8_t minute) {
 std::string thresholdValue(const StrId formatId, const uint8_t n) {
   char buf[16];
   snprintf(buf, sizeof(buf), I18N.get(formatId), static_cast<unsigned>(n));
-  return std::string(buf);
-}
-
-// "N/5" set, for the Mood Wallpapers row's value column -- digits need no
-// translation, so this skips adding a format string just for them.
-std::string wallpaperCountValue() {
-  const auto* begin = COMPANION_WALLPAPERS.pathForMood;
-  const auto* end = begin + companion::MOOD_COUNT;
-  const auto count = std::count_if(begin, end, [](const std::string& path) { return !path.empty(); });
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%d/%d", static_cast<int>(count), static_cast<int>(companion::MOOD_COUNT));
   return std::string(buf);
 }
 
@@ -109,27 +95,14 @@ void CompanionSettingsActivity::handleSelection() {
     case ROW_SHOW_MOOD_LABEL:
       SETTINGS.companionShowMoodLabel = (SETTINGS.companionShowMoodLabel + 1) % 2;
       break;
-    case ROW_MOOD_WALLPAPERS:
-      startActivityForResult(std::make_unique<CompanionWallpaperSettingsActivity>(renderer, mappedInput),
-                             [this](const ActivityResult& result) {
-                               // Same reasoning as ROW_ENABLED's popup above: this
-                               // sub-screen answers Back/Confirm on the button going
-                               // down in places, so a release can still land here.
-                               if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
-                                 swallowConfirmRelease = true;
-                               }
-                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
-                                 swallowBackRelease = true;
-                               }
-                               requestUpdate();
-                             });
-      return;
     case ROW_SLEEP_START:
     case ROW_SLEEP_END:
       startActivityForResult(
           std::make_unique<CompanionSleepTimeActivity>(renderer, mappedInput, selectedIndex == ROW_SLEEP_START),
           [this](const ActivityResult&) {
-            // Same reasoning as ROW_MOOD_WALLPAPERS above.
+            // Same reasoning as ROW_ENABLED's popup above: this sub-screen
+            // answers Back/Confirm on the button going down in places, so a
+            // release can still land here.
             if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
               swallowConfirmRelease = true;
             }
@@ -191,7 +164,7 @@ void CompanionSettingsActivity::offerThresholdPicker(const int row) {
                                                   minValue, maxValue, /*smallStep=*/1, /*largeStep=*/1, formatId,
                                                   /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true),
       [this, row](const ActivityResult& result) {
-        // Same reasoning as ROW_MOOD_WALLPAPERS above.
+        // Same reasoning as ROW_ENABLED's popup above.
         if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
           swallowConfirmRelease = true;
         }
@@ -299,8 +272,6 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return std::string(tr(STR_COMPANION_ENABLED));
           case ROW_SHOW_MOOD_LABEL:
             return std::string(tr(STR_COMPANION_SHOW_MOOD_LABEL));
-          case ROW_MOOD_WALLPAPERS:
-            return std::string(tr(STR_COMPANION_MOOD_WALLPAPERS));
           case ROW_SLEEP_START:
             return std::string(tr(STR_COMPANION_SLEEP_START));
           case ROW_SLEEP_END:
@@ -322,8 +293,6 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_SHOW_MOOD_LABEL:
             return SETTINGS.companionShowMoodLabel ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-          case ROW_MOOD_WALLPAPERS:
-            return wallpaperCountValue();
           case ROW_SLEEP_START:
             return sleepTimeValue(SETTINGS.companionSleepStartHour, SETTINGS.companionSleepStartMinute);
           case ROW_SLEEP_END:

@@ -11,11 +11,6 @@ class SleepActivity final : public Activity {
 
  private:
   void renderDefaultSleepScreen() const;
-  // Tries the companion's current-mood wallpaper first; returns true if it
-  // painted the screen, so renderCustomSleepScreen() falls through to its own
-  // /sleep.bmp -> folder-pool -> default chain otherwise. See
-  // CompanionWallpaperStore.
-  bool renderMoodWallpaperIfAssigned() const;
   void renderCustomSleepScreen() const;
   void renderCoverSleepScreen() const;
   void renderBitmapSleepScreen(const Bitmap& bitmap) const;

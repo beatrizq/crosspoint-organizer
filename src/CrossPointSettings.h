@@ -24,16 +24,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     SLEEP_SCREEN_MODE_COUNT
   };
   // What feeds the sleep screen: a user-picked file (SLEEP_APP_OFF, labelled
-  // "Custom" - the name is legacy, kept because it is persisted), an organizer
-  // app's first tab, or the companion's per-mood wallpapers (CompanionWallpaperStore).
-  // Values are persisted, so append rather than renumber.
+  // "Custom" - the name is legacy, kept because it is persisted) or an
+  // organizer app's first tab. Values are persisted, so append rather than
+  // renumber -- and never reuse 5, retired along with the per-mood companion
+  // wallpapers feature; the generic ENUM clamp in fromJson() resets a stale
+  // persisted 5 to the struct default on load.
   enum ORGANIZER_SLEEP_APP {
     SLEEP_APP_OFF = 0,
     SLEEP_APP_TASKS = 1,
     SLEEP_APP_CALENDAR = 2,
     SLEEP_APP_BUDGET = 3,
     SLEEP_APP_HABITS = 4,
-    SLEEP_APP_MOOD_WALLPAPERS = 5,
     ORGANIZER_SLEEP_APP_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
