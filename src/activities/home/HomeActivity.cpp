@@ -11,6 +11,7 @@
 #include <TodoistTaskCache.h>
 #include <Utf8.h>
 #include <Xtc.h>
+#include <YnabAccountCache.h>
 
 #include <algorithm>
 #include <cstring>
@@ -695,7 +696,8 @@ void HomeActivity::render(RenderLock&&) {
       },
       [&rows, leadingRecents](int index) { return rows[index + leadingRecents].icon; },
       // Notification-style counts: tasks due today or overdue, habits not yet
-      // done today, today's events. Zero means no badge (checked by the theme).
+      // done today, today's events, today's transactions. Zero means no badge
+      // (checked by the theme).
       [&rows, leadingRecents](int index) -> int {
         switch (rows[index + leadingRecents].item) {
           case HomeMenuItem::TASKS:
@@ -707,6 +709,8 @@ void HomeActivity::render(RenderLock&&) {
           }
           case HomeMenuItem::CALENDAR:
             return static_cast<int>(GCAL_EVENTS.getTodayCount());
+          case HomeMenuItem::BUDGET:
+            return static_cast<int>(YNAB_ACCOUNTS.getTodayTransactionCount());
           default:
             return 0;
         }
