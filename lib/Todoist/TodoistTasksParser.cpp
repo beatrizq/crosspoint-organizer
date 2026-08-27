@@ -35,6 +35,7 @@ void TodoistTasksParser::reset() {
   currentId[0] = '\0';
   currentContent[0] = '\0';
   currentDue[0] = '\0';
+  currentIsRecurring = false;
 }
 
 void TodoistTasksParser::feed(const char* data, const size_t len) { parser.feed(data, len); }
@@ -42,11 +43,12 @@ void TodoistTasksParser::feed(const char* data, const size_t len) { parser.feed(
 void TodoistTasksParser::commitTask() {
   if (currentId[0] != '\0' && currentContent[0] != '\0') {
     tasksSeen++;
-    if (sink) sink(sinkCtx, currentId, currentContent, currentDue);
+    if (sink) sink(sinkCtx, currentId, currentContent, currentDue, currentIsRecurring);
   }
   currentId[0] = '\0';
   currentContent[0] = '\0';
   currentDue[0] = '\0';
+  currentIsRecurring = false;
 }
 
 // -- SAX callbacks (static trampolines) -------------------------------------
@@ -76,6 +78,8 @@ void TodoistTasksParser::sOnKey(void* ctx, const char* key, const size_t len) {
         // due.date is either "YYYY-MM-DD" or a full datetime; both start with
         // the date, and the copy below keeps only that.
         self->lastKey = LastKey::DUE_DATE;
+      } else if (self->dueDepth != 0 && self->taskDepth == self->dueDepth && keyIs(key, len, "is_recurring", 12)) {
+        self->lastKey = LastKey::DUE_IS_RECURRING;
       } else {
         self->lastKey = LastKey::NONE;
       }
@@ -110,8 +114,12 @@ void TodoistTasksParser::sOnNumber(void* ctx, const char* /*value*/, size_t /*le
   static_cast<TodoistTasksParser*>(ctx)->lastKey = LastKey::NONE;
 }
 
-void TodoistTasksParser::sOnBool(void* ctx, bool /*value*/) {
-  static_cast<TodoistTasksParser*>(ctx)->lastKey = LastKey::NONE;
+void TodoistTasksParser::sOnBool(void* ctx, const bool value) {
+  auto* self = static_cast<TodoistTasksParser*>(ctx);
+  if (self->position == Position::IN_TASK_OBJECT && self->lastKey == LastKey::DUE_IS_RECURRING) {
+    self->currentIsRecurring = value;
+  }
+  self->lastKey = LastKey::NONE;
 }
 
 void TodoistTasksParser::sOnNull(void* ctx) { static_cast<TodoistTasksParser*>(ctx)->lastKey = LastKey::NONE; }

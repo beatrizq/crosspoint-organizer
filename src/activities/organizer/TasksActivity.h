@@ -101,6 +101,9 @@ class TasksActivity final : public OrganizerScreenActivity {
   // The Options menu's "Focus session" entry opens this: a duration picker,
   // then organizerActions::beginFocusSession() for the same task.
   void offerFocusSession(int cacheIndex);
+  // The Options menu's "Reschedule" entry opens this: a warning first if the
+  // task is recurring (see TodoistTask::isRecurring), then the date picker.
+  void offerReschedule(int cacheIndex);
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};

@@ -33,6 +33,11 @@ struct HabitifyHabit {
   // isComplete() - and also true for a numeric habit marked done in Habitify
   // itself in a way this app's current/target comparison would not catch.
   bool completedByStatus = false;
+  // Complete tapped locally, awaiting push via Habitify's dedicated
+  // .../logs/complete endpoint - independent of `pending`, since completing is
+  // "mark done" rather than "add N" and works even for a goal-less habit
+  // (no unitSymbol) that `pending`/addLog() cannot touch at all.
+  bool pendingComplete = false;
 
   // What the row shows: the server's figure plus anything not yet pushed.
   float shownCurrent() const { return current + pending; }

@@ -12,6 +12,7 @@
  * Endpoints used:
  *   GET  /tasks/filter?query=<user filter>              - the Tasks screen's list
  *   POST /tasks/{id}/close                              - mark a task complete
+ *   POST /tasks/{id}                                    - reschedule (due_date only)
  *   GET  /tasks/completed/by_completion_date?filter_query=<user filter>
  *                                                        - today's completions, for the companion
  *
@@ -36,6 +37,7 @@ class TodoistClient {
     PARSE_ERROR,
     LOW_MEMORY,
     INVALID_FILTER,  // 400: Todoist could not parse the Filter setting
+    NOT_FOUND,       // 404: no such task (deleted, or already completed)
   };
 
   /**
@@ -66,6 +68,19 @@ class TodoistClient {
    * server (completed elsewhere), which is the state the caller wants.
    */
   static Error closeTask(const std::string& taskId);
+
+  /**
+   * Reschedule a task to `isoDueDate` ("YYYY-MM-DD"). Unlike closeTask(), a 404
+   * here is reported as NOT_FOUND, not OK: a task that no longer exists cannot
+   * usefully be rescheduled the way it can usefully be "already complete", so
+   * the caller should drop the attempt rather than treat it as done.
+   *
+   * Todoist has no way to reschedule a single occurrence of a recurring task
+   * without replacing its recurrence entirely - this call does exactly that
+   * for any task, recurring or not. The caller is responsible for warning
+   * before rescheduling a recurring one; see TodoistTask::isRecurring.
+   */
+  static Error rescheduleTask(const std::string& taskId, const std::string& isoDueDate);
 
   /**
    * Counts tasks matching the Filter setting that Todoist recorded as completed

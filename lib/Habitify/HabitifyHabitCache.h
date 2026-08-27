@@ -67,6 +67,14 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   // Habits carrying unpushed progress, for the header's count.
   size_t pendingCount() const;
 
+  // Marks the habit complete immediately (completedByStatus set optimistically,
+  // so the row reads done and the companion can credit it right away) and
+  // queues a complete push for the next sync. No-op for an unknown index.
+  void completeHabitAt(size_t index);
+  // Called once the server accepted a queued complete, or the habit it was for
+  // turned out to already be gone.
+  void clearPendingComplete(const std::string& habitId);
+
   void clear();
 };
 

@@ -51,9 +51,18 @@ class QuickPickActivity final : public Activity {
   void showOptions();
   void completeSuggestedTask();
   void logSuggestedHabit();
+  // The Options menu's "Complete" entry for a habit suggestion opens this:
+  // marks it done directly, via organizerActions::completeHabit() - works
+  // even for a goal-less habit logSuggestedHabit()'s number entry cannot
+  // touch.
+  void completeSuggestedHabit();
   // The Options menu's "Focus session" entry opens this: a duration picker,
   // then organizerActions::beginFocusSession() for the suggested item.
   void offerFocusSession();
+  // The Options menu's "Reschedule" entry opens this (task suggestions only -
+  // a habit has no due date). Warns first if the task is recurring (see
+  // TodoistTask::isRecurring), then the date picker.
+  void offerReschedule();
 
   // Whether the current pick is still a valid quickpick candidate: present in
   // its cache and, for a habit, still short of its target. Checked once an

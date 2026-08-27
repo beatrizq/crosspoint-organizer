@@ -11,8 +11,9 @@
  * Base URL: https://api.habitify.me/v2
  *
  * Endpoints used:
- *   GET  /habits/journal        - habits with today's progress, for the screen
- *   POST /habits/{id}/logs      - add progress to a habit
+ *   GET  /habits/journal            - habits with today's progress, for the screen
+ *   POST /habits/{id}/logs          - add progress to a habit
+ *   POST /habits/{id}/logs/complete - mark a habit complete directly, no amount needed
  *
  * Authentication: an `X-API-Key` header carrying the key generated in Habitify's
  * own app (Settings -> API). Deliberately noted, because it is unlike every other
@@ -66,6 +67,15 @@ class HabitifyClient {
    * against - the caller checks that before getting here.
    */
   static Error addLog(const std::string& habitId, const std::string& unitSymbol, float value);
+
+  /**
+   * Marks a habit complete for today directly: POST /habits/{id}/logs/complete,
+   * no body. Unlike addLog(), this needs no unit or amount, so it works for a
+   * goal-less habit too - the one case addLog() can never touch at all. No date
+   * is sent; the endpoint defaults to today, the same "let the server decide"
+   * convention fetchJournal() already uses.
+   */
+  static Error completeHabit(const std::string& habitId);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */
   static const char* errorString(Error error);

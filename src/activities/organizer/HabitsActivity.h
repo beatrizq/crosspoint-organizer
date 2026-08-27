@@ -72,6 +72,10 @@ class HabitsActivity final : public OrganizerScreenActivity {
   // Opens the number entry; performIncrement() is what actually moves the number.
   void completeSelectedHabit();
   void performIncrement(int cacheIndex, float amount);
+  // The Options menu's "Complete" entry opens this: marks the habit done
+  // directly, via organizerActions::completeHabit() - works even for a
+  // goal-less habit completeSelectedHabit()'s number entry cannot touch.
+  void markSelectedHabitComplete();
   void performSync();
   // The Options menu's "Focus session" entry opens this: a duration picker,
   // then organizerActions::beginFocusSession() for the same habit.

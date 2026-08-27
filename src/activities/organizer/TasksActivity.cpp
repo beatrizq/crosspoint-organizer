@@ -19,6 +19,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
+#include "RescheduleTaskActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/OptionsMenuActivity.h"
 #include "components/UITheme.h"
@@ -253,7 +254,7 @@ void TasksActivity::showRowOptions() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
   if (cacheIndex < 0) return;
 
-  std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION)};
+  std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION), tr(STR_RESCHEDULE_TASK)};
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
       [this, cacheIndex](const ActivityResult& result) {
@@ -272,6 +273,8 @@ void TasksActivity::showRowOptions() {
           completeSelectedTask();
         } else if (idx == 1) {
           offerFocusSession(cacheIndex);
+        } else if (idx == 2) {
+          offerReschedule(cacheIndex);
         }
       });
 }
@@ -297,6 +300,64 @@ void TasksActivity::offerFocusSession(const int cacheIndex) {
                                                                organizerActions::FOCUS_SESSION_DURATIONS_MINUTES[idx],
                                                                renderer, mappedInput);
                          });
+}
+
+void TasksActivity::offerReschedule(const int cacheIndex) {
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
+
+  auto openPicker = [this](const int idx) {
+    // Re-checked: a warning popup may have sat on top for as long as the user
+    // took to answer.
+    if (idx < 0 || static_cast<size_t>(idx) >= TODOIST_TASKS.getTasks().size()) return;
+    const auto& task = TODOIST_TASKS.getTasks()[static_cast<size_t>(idx)];
+    const uint16_t seed =
+        task.dueDays != todoist::DUE_NONE ? task.dueDays : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
+
+    startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
+                           [this, idx](const ActivityResult& result) {
+                             if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                               swallowConfirmRelease = true;
+                             }
+                             if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                               swallowBackRelease = true;
+                             }
+                             if (result.isCancelled) return;
+                             const auto* date = std::get_if<DateResult>(&result.data);
+                             if (!date) return;
+                             if (idx < 0 || static_cast<size_t>(idx) >= TODOIST_TASKS.getTasks().size()) return;
+
+                             {
+                               // Same reasoning as performTaskCompletion(): the render task reads
+                               // the list, and a reschedule can move the task between tabs just
+                               // as completing one removes it from all of them.
+                               RenderLock lock(*this);
+                               organizerActions::rescheduleTask(static_cast<size_t>(idx), date->packedDate);
+                               rebuildTabs();
+                             }
+                             updateSleepScreen();
+                           });
+  };
+
+  const auto& task = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)];
+  if (!task.isRecurring) {
+    openPicker(cacheIndex);
+    return;
+  }
+
+  // Todoist has no way to reschedule a single occurrence of a recurring task
+  // without replacing its recurrence entirely - warn before that happens.
+  startActivityForResult(
+      std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_RESCHEDULE_RECURRING_PROMPT), task.content),
+      [this, cacheIndex, openPicker](const ActivityResult& result) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        openPicker(cacheIndex);
+      });
 }
 
 void TasksActivity::completeSelectedTask() {

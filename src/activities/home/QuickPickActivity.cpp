@@ -12,6 +12,7 @@
 
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
+#include "activities/organizer/RescheduleTaskActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "activities/util/OptionsMenuActivity.h"
@@ -92,17 +93,51 @@ bool QuickPickActivity::currentPickStillEligible() const {
     }
     return false;
   }
+  // Same overdue-or-due-today rule quickpick::roll() itself filters on -
+  // rescheduling can move a task out of the pool exactly as completing one
+  // does, just without removing it from the cache.
+  const bool knowToday = !TODOIST_TASKS.getSyncDate().empty();
+  const uint16_t today = todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
   for (const auto& task : TODOIST_TASKS.getTasks()) {
-    if (task.id == itemId) return true;
+    if (task.id == itemId) return knowToday && (task.overdue || task.dueDays == today);
   }
   return false;
 }
 
 void QuickPickActivity::showOptions() {
-  std::vector<std::string> options{isHabit ? tr(STR_HABITIFY_LOG) : tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION)};
+  // A habit with no goal has no unit, so nothing can be logged against it (see
+  // logSuggestedHabit()) - Log is left off the menu rather than shown and
+  // silently failing. Complete needs no unit, so it is offered either way.
+  bool canLog = true;
+  if (isHabit) {
+    for (const auto& habit : HABITIFY_HABITS.getHabits()) {
+      if (habit.id == itemId) {
+        canLog = !habit.unitSymbol.empty();
+        break;
+      }
+    }
+  }
+
+  std::vector<std::string> options;
+  if (isHabit) {
+    if (canLog) options.push_back(tr(STR_HABITIFY_LOG));
+    options.push_back(tr(STR_COMPLETE_HABIT));
+    options.push_back(tr(STR_FOCUS_SESSION));
+  } else {
+    options.push_back(tr(STR_COMPLETE_TASK));
+    options.push_back(tr(STR_FOCUS_SESSION));
+    options.push_back(tr(STR_RESCHEDULE_TASK));
+  }
+  // Positions within the habit branch's own entries; the task branch's are
+  // fixed (0/1/2) and never overlap with these, since the two branches are
+  // mutually exclusive on isHabit.
+  const int logIdx = canLog ? 0 : -1;
+  const int completeHabitIdx = canLog ? 1 : 0;
+  const int habitFocusIdx = canLog ? 2 : 1;
+
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
-      [this](const ActivityResult& result) {
+      [this, logIdx, completeHabitIdx, habitFocusIdx](const ActivityResult& result) {
         // Confirm may still be physically down (the popup answers on the
         // press, this screen on the release). Back is swallowed whenever the
         // result was cancelled at all, since dismissing the popup with Back
@@ -116,14 +151,22 @@ void QuickPickActivity::showOptions() {
         }
         if (result.isCancelled) return;
         const int idx = std::get<OptionPickResult>(result.data).index;
-        if (idx == 0) {
-          if (isHabit) {
+        if (isHabit) {
+          if (idx == logIdx) {
             logSuggestedHabit();
-          } else {
-            completeSuggestedTask();
+          } else if (idx == completeHabitIdx) {
+            completeSuggestedHabit();
+          } else if (idx == habitFocusIdx) {
+            offerFocusSession();
           }
-        } else if (idx == 1) {
-          offerFocusSession();
+        } else {
+          if (idx == 0) {
+            completeSuggestedTask();
+          } else if (idx == 1) {
+            offerFocusSession();
+          } else if (idx == 2) {
+            offerReschedule();
+          }
         }
       });
 }
@@ -192,6 +235,83 @@ void QuickPickActivity::completeSuggestedTask() {
                          });
 }
 
+void QuickPickActivity::offerReschedule() {
+  const auto& tasks = TODOIST_TASKS.getTasks();
+  size_t cacheIndex = tasks.size();
+  for (size_t i = 0; i < tasks.size(); i++) {
+    if (tasks[i].id == itemId) {
+      cacheIndex = i;
+      break;
+    }
+  }
+  if (cacheIndex >= tasks.size()) return;  // gone already
+
+  auto openPicker = [this]() {
+    // Re-resolve: a warning popup may have sat on top for as long as the user
+    // took to answer.
+    const auto& tasks2 = TODOIST_TASKS.getTasks();
+    size_t idx = tasks2.size();
+    for (size_t i = 0; i < tasks2.size(); i++) {
+      if (tasks2[i].id == itemId) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= tasks2.size()) return;  // gone already
+    const uint16_t seed = tasks2[idx].dueDays != todoist::DUE_NONE
+                              ? tasks2[idx].dueDays
+                              : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
+
+    startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
+                           [this](const ActivityResult& result) {
+                             if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                               swallowConfirmRelease = true;
+                             }
+                             if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                               swallowBackRelease = true;
+                             }
+                             if (result.isCancelled) return;
+                             const auto* date = std::get_if<DateResult>(&result.data);
+                             if (!date) return;
+
+                             // Re-resolve: the picker sat on top for as long as the user took to answer.
+                             const auto& tasks3 = TODOIST_TASKS.getTasks();
+                             size_t idx3 = tasks3.size();
+                             for (size_t i = 0; i < tasks3.size(); i++) {
+                               if (tasks3[i].id == itemId) {
+                                 idx3 = i;
+                                 break;
+                               }
+                             }
+                             if (idx3 < tasks3.size()) {
+                               RenderLock lock(*this);
+                               organizerActions::rescheduleTask(idx3, date->packedDate);
+                             }
+                             if (!currentPickStillEligible()) reroll();
+                           });
+  };
+
+  if (!tasks[cacheIndex].isRecurring) {
+    openPicker();
+    return;
+  }
+
+  // Todoist has no way to reschedule a single occurrence of a recurring task
+  // without replacing its recurrence entirely - warn before that happens.
+  startActivityForResult(std::make_unique<ConfirmationActivity>(
+                             renderer, mappedInput, tr(STR_RESCHEDULE_RECURRING_PROMPT), tasks[cacheIndex].content),
+                         [this, openPicker](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           openPicker();
+                         });
+}
+
 void QuickPickActivity::logSuggestedHabit() {
   const auto& habits = HABITIFY_HABITS.getHabits();
   size_t cacheIndex = habits.size();
@@ -236,6 +356,24 @@ void QuickPickActivity::logSuggestedHabit() {
                            }
                            if (!currentPickStillEligible()) reroll();
                          });
+}
+
+void QuickPickActivity::completeSuggestedHabit() {
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  size_t cacheIndex = habits.size();
+  for (size_t i = 0; i < habits.size(); i++) {
+    if (habits[i].id == itemId) {
+      cacheIndex = i;
+      break;
+    }
+  }
+  if (cacheIndex >= habits.size()) return;  // gone already
+
+  {
+    RenderLock lock(*this);
+    organizerActions::completeHabit(cacheIndex);
+  }
+  if (!currentPickStillEligible()) reroll();
 }
 
 void QuickPickActivity::loop() {

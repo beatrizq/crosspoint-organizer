@@ -190,6 +190,33 @@ HabitifyClient::Error HabitifyClient::addLog(const std::string& habitId, const s
   return errorForStatus(httpCode);
 }
 
+HabitifyClient::Error HabitifyClient::completeHabit(const std::string& habitId) {
+  lastHttpCode = 0;
+  if (!HABITIFY_STORE.hasApiKey()) return NO_KEY;
+  if (habitId.empty()) return NOT_FOUND;
+  if (insufficientHeap()) return LOW_MEMORY;
+
+  const std::string url = std::string(API_BASE) + "/habits/" + urlEncode(habitId) + "/logs/complete";
+
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  if (!http.begin(url)) {
+    LOG_ERR("HBC", "Bad complete URL for habit %s", habitId.c_str());
+    return NETWORK_ERROR;
+  }
+  applyAuthHeaders(http);
+  // No body: the endpoint defaults to today, same as fetchJournal()'s own
+  // no-date convention. SecureHttpClient only emits Content-Length for a
+  // non-empty payload, and a bodyless POST without it risks a 411.
+  http.addHeader("Content-Length", "0");
+
+  const int httpCode = http.sendRequest("POST", nullptr, 0);
+  http.end();
+  lastHttpCode = httpCode;
+  LOG_DBG("HBC", "complete %s: %d", habitId.c_str(), httpCode);
+  return errorForStatus(httpCode);
+}
+
 const char* HabitifyClient::errorString(const Error error) {
   switch (error) {
     case OK:

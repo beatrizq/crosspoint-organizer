@@ -55,10 +55,11 @@ struct ParsedTask {
   std::string id;
   std::string content;
   std::string due;
+  bool isRecurring;
 };
 
-void collect(void* ctx, const char* id, const char* content, const char* due) {
-  static_cast<std::vector<ParsedTask>*>(ctx)->push_back({id, content, due});
+void collect(void* ctx, const char* id, const char* content, const char* due, const bool isRecurring) {
+  static_cast<std::vector<ParsedTask>*>(ctx)->push_back({id, content, due, isRecurring});
 }
 
 std::vector<ParsedTask> parseInChunks(const char* body, size_t chunkSize) {
@@ -98,6 +99,16 @@ TEST(TodoistTasksParser, HandlesNullDueAndDatetimeDue) {
   ASSERT_EQ(tasks.size(), 4u);
   EXPECT_EQ(tasks[2].due, "");            // "due": null
   EXPECT_EQ(tasks[3].due, "2026-08-17");  // datetime truncated to its date half
+}
+
+TEST(TodoistTasksParser, ExtractsIsRecurring) {
+  const auto tasks = parseInChunks(kRealisticResponse, 4096);
+
+  ASSERT_EQ(tasks.size(), 4u);
+  EXPECT_FALSE(tasks[0].isRecurring);  // due.is_recurring: false
+  EXPECT_TRUE(tasks[1].isRecurring);   // due.is_recurring: true
+  EXPECT_FALSE(tasks[2].isRecurring);  // due: null - nothing to be recurring
+  EXPECT_FALSE(tasks[3].isRecurring);  // due present, is_recurring key absent
 }
 
 // The body arrives in TLS-sized chunks, so no field may depend on landing

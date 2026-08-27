@@ -88,6 +88,7 @@ TodoistClient::Error errorForStatus(const int httpCode) {
   // server error because it is the one failure here the user can actually fix,
   // and "invalid filter" points straight at the setting that caused it.
   if (httpCode == 400) return TodoistClient::INVALID_FILTER;
+  if (httpCode == 404) return TodoistClient::NOT_FOUND;
   return TodoistClient::SERVER_ERROR;
 }
 
@@ -98,7 +99,7 @@ struct TaskCollector {
   std::vector<TodoistTask>* out;
 };
 
-void collectTask(void* ctx, const char* id, const char* content, const char* dueDate) {
+void collectTask(void* ctx, const char* id, const char* content, const char* dueDate, const bool isRecurring) {
   auto* collector = static_cast<TaskCollector*>(ctx);
   auto& out = *collector->out;
 
@@ -106,6 +107,7 @@ void collectTask(void* ctx, const char* id, const char* content, const char* due
   task.id = id;
   task.content = content;
   task.dueDays = todoist::dueDaysFromIso(dueDate);
+  task.isRecurring = isRecurring;
 
   if (out.size() < TODOIST_MAX_TASKS) {
     out.push_back(std::move(task));
@@ -236,6 +238,39 @@ TodoistClient::Error TodoistClient::closeTask(const std::string& taskId) {
   return errorForStatus(httpCode);
 }
 
+TodoistClient::Error TodoistClient::rescheduleTask(const std::string& taskId, const std::string& isoDueDate) {
+  lastHttpCode = 0;
+  if (!TODOIST_STORE.hasToken()) return NO_TOKEN;
+  if (taskId.empty() || isoDueDate.empty()) return SERVER_ERROR;
+  if (insufficientHeap()) return LOW_MEMORY;
+
+  const std::string url = std::string(API_BASE) + "/tasks/" + taskId;
+
+  // Built by hand rather than through ArduinoJson: one field is not worth a
+  // document.
+  char body[48];
+  snprintf(body, sizeof(body), "{\"due_date\":\"%s\"}", isoDueDate.c_str());
+
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  if (!http.begin(url)) {
+    LOG_ERR("TDA", "Bad reschedule URL for task %s", taskId.c_str());
+    return NETWORK_ERROR;
+  }
+  applyAuthHeaders(http);
+  http.addHeader("Content-Type", "application/json");
+
+  const int httpCode = http.POST(body);
+  http.end();
+  lastHttpCode = httpCode;
+  LOG_DBG("TDA", "Reschedule %s -> %s: %d", taskId.c_str(), isoDueDate.c_str(), httpCode);
+
+  // Unlike closeTask(), a 404 here means the task cannot be rescheduled at
+  // all - there is no equally-good "already done" reading of it - so it
+  // falls straight through errorForStatus() as NOT_FOUND.
+  return errorForStatus(httpCode);
+}
+
 TodoistClient::Error TodoistClient::fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount) {
   lastHttpCode = 0;
   outCount = 0;
@@ -296,6 +331,8 @@ const char* TodoistClient::errorString(const Error error) {
       return "Unexpected response";
     case LOW_MEMORY:
       return "Not enough memory to sync";
+    case NOT_FOUND:
+      return "No such task";
     default:
       return "Unknown error";
   }

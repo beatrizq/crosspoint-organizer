@@ -16,10 +16,19 @@ void TodoistTaskCache::toJson(JsonDocument& doc) const {
     char iso[11];
     todoist::isoFromDueDays(task.dueDays, iso, sizeof(iso));
     if (iso[0] != '\0') obj["due"] = iso;
+    obj["isRecurring"] = task.isRecurring;
   }
   JsonArray pending = doc["pending"].to<JsonArray>();
   for (const auto& id : pendingIds) {
     pending.add(id);
+  }
+  JsonArray reschedules = doc["pendingReschedules"].to<JsonArray>();
+  for (const auto& reschedule : pendingReschedules) {
+    JsonObject obj = reschedules.add<JsonObject>();
+    obj["id"] = reschedule.taskId;
+    char iso[11];
+    todoist::isoFromDueDays(reschedule.dueDays, iso, sizeof(iso));
+    obj["due"] = iso;
   }
   doc["completedToday"] = completedToday;
   doc["completedDay"] = completedDay;
@@ -28,6 +37,7 @@ void TodoistTaskCache::toJson(JsonDocument& doc) const {
 bool TodoistTaskCache::fromJson(JsonVariantConst doc) {
   tasks.clear();
   pendingIds.clear();
+  pendingReschedules.clear();
   syncDate = doc["syncDate"] | "";
   completedToday = doc["completedToday"] | static_cast<uint16_t>(0);
   completedDay = doc["completedDay"] | todoist::DUE_NONE;
@@ -40,6 +50,7 @@ bool TodoistTaskCache::fromJson(JsonVariantConst doc) {
     task.id = obj["id"] | "";
     task.content = obj["content"] | "";
     task.dueDays = todoist::dueDaysFromIso(obj["due"] | "");
+    task.isRecurring = obj["isRecurring"] | false;
     if (task.id.empty()) continue;
     tasks.push_back(std::move(task));
   }
@@ -57,7 +68,19 @@ bool TodoistTaskCache::fromJson(JsonVariantConst doc) {
     pendingIds.emplace_back(id);
   }
 
-  LOG_DBG("TDC", "Loaded %zu tasks, %zu pending completions", tasks.size(), pendingIds.size());
+  JsonArrayConst reschedules = doc["pendingReschedules"].as<JsonArrayConst>();
+  pendingReschedules.reserve(std::min(reschedules.size(), MAX_PENDING));
+  for (JsonObjectConst obj : reschedules) {
+    if (pendingReschedules.size() >= MAX_PENDING) break;
+    const char* id = obj["id"] | "";
+    if (id[0] == '\0') continue;
+    const uint16_t due = todoist::dueDaysFromIso(obj["due"] | "");
+    if (due == todoist::DUE_NONE) continue;
+    pendingReschedules.push_back({id, due});
+  }
+
+  LOG_DBG("TDC", "Loaded %zu tasks, %zu pending completions, %zu pending reschedules", tasks.size(), pendingIds.size(),
+          pendingReschedules.size());
   return true;
 }
 
@@ -117,6 +140,29 @@ void TodoistTaskCache::setCompletedToday(const uint16_t count, const std::string
 
 void TodoistTaskCache::clearPending(const std::string& id) {
   pendingIds.erase(std::remove(pendingIds.begin(), pendingIds.end(), id), pendingIds.end());
+}
+
+void TodoistTaskCache::rescheduleTaskAt(const size_t index, const uint16_t newDueDays) {
+  if (index >= tasks.size()) return;
+  tasks[index].dueDays = newDueDays;
+  applyOverdueFlags();
+
+  const std::string& id = tasks[index].id;
+  const auto found = std::find_if(pendingReschedules.begin(), pendingReschedules.end(),
+                                  [&id](const TodoistPendingReschedule& p) { return p.taskId == id; });
+  if (found != pendingReschedules.end()) {
+    found->dueDays = newDueDays;
+  } else if (pendingReschedules.size() < MAX_PENDING) {
+    pendingReschedules.push_back({id, newDueDays});
+  } else {
+    LOG_ERR("TDC", "Pending reschedule queue full (%zu), dropping push for %s", MAX_PENDING, id.c_str());
+  }
+}
+
+void TodoistTaskCache::clearPendingReschedule(const std::string& id) {
+  pendingReschedules.erase(std::remove_if(pendingReschedules.begin(), pendingReschedules.end(),
+                                          [&id](const TodoistPendingReschedule& p) { return p.taskId == id; }),
+                           pendingReschedules.end());
 }
 
 void TodoistTaskCache::rolloverCompletedIfNeeded() {

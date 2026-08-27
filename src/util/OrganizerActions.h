@@ -28,10 +28,22 @@ namespace organizerActions {
 // an out-of-range index.
 void completeTask(size_t cacheIndex);
 
+// Sets the task at `cacheIndex`'s due date to `newDueDays` (packed days since
+// 2000-01-01, see TodoistDate.h) immediately, and queues the change for the
+// next sync. No-op for an out-of-range index. Does not credit the companion -
+// a reschedule is not progress the way a completion or a habit log is.
+void rescheduleTask(size_t cacheIndex, uint16_t newDueDays);
+
 // Adds `amount` to the habit at `cacheIndex`'s unpushed progress. No-op for
 // an out-of-range index, a non-positive amount, or a habit with no unit (see
 // HabitifyHabit::unitSymbol -- nothing to log against a goal-less habit).
 void logHabit(size_t cacheIndex, float amount);
+
+// Marks the habit at `cacheIndex` complete directly, via Habitify's dedicated
+// endpoint - unlike logHabit(), this works even for a goal-less habit (no
+// unitSymbol), since it needs no amount. No-op for an out-of-range index or a
+// habit that is already complete.
+void completeHabit(size_t cacheIndex);
 
 // The end time for a focus session starting now and running `durationMinutes`,
 // as (endAbsMinutes: a UTC day-number*1440 + minute-of-day, comparable across
