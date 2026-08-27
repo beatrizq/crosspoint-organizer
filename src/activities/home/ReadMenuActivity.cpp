@@ -43,16 +43,16 @@ void ReadMenuActivity::activateSelected() {
   if (entryIdx < 0 || entryIdx >= static_cast<int>(entries.size())) return;
   switch (entries[entryIdx].item) {
     case HomeMenuItem::FILE_BROWSER:
-      activityManager.goToFileBrowser();
+      activityManager.goToFileBrowser("/", /*returnToReadMenu=*/true);
       break;
     case HomeMenuItem::RECENTS:
-      activityManager.goToRecentBooks();
+      activityManager.goToRecentBooks(/*returnToReadMenu=*/true);
       break;
     case HomeMenuItem::OPDS_BROWSER:
-      activityManager.goToBrowser();
+      activityManager.goToBrowser(/*returnToReadMenu=*/true);
       break;
     case HomeMenuItem::FILE_TRANSFER:
-      activityManager.goToFileTransfer();
+      activityManager.goToFileTransfer(/*returnToReadMenu=*/true);
       break;
     default:
       break;

@@ -190,23 +190,24 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   }
 }
 
-void ActivityManager::goToFileTransfer() {
-  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+void ActivityManager::goToFileTransfer(const bool returnToReadMenu) {
+  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, returnToReadMenu));
 }
 
 void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
 
-void ActivityManager::goToFileBrowser(std::string path) {
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
+void ActivityManager::goToFileBrowser(std::string path, const bool returnToReadMenu) {
+  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path),
+                                                        FileBrowserActivity::Mode::Books, returnToReadMenu));
 }
 
-void ActivityManager::goToRecentBooks() {
-  replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
+void ActivityManager::goToRecentBooks(const bool returnToReadMenu) {
+  replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput, returnToReadMenu));
 }
 
 void ActivityManager::goToTasks(const uint8_t initialTab, std::string selectTaskId) {
-  replaceActivity(std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<int>(initialTab),
-                                                  std::move(selectTaskId)));
+  replaceActivity(
+      std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<int>(initialTab), std::move(selectTaskId)));
 }
 
 void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }
@@ -223,13 +224,13 @@ void ActivityManager::goToBudget(const uint8_t initialTab) {
 
 void ActivityManager::goToReadMenu() { replaceActivity(std::make_unique<ReadMenuActivity>(renderer, mappedInput)); }
 
-void ActivityManager::goToBrowser() {
+void ActivityManager::goToBrowser(const bool returnToReadMenu) {
   const auto& servers = OPDS_STORE.getServers();
   // Skip the server picker when there's only one server configured
   if (servers.size() == 1) {
-    replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, servers[0]));
+    replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, servers[0], returnToReadMenu));
   } else {
-    replaceActivity(std::make_unique<OpdsServerListActivity>(renderer, mappedInput, true));
+    replaceActivity(std::make_unique<OpdsServerListActivity>(renderer, mappedInput, true, returnToReadMenu));
   }
 }
 

@@ -52,6 +52,10 @@ class CrossPointWebServerActivity final : public Activity {
   // Cached signal-strength bracket (0..4) for the WiFi indicator.
   int lastWifiBars = 0;
 
+  // When set, exiting returns to ReadMenuActivity instead of Home -- set only
+  // by ActivityManager::goToFileTransfer() on behalf of ReadMenuActivity.
+  bool returnToReadMenu = false;
+
   void renderServerRunning() const;
   void renderWifiIndicator(int subHeaderTop) const;
 
@@ -59,10 +63,14 @@ class CrossPointWebServerActivity final : public Activity {
   void onWifiSelectionComplete(bool connected);
   void startAccessPoint();
   void startWebServer();
+  // Every exit path in this activity funnels through here instead of calling
+  // onGoHome() directly, so returnToReadMenu only needs handling in one place.
+  void exitActivity();
 
  public:
-  explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("CrossPointWebServer", renderer, mappedInput) {}
+  explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                       bool returnToReadMenu = false)
+      : Activity("CrossPointWebServer", renderer, mappedInput), returnToReadMenu(returnToReadMenu) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

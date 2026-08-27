@@ -96,10 +96,13 @@ class ActivityManager {
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);
 
   // goTo... functions are convenient wrapper for replaceActivity()
-  void goToFileTransfer();
+  // returnToReadMenu routes that screen's own Back button to ReadMenuActivity
+  // instead of Home -- set only by ReadMenuActivity itself, since every other
+  // caller of these four still expects Back to land on Home as before.
+  void goToFileTransfer(bool returnToReadMenu = false);
   void goToSettings();
-  void goToFileBrowser(std::string path = {});
-  void goToRecentBooks();
+  void goToFileBrowser(std::string path = {}, bool returnToReadMenu = false);
+  void goToRecentBooks(bool returnToReadMenu = false);
   // initialTab is an index into the target screen's tab bar; the header cannot
   // name those types without pulling the activities in. Out-of-range values are
   // clamped to the first tab by OrganizerScreenActivity::onEnter(), which matters
@@ -114,7 +117,7 @@ class ActivityManager {
   // Syncs every configured integration over one Wi-Fi association.
   void goToSyncAll();
   void goToReadMenu();
-  void goToBrowser();
+  void goToBrowser(bool returnToReadMenu = false);
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);
   void goToBoot();

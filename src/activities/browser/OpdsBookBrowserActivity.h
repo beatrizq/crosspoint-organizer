@@ -17,8 +17,12 @@ class OpdsBookBrowserActivity final : public Activity {
  public:
   enum class BrowserState { CHECK_WIFI, WIFI_SELECTION, LOADING, BROWSING, DOWNLOADING, ERROR, SEARCH_INPUT };
 
-  explicit OpdsBookBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, OpdsServer server)
-      : Activity("OpdsBookBrowser", renderer, mappedInput), buttonNavigator(), server(std::move(server)) {}
+  explicit OpdsBookBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, OpdsServer server,
+                                   bool returnToReadMenu = false)
+      : Activity("OpdsBookBrowser", renderer, mappedInput),
+        buttonNavigator(),
+        server(std::move(server)),
+        returnToReadMenu(returnToReadMenu) {}
 
   void onEnter() override;
   void onExit() override;
@@ -41,6 +45,10 @@ class OpdsBookBrowserActivity final : public Activity {
   size_t downloadTotal = 0;
 
   OpdsServer server;  // Copied at construction — safe even if the store changes during browsing
+  // When set, Back at the catalog root returns to ReadMenuActivity instead of
+  // Home -- set only by ActivityManager::goToBrowser() on behalf of
+  // ReadMenuActivity.
+  bool returnToReadMenu = false;
 
   void checkAndConnectWifi();
   void launchWifiSelection();

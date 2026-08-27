@@ -19,6 +19,10 @@ class RecentBooksActivity final : public Activity {
   // again so the release doesn't also open the book.
   bool longPressFired = false;
 
+  // When set, Back returns to ReadMenuActivity instead of Home -- set only by
+  // ActivityManager::goToRecentBooks() on behalf of ReadMenuActivity.
+  bool returnToReadMenu = false;
+
   // Recent tab state
   std::vector<RecentBook> recentBooks;
 
@@ -29,8 +33,8 @@ class RecentBooksActivity final : public Activity {
   void promptRemoveBook(const std::string& path, const std::string& title);
 
  public:
-  explicit RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("RecentBooks", renderer, mappedInput) {}
+  explicit RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool returnToReadMenu = false)
+      : Activity("RecentBooks", renderer, mappedInput), returnToReadMenu(returnToReadMenu) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

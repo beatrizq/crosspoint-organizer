@@ -30,6 +30,10 @@ class FileBrowserActivity final : public Activity {
   bool lockNextConfirmRelease = false;
 
   Mode mode = Mode::Books;
+  // Books mode only: when set, Back at root returns to ReadMenuActivity
+  // instead of Home -- set only by ActivityManager::goToFileBrowser() on
+  // behalf of ReadMenuActivity; every other caller leaves this false.
+  bool returnToReadMenu = false;
 
   // Files state
   std::string basepath = "/";
@@ -42,9 +46,10 @@ class FileBrowserActivity final : public Activity {
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
-                               Mode mode = Mode::Books)
+                               Mode mode = Mode::Books, bool returnToReadMenu = false)
       : Activity("FileBrowser", renderer, mappedInput),
         mode(mode),
+        returnToReadMenu(returnToReadMenu),
         basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
   void onEnter() override;
   void onExit() override;

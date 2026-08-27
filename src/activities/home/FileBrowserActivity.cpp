@@ -324,6 +324,8 @@ void FileBrowserActivity::loop() {
         res.isCancelled = true;
         setResult(std::move(res));
         finish();
+      } else if (returnToReadMenu) {
+        activityManager.goToReadMenu();
       } else {
         onGoHome();
       }
@@ -442,7 +444,8 @@ void FileBrowserActivity::render(RenderLock&&) {
 
   // Help text
   const bool cancelsToCallerAtRoot = mode == Mode::PickFirmware || mode == Mode::PickImage;
-  const char* backLabel = (basepath == "/") ? (cancelsToCallerAtRoot ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
+  const char* backLabel =
+      (basepath == "/") ? ((cancelsToCallerAtRoot || returnToReadMenu) ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware/PickImage mode, Confirm on a file returns its path to the caller (not
   // "open"); show STR_SELECT instead. Directories in the same picker still descend, so keep
   // STR_OPEN there.

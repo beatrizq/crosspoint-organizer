@@ -106,7 +106,9 @@ void OpdsBookBrowserActivity::loop() {
 
   if (state == BrowserState::CHECK_WIFI || state == BrowserState::LOADING) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-      state == BrowserState::CHECK_WIFI ? onGoHome() : navigateBack();
+      // CHECK_WIFI is the entry state, so navigationHistory is always empty
+      // here too -- navigateBack() already does the right thing either way.
+      navigateBack();
     }
     return;
   }
@@ -328,7 +330,11 @@ void OpdsBookBrowserActivity::navigateToEntry(const OpdsEntry& entry) {
 
 void OpdsBookBrowserActivity::navigateBack() {
   if (navigationHistory.empty()) {
-    onGoHome();
+    if (returnToReadMenu) {
+      activityManager.goToReadMenu();
+    } else {
+      onGoHome();
+    }
   } else {
     currentPath = navigationHistory.back();
     navigationHistory.pop_back();
