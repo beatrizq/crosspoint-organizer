@@ -87,8 +87,11 @@ class CompanionTracker {
   static uint16_t liveHabitsCompletedToday();
 
   // Single source for the mood inputs, so the pose and any figure shown beside
-  // it are always derived from the same numbers.
-  companion::MoodInput buildMoodInput() const;
+  // it are always derived from the same numbers. `thresholds` matters for its
+  // satisfiedPoints -- see MoodInput::daysSinceLastActive's fallback logic in
+  // moodInputFor() -- so callers pass the same thresholds they will go on to
+  // call evaluate() with.
+  companion::MoodInput buildMoodInput(const companion::MoodThresholds& thresholds) const;
 
   // Cheap: cached minute-of-day plus the settings fields, no I2C. Gated on
   // clockValid the same way the Milestone check is -- a stale minuteOfDay

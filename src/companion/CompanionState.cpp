@@ -2,6 +2,7 @@
 
 void CompanionState::toJson(JsonDocument& doc) const {
   doc["lastQualifyingDay"] = ledger.lastQualifyingDay;
+  doc["previousQualifyingDay"] = ledger.previousQualifyingDay;
   doc["bestDayPoints"] = ledger.bestDayPoints;
   doc["milestoneDay"] = milestoneDay;
   doc["activatedDay"] = activatedDay;
@@ -9,6 +10,7 @@ void CompanionState::toJson(JsonDocument& doc) const {
 
 bool CompanionState::fromJson(JsonVariantConst doc) {
   ledger.lastQualifyingDay = doc["lastQualifyingDay"] | companion::DayLedger::NEVER;
+  ledger.previousQualifyingDay = doc["previousQualifyingDay"] | companion::DayLedger::NEVER;
   ledger.bestDayPoints = doc["bestDayPoints"] | static_cast<uint16_t>(0);
   milestoneDay = doc["milestoneDay"] | companion::DayLedger::NEVER;
   activatedDay = doc["activatedDay"] | companion::DayLedger::NEVER;

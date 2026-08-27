@@ -287,7 +287,6 @@ TEST(CompanionLedger, FreshCompanionStartsCrankyNotSatisfied) {
   const DayLedger led;
   const auto in = companion::moodInputFor(led, kDay, true, 0, 0);
   EXPECT_EQ(in.daysSinceLastActive, 0);
-  EXPECT_FALSE(in.everQualified);
   EXPECT_EQ(companion::evaluate(in), companion::Mood::Cranky);
 }
 
@@ -354,6 +353,33 @@ TEST(CompanionReachability, NoGraceDayAfterQualifying) {
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0, 0)), Mood::Cranky);
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), Mood::Cranky);
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0, 0)), Mood::Neglected);
+}
+
+TEST(CompanionReachability, SameDayRegressionDropsBackToTheLadder) {
+  // Today already cleared the bar (crediting a task/habit completion), but
+  // live points have since dropped -- the only way that happens is
+  // un-completing something and syncing the lower count back down. The mood
+  // must reflect that live drop, not hold at Satisfied on the strength of a
+  // bar that was cleared earlier the same day and no longer is.
+  DayLedger led;
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  ASSERT_EQ(companion::evaluate(companion::moodInputFor(led, kDay, true, 3, 0)), Mood::Happy);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay, true, 0, 0)), Mood::Cranky)
+      << "live points back to zero the same day must not stay graced at Satisfied";
+}
+
+TEST(CompanionReachability, SameDayRegressionFallsBackToThePreviousGenuineDay) {
+  // Genuinely qualified several days ago, quiet since, then briefly
+  // qualified today before undoing it. daysSinceLastActive must reflect the
+  // older genuine day (via DayLedger::previousQualifyingDay), not read as
+  // "0 days since active" just because today's now-undone credit is still
+  // the most recently recorded lastQualifyingDay.
+  DayLedger led;
+  companion::creditQualifyingDay(led, kDay, 3, 0);                     // genuine activity, several days ago
+  companion::creditQualifyingDay(led, kDay + 5, 2, 0);                 // briefly qualifies today...
+  const auto in = companion::moodInputFor(led, kDay + 5, true, 0, 0);  // ...then undone, synced back to 0
+  EXPECT_EQ(in.daysSinceLastActive, 5) << "should fall back to the day before today's now-invalid credit";
+  EXPECT_EQ(companion::evaluate(in), Mood::Neglected);
 }
 
 TEST(CompanionReachability, EveryTierIsExitableBackToTheTop) {

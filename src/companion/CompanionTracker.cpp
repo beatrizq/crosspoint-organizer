@@ -104,10 +104,10 @@ void CompanionTracker::recordActivity() {
   }
 }
 
-companion::MoodInput CompanionTracker::buildMoodInput() const {
+companion::MoodInput CompanionTracker::buildMoodInput(const companion::MoodThresholds& thresholds) const {
   const uint16_t tasksToday = TODOIST_TASKS.getCompletedToday();
   const uint16_t habitsToday = liveHabitsCompletedToday();
-  return companion::moodInputFor(COMPANION_STATE.ledger, localDay, clockValid, tasksToday, habitsToday);
+  return companion::moodInputFor(COMPANION_STATE.ledger, localDay, clockValid, tasksToday, habitsToday, thresholds);
 }
 
 bool CompanionTracker::isWithinSleepWindow() const {
@@ -125,17 +125,30 @@ companion::Mood CompanionTracker::currentMood() const {
   // nothing is lost, only deferred until the companion is awake again with
   // that same local day still current.
   if (isWithinSleepWindow()) return companion::Mood::Sleeping;
+
+  const auto thresholds = thresholdsFromSettings();
+  const auto in = buildMoodInput(thresholds);
   // A beaten best-day-points record holds the companion at the Milestone mood
   // for the rest of the day it was earned (see CompanionState::milestoneDay),
   // ahead of the usual ladder. Gated on clockValid: without a fresh reading,
   // localDay is whatever the last valid one was, and comparing a stale day
   // against milestoneDay could match (or fail to) by accident.
-  if (clockValid && COMPANION_STATE.milestoneDay == localDay) return companion::Mood::Milestone;
-  return companion::evaluate(buildMoodInput(), thresholdsFromSettings());
+  if (clockValid && COMPANION_STATE.milestoneDay == localDay) {
+    const uint32_t points = static_cast<uint32_t>(in.tasksCompletedToday) + in.habitsCompletedToday;
+    // Re-checked against live points rather than trusted as a one-shot flag:
+    // normal completions only ever add to today's total, so this is always
+    // true for the rest of a normal day, but today's live count can also
+    // drop if something completed earlier gets undone (in the Todoist/
+    // Habitify app, synced back down) -- at that point the record it
+    // claimed is no longer actually true right now, and the ladder should
+    // reflect today's live count the same as any other day.
+    if (points >= COMPANION_STATE.ledger.bestDayPoints) return companion::Mood::Milestone;
+  }
+  return companion::evaluate(in, thresholds);
 }
 
 uint16_t CompanionTracker::pointsToday() const {
-  const auto in = buildMoodInput();
+  const auto in = buildMoodInput(thresholdsFromSettings());
   const uint32_t total = static_cast<uint32_t>(in.tasksCompletedToday) + in.habitsCompletedToday;
   return static_cast<uint16_t>(total > UINT16_MAX ? UINT16_MAX : total);
 }

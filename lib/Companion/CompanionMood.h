@@ -35,12 +35,6 @@ struct MoodInput {
   // (brand new companion), or a clock correction; 1 = one full day with zero
   // activity; 2 = two, and so on.
   uint16_t daysSinceLastActive = 0;
-  // True once the ledger has ever recorded a qualifying day, even if it
-  // wasn't today. False only for a companion that has never once qualified --
-  // distinguishes "brand new, nothing earned yet" from "already did enough
-  // today" or "clock corrected backwards", both of which also read
-  // daysSinceLastActive as 0 but have real history to grace.
-  bool everQualified = false;
   // False when the RTC is absent or was never set (see HalClock::getDate).
   // Day arithmetic is meaningless then, so the decay ladder is skipped.
   bool clockValid = false;
@@ -52,9 +46,12 @@ struct MoodInput {
 // some activity today -> Satisfied, otherwise Cranky immediately and Neglected
 // once neglectedDays quiet days have passed. Mood reflects only today's own
 // effort -- a streak from a previous day earns nothing today it did not also
-// earn today. A brand new companion (nothing ever qualified) starts at
-// Cranky rather than Satisfied: it has done nothing yet either, so there is
-// nothing to grace.
+// earn today, and there is no same-day grace either: today's live counts are
+// re-read on every call, so un-completing something (in the Todoist/Habitify
+// app, synced back down) drops the mood the same way it would if it had
+// never been done, even if today already cleared the bar earlier. A brand
+// new companion (nothing ever qualified) starts at Cranky rather than
+// Satisfied: it has done nothing yet either, so there is nothing to grace.
 //
 // Without a clock, elapsed days cannot be measured, so neglect is unknowable
 // and the result never falls below Satisfied. Today's task/habit counts are
@@ -111,7 +108,17 @@ struct DayLedger {
   static constexpr int32_t NEVER = INT32_MIN;
 
   int32_t lastQualifyingDay = NEVER;  // last local day that cleared satisfiedPoints
-  uint16_t bestDayPoints = 0;         // highest combined tasks+habits total ever completed in one day
+  // One level of fallback behind lastQualifyingDay -- the day that held that
+  // title immediately before the current one took over. Only ever consulted
+  // when today is lastQualifyingDay but today's *live* points have since
+  // dropped back below satisfiedPoints (something completed earlier was
+  // undone in the Todoist/Habitify app and synced back down): without this,
+  // daysSinceLastActive would read as 0 (today still "the last qualifying
+  // day" on paper) instead of reflecting whatever the last *genuine*
+  // qualifying day actually was. One level only -- it does not protect
+  // against undoing two qualifying days deep.
+  int32_t previousQualifyingDay = NEVER;
+  uint16_t bestDayPoints = 0;  // highest combined tasks+habits total ever completed in one day
 };
 
 // Re-derives whether `today` has now cleared satisfiedPoints of combined
@@ -129,7 +136,12 @@ bool creditQualifyingDay(DayLedger& ledger, int32_t today, uint16_t tasksComplet
 // Derives the mood inputs for `today` from a ledger plus the live counts from
 // the task and habit caches. When the clock is invalid, day arithmetic is
 // skipped and daysSinceLastActive stays 0.
+//
+// `t` decides which day daysSinceLastActive is measured against: normally
+// lastQualifyingDay, but when today is lastQualifyingDay and today's live
+// points no longer clear t.satisfiedPoints (undone since), falls back to
+// previousQualifyingDay instead -- see DayLedger's own comment on that field.
 MoodInput moodInputFor(const DayLedger& ledger, int32_t today, bool clockValid, uint16_t tasksCompletedToday,
-                       uint16_t habitsCompletedToday);
+                       uint16_t habitsCompletedToday, const MoodThresholds& t = {});
 
 }  // namespace companion
