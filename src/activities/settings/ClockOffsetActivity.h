@@ -8,7 +8,7 @@
 struct Rect;
 
 // Dedicated UTC offset picker for the status bar clock.
-// Three editable fields (sign, hours, minutes); Confirm cycles fields, Up/Down adjust the active one.
+// Three editable fields (sign, hours, minutes); Confirm cycles fields, -/+ adjust the active one.
 // Supports the full IANA UTC offset range in 15 minute steps, including oddball zones like Nepal (+5:45).
 class ClockOffsetActivity final : public Activity {
  public:

@@ -10,10 +10,6 @@
 #include "fontIds.h"
 
 namespace {
-// Hold threshold for the commit gesture (firmware hold-to-act convention; see
-// RecentBooksActivity's own long-press-to-remove for the same pattern).
-constexpr unsigned long LONG_PRESS_MS = 1000;
-
 uint32_t daysInMonth(const int32_t year, const uint32_t month) {
   static constexpr uint8_t DAYS[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
   const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -29,7 +25,6 @@ void RescheduleTaskActivity::onEnter() {
   // Same reasoning as every other screen reached from a menu selection: the
   // Confirm press that picked "Reschedule" may still be physically down.
   swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
-  confirmHoldArmed = false;
   requestUpdate();
 }
 
@@ -116,28 +111,12 @@ bool RescheduleTaskActivity::fieldFromPoint(const int x, const int y, Field& fie
 
 void RescheduleTaskActivity::loop() {
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    finish();
-    return;
-  }
-
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    swallowConfirmRelease = false;
-    confirmHoldArmed = true;
-  }
-
-  // Holding commits. Gated on confirmHoldArmed so a press carried over from
-  // the Options popup that opened this screen (still down at onEnter(), with
-  // its own elapsed hold time) can never auto-commit before the fields are
-  // even visible.
-  if (confirmHoldArmed && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
-      mappedInput.getHeldTime() >= LONG_PRESS_MS) {
     setResult(DateResult{packedDate()});
     finish();
     return;
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    confirmHoldArmed = false;
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;
@@ -232,9 +211,7 @@ void RescheduleTaskActivity::render(RenderLock&&) {
 
   drawField(yearStr, x, yearBoxW, FIELD_YEAR);
 
-  renderer.drawCenteredText(UI_10_FONT_ID, centreY + 60, tr(STR_RESCHEDULE_HOLD_HINT));
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_NEXT_FIELD), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_NEXT_FIELD), "-", "+");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

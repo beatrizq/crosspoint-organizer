@@ -11,11 +11,11 @@ struct Rect;
 /**
  * Date picker for rescheduling a Todoist task: three editable fields (day,
  * month, year), modelled directly on ClockOffsetActivity's sign/hours/minutes
- * picker. Confirm (short press) cycles the active field; Up/Down adjust it.
- * Unlike ClockOffsetActivity, which commits passively on exit because it is a
- * settings screen, this reports back via ActivityResult (DateResult) - Back
- * cancels, holding Confirm commits - since rescheduling is a real decision a
- * caller needs an explicit answer to, not a value to read whenever convenient.
+ * picker. Confirm cycles the active field; -/+ adjust it. Like
+ * ClockOffsetActivity, Back commits the currently shown date and reports it
+ * back via ActivityResult (DateResult) - there is no separate cancel gesture,
+ * since a picker seeded from the task's own due date and left untouched
+ * simply reschedules it to the same day it already had.
  */
 class RescheduleTaskActivity final : public Activity {
  public:
@@ -43,16 +43,10 @@ class RescheduleTaskActivity final : public Activity {
   uint32_t month = 1;
   uint32_t day = 1;
 
-  // Screen was entered with Confirm already down (e.g. still held from
-  // picking "Reschedule" off the Options popup) - its eventual release must
-  // not be read as a fresh press, and its already-elapsed hold time must not
-  // count toward the commit gesture below.
+  // Screen was entered with Confirm already down (still held from picking
+  // "Reschedule" off the Options popup, which answers on the press) - its
+  // eventual release must not be read as a fresh press cycling the field.
   bool swallowConfirmRelease = false;
-  // True only once a genuinely fresh Confirm press has been seen since this
-  // field/screen state; gates the hold-to-commit check so a press carried
-  // over from the previous screen can never auto-commit before the user has
-  // seen the picker.
-  bool confirmHoldArmed = false;
 
   void loadInitialDate();
   uint16_t packedDate() const;
