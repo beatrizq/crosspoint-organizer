@@ -324,6 +324,22 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t companionSleepStartMinute = 0;
   uint8_t companionSleepEndHour = 7;
   uint8_t companionSleepEndMinute = 0;
+  // Mood ladder tuning -- see MoodThresholds in lib/Companion/CompanionMood.h.
+  // Combined tasks+habits completed today needed for the top (Happy) tier.
+  // Must stay above companionSatisfiedPoints or Happy becomes unreachable --
+  // CompanionSettingsActivity clamps this on every edit, so these two only
+  // ever land here already valid; CompanionTracker clamps again on read as a
+  // backstop against a hand-edited settings.json.
+  uint8_t companionHappyPoints = 3;
+  // Combined tasks+habits completed today needed to count as "did something"
+  // (Satisfied) rather than starting the Cranky/Neglected decay. Must stay
+  // >= 1 -- 0 would mean every day, even an empty one, already qualifies,
+  // making the decay tiers unreachable.
+  uint8_t companionSatisfiedPoints = 1;
+  // Quiet days (no qualifying day) at or above which the mood bottoms out at
+  // Neglected rather than Cranky. Must stay >= 1, for the same reachability
+  // reason as companionSatisfiedPoints.
+  uint8_t companionNeglectedDays = 3;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
   // Dictionary folder name under /dictionaries (empty = no dictionary)

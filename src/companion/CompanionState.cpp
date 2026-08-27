@@ -16,11 +16,12 @@ bool CompanionState::fromJson(JsonVariantConst doc) {
 }
 
 bool CompanionState::recordActivity(const int32_t localDay, const bool clockValid, const uint16_t tasksCompletedToday,
-                                    const uint16_t habitsCompletedToday) {
+                                    const uint16_t habitsCompletedToday, const companion::MoodThresholds& thresholds) {
   if (!clockValid) return false;
 
   const uint16_t bestBefore = ledger.bestDayPoints;
-  const bool changed = companion::creditQualifyingDay(ledger, localDay, tasksCompletedToday, habitsCompletedToday);
+  const bool changed =
+      companion::creditQualifyingDay(ledger, localDay, tasksCompletedToday, habitsCompletedToday, thresholds);
   if (!changed) return false;
   // A first-ever recorded day sets the record up from zero, which is not an
   // achievement worth interrupting for; only a genuine improvement on an

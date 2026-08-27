@@ -14,6 +14,7 @@
 #include "activities/settings/CompanionSleepTimeActivity.h"
 #include "activities/settings/CompanionWallpaperSettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "activities/util/IntervalSelectionActivity.h"
 #include "companion/CompanionSprites.generated.h"
 #include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
@@ -27,13 +28,24 @@ constexpr int ROW_SHOW_MOOD_LABEL = 1;
 constexpr int ROW_MOOD_WALLPAPERS = 2;
 constexpr int ROW_SLEEP_START = 3;
 constexpr int ROW_SLEEP_END = 4;
-constexpr int ROW_ACTIVE_FOR = 5;
+constexpr int ROW_HAPPY_POINTS = 5;
+constexpr int ROW_SATISFIED_POINTS = 6;
+constexpr int ROW_NEGLECTED_DAYS = 7;
+constexpr int ROW_AGE = 8;
 
 // "HH:MM" for a Sleep start/end row's value column -- digits need no
 // translation.
 std::string sleepTimeValue(const uint8_t hour, const uint8_t minute) {
   char buf[8];
   snprintf(buf, sizeof(buf), "%02d:%02d", hour, minute);
+  return std::string(buf);
+}
+
+// "N pts" / "N days" for a threshold row's value column, sharing the same
+// format strings IntervalSelectionActivity uses inside the picker itself.
+std::string thresholdValue(const StrId formatId, const uint8_t n) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), I18N.get(formatId), static_cast<unsigned>(n));
   return std::string(buf);
 }
 
@@ -48,32 +60,6 @@ std::string wallpaperCountValue() {
   return std::string(buf);
 }
 
-// "Active for" value: days while under a month old, then months, then years --
-// each rounded down, since a settings row has no room for a full breakdown.
-std::string formatAge(const int32_t activatedDay) {
-  if (activatedDay == companion::DayLedger::NEVER) return std::string(tr(STR_COMPANION_AGE_NOT_YET));
-
-  int32_t today = 0;
-  if (!CompanionTracker::resolveLocalDay(today)) return std::string(tr(STR_COMPANION_AGE_NOT_YET));
-
-  // A clock correction could put "today" before the stamped day; floor at 0
-  // rather than showing a negative age.
-  const int32_t elapsed = today > activatedDay ? today - activatedDay : 0;
-  char buf[32];
-  if (elapsed < 1) return std::string(tr(STR_COMPANION_AGE_TODAY));
-  if (elapsed < 30) {
-    snprintf(buf, sizeof(buf), elapsed == 1 ? tr(STR_COMPANION_AGE_DAY) : tr(STR_COMPANION_AGE_DAYS), elapsed);
-    return std::string(buf);
-  }
-  if (elapsed < 365) {
-    const int32_t months = elapsed / 30;
-    snprintf(buf, sizeof(buf), months == 1 ? tr(STR_COMPANION_AGE_MONTH) : tr(STR_COMPANION_AGE_MONTHS), months);
-    return std::string(buf);
-  }
-  const int32_t years = elapsed / 365;
-  snprintf(buf, sizeof(buf), years == 1 ? tr(STR_COMPANION_AGE_YEAR) : tr(STR_COMPANION_AGE_YEARS), years);
-  return std::string(buf);
-}
 }  // namespace
 
 void CompanionSettingsActivity::onEnter() {
@@ -153,11 +139,88 @@ void CompanionSettingsActivity::handleSelection() {
             requestUpdate();
           });
       return;
+    case ROW_HAPPY_POINTS:
+    case ROW_SATISFIED_POINTS:
+    case ROW_NEGLECTED_DAYS:
+      offerThresholdPicker(selectedIndex);
+      return;
     default:
-      // ROW_ACTIVE_FOR is a read-only info row.
+      // ROW_AGE is a read-only info row.
       return;
   }
   SETTINGS.saveToFile();
+}
+
+void CompanionSettingsActivity::offerThresholdPicker(const int row) {
+  StrId titleId = StrId::STR_NONE_OPT;
+  StrId formatId = StrId::STR_NONE_OPT;
+  int initialValue = 0;
+  int minValue = 1;
+  int maxValue = 1;
+
+  switch (row) {
+    case ROW_HAPPY_POINTS:
+      titleId = StrId::STR_COMPANION_HAPPY_AT;
+      formatId = StrId::STR_COMPANION_POINTS_FORMAT;
+      initialValue = SETTINGS.companionHappyPoints;
+      // Must stay above Satisfied's own bar, or the Happy tier is unreachable.
+      minValue = static_cast<int>(SETTINGS.companionSatisfiedPoints) + 1;
+      maxValue = 20;
+      break;
+    case ROW_SATISFIED_POINTS:
+      titleId = StrId::STR_COMPANION_SATISFIED_AT;
+      formatId = StrId::STR_COMPANION_POINTS_FORMAT;
+      initialValue = SETTINGS.companionSatisfiedPoints;
+      minValue = 1;
+      // Must stay below Happy's own bar, for the same reason in reverse.
+      maxValue = static_cast<int>(SETTINGS.companionHappyPoints) - 1;
+      break;
+    case ROW_NEGLECTED_DAYS:
+      titleId = StrId::STR_COMPANION_NEGLECTED_AFTER;
+      formatId = StrId::STR_COMPANION_DAYS_FORMAT;
+      initialValue = SETTINGS.companionNeglectedDays;
+      minValue = 1;
+      maxValue = 14;
+      break;
+    default:
+      return;
+  }
+
+  startActivityForResult(
+      std::make_unique<IntervalSelectionActivity>(renderer, mappedInput, "CompanionThreshold", titleId, initialValue,
+                                                  minValue, maxValue, /*smallStep=*/1, /*largeStep=*/1, formatId,
+                                                  /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true),
+      [this, row](const ActivityResult& result) {
+        // Same reasoning as ROW_MOOD_WALLPAPERS above.
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        const int v = std::get<IntervalResult>(result.data).value;
+        // The picker's own min/max already enforced these bounds, so this is
+        // a defensive clamp rather than the primary guard -- kept in case the
+        // paired field's value changed some other way while this was open.
+        switch (row) {
+          case ROW_HAPPY_POINTS:
+            SETTINGS.companionHappyPoints =
+                static_cast<uint8_t>(std::max(v, static_cast<int>(SETTINGS.companionSatisfiedPoints) + 1));
+            break;
+          case ROW_SATISFIED_POINTS:
+            SETTINGS.companionSatisfiedPoints =
+                static_cast<uint8_t>(std::min(v, static_cast<int>(SETTINGS.companionHappyPoints) - 1));
+            break;
+          case ROW_NEGLECTED_DAYS:
+            SETTINGS.companionNeglectedDays = static_cast<uint8_t>(std::max(v, 1));
+            break;
+          default:
+            break;
+        }
+        SETTINGS.saveToFile();
+        requestUpdate();
+      });
 }
 
 void CompanionSettingsActivity::loop() {
@@ -226,7 +289,7 @@ void CompanionSettingsActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
 
-  const std::string ageValue = formatAge(COMPANION_STATE.activatedDay);
+  const std::string ageValue = CompanionTracker::formatAge(COMPANION_STATE.activatedDay);
 
   GUI.drawList(
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
@@ -242,8 +305,14 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return std::string(tr(STR_COMPANION_SLEEP_START));
           case ROW_SLEEP_END:
             return std::string(tr(STR_COMPANION_SLEEP_END));
+          case ROW_HAPPY_POINTS:
+            return std::string(tr(STR_COMPANION_HAPPY_AT));
+          case ROW_SATISFIED_POINTS:
+            return std::string(tr(STR_COMPANION_SATISFIED_AT));
+          case ROW_NEGLECTED_DAYS:
+            return std::string(tr(STR_COMPANION_NEGLECTED_AFTER));
           default:
-            return std::string(tr(STR_COMPANION_ACTIVE_FOR));
+            return std::string(tr(STR_COMPANION_AGE));
         }
       },
       nullptr, nullptr,
@@ -259,11 +328,17 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return sleepTimeValue(SETTINGS.companionSleepStartHour, SETTINGS.companionSleepStartMinute);
           case ROW_SLEEP_END:
             return sleepTimeValue(SETTINGS.companionSleepEndHour, SETTINGS.companionSleepEndMinute);
+          case ROW_HAPPY_POINTS:
+            return thresholdValue(StrId::STR_COMPANION_POINTS_FORMAT, SETTINGS.companionHappyPoints);
+          case ROW_SATISFIED_POINTS:
+            return thresholdValue(StrId::STR_COMPANION_POINTS_FORMAT, SETTINGS.companionSatisfiedPoints);
+          case ROW_NEGLECTED_DAYS:
+            return thresholdValue(StrId::STR_COMPANION_DAYS_FORMAT, SETTINGS.companionNeglectedDays);
           default:
             return ageValue;
         }
       },
-      true, [](int index) -> bool { return index == ROW_ACTIVE_FOR; });
+      true, [](int index) -> bool { return index == ROW_AGE; });
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

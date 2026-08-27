@@ -2,6 +2,7 @@
 #include <CompanionMood.h>
 
 #include <cstdint>
+#include <string>
 
 #include "CompanionSprites.generated.h"
 
@@ -61,6 +62,12 @@ class CompanionTracker {
   // active even while it is currently disabled. Returns false (outDay
   // untouched) when the clock has no usable reading yet.
   static bool resolveLocalDay(int32_t& outDay);
+
+  // "3 days" / "2 months" / "1 year" (or the not-yet/today wording at either
+  // end) for a companion active since `activatedDay`. Shared by the settings
+  // screen's "Active for" row and QuickPickActivity's "Age" line, so the two
+  // can never drift out of sync with each other.
+  static std::string formatAge(int32_t activatedDay);
 
  private:
   CompanionTracker() = default;

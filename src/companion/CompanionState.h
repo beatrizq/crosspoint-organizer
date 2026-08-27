@@ -44,8 +44,13 @@ class CompanionState : public PersistableStore<CompanionState> {
   // Credits today's combined tasks+habits effort into the ledger. `localDay`
   // is ignored (no ledger update) when clockValid is false, since day
   // arithmetic would be meaningless without a real calendar day to key it to.
+  // `thresholds` only matters for its satisfiedPoints -- the "qualifying day"
+  // bar creditQualifyingDay() checks against -- so this stays in step with
+  // whatever bar evaluate() is using for the same day; the caller is expected
+  // to already have it clamped (see CompanionTracker::thresholdsFromSettings).
   // Returns true when something changed and the caller should persist.
-  bool recordActivity(int32_t localDay, bool clockValid, uint16_t tasksCompletedToday, uint16_t habitsCompletedToday);
+  bool recordActivity(int32_t localDay, bool clockValid, uint16_t tasksCompletedToday, uint16_t habitsCompletedToday,
+                      const companion::MoodThresholds& thresholds = {});
 };
 
 #define COMPANION_STATE CompanionState::getInstance()

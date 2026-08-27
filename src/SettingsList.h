@@ -273,6 +273,16 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                            {0, 59, 1}, "companionSleepStartMinute", StrId::STR_COMPANION),
         SettingInfo::Value(StrId::STR_COMPANION_SLEEP_END_HOUR, &CrossPointSettings::companionSleepEndHour, {0, 23, 1},
                            "companionSleepEndHour", StrId::STR_COMPANION),
+        // Mood ladder tuning. Independent per-field ranges are all the generic
+        // toJson()/fromJson() loop can enforce -- the happyPoints > satisfied-
+        // Points cross-field constraint can't be expressed here, so
+        // CompanionTracker clamps again defensively wherever these are read.
+        SettingInfo::Value(StrId::STR_COMPANION_HAPPY_AT, &CrossPointSettings::companionHappyPoints, {1, 20, 1},
+                           "companionHappyPoints", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_SATISFIED_AT, &CrossPointSettings::companionSatisfiedPoints, {1, 20, 1},
+                           "companionSatisfiedPoints", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_NEGLECTED_AFTER, &CrossPointSettings::companionNeglectedDays,
+                           {1, 14, 1}, "companionNeglectedDays", StrId::STR_COMPANION),
         SettingInfo::Value(StrId::STR_COMPANION_SLEEP_END_MINUTE, &CrossPointSettings::companionSleepEndMinute,
                            {0, 59, 1}, "companionSleepEndMinute", StrId::STR_COMPANION),
 

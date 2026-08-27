@@ -21,8 +21,9 @@ class CompanionSettingsActivity final : public Activity {
   explicit CompanionSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("CompanionSettings", renderer, mappedInput) {}
 
-  // Enabled, Show mood label, Mood Wallpapers, Sleep start, Sleep end, Active for.
-  static constexpr int MENU_ITEMS = 6;
+  // Enabled, Show mood label, Mood Wallpapers, Sleep start, Sleep end,
+  // Happy at, Satisfied at, Neglected after, Age.
+  static constexpr int MENU_ITEMS = 9;
 
   void onEnter() override;
   void onExit() override;
@@ -31,6 +32,13 @@ class CompanionSettingsActivity final : public Activity {
 
  private:
   void handleSelection();
+  // Opens the numeric picker for one of the three mood-ladder thresholds
+  // (selectedIndex identifies which). The picker's own min/max already
+  // reflect the current value of the field it is paired with (happyPoints
+  // must stay above satisfiedPoints; both and neglectedDays must stay >= 1),
+  // so the result is saved as-is -- see CrossPointSettings.h's comment on
+  // companionHappyPoints for why that pairing exists.
+  void offerThresholdPicker(int selectedIndex);
   // Stamps CompanionState::activatedDay the first time it notices the
   // companion enabled with no activation ever recorded -- whether that is
   // because it was just switched on here, or because it was already on from

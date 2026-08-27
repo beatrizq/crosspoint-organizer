@@ -17,6 +17,7 @@
 #include "activities/util/IntervalSelectionActivity.h"
 #include "activities/util/OptionsMenuActivity.h"
 #include "companion/CompanionRenderer.h"
+#include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
 #include "companion/QuickPickRoll.h"
 #include "components/UITheme.h"
@@ -31,11 +32,14 @@ constexpr int PAD = 14;
 constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
-// Between the character and the mood label, and between the label and the
-// stats list below it.
+// Between the character and the two-column info block below it.
 constexpr int LABEL_GAP = 4;
-constexpr int STATS_GAP = 4;
-constexpr int STATS_LINE_GAP = 4;
+// Between adjacent rows within one column (mood/stats on the left, lifetime
+// info on the right) -- both columns share this so their three rows land
+// level with each other.
+constexpr int ROW_GAP = 4;
+// Between the two columns themselves.
+constexpr int COLUMN_GAP = 24;
 // getTextHeight() reports the ascender only, but drawText() takes y as the
 // top and descenders hang below it.
 constexpr int DESCENDER_ALLOWANCE = 3;
@@ -118,6 +122,20 @@ void QuickPickActivity::showOptions() {
     }
   }
 
+  // Todoist has no way to reschedule a single occurrence of a recurring task
+  // without replacing its recurrence entirely, and the warning that fact
+  // requires doesn't fit the popup -- simplest and clearest is to just not
+  // offer Reschedule for a recurring task at all.
+  bool canReschedule = true;
+  if (!isHabit) {
+    for (const auto& task : TODOIST_TASKS.getTasks()) {
+      if (task.id == itemId) {
+        canReschedule = !task.isRecurring;
+        break;
+      }
+    }
+  }
+
   std::vector<std::string> options;
   if (isHabit) {
     if (canLog) options.push_back(tr(STR_HABITIFY_LOG));
@@ -126,18 +144,19 @@ void QuickPickActivity::showOptions() {
   } else {
     options.push_back(tr(STR_COMPLETE_TASK));
     options.push_back(tr(STR_FOCUS_SESSION));
-    options.push_back(tr(STR_RESCHEDULE_TASK));
+    if (canReschedule) options.push_back(tr(STR_RESCHEDULE_TASK));
   }
   // Positions within the habit branch's own entries; the task branch's are
-  // fixed (0/1/2) and never overlap with these, since the two branches are
+  // fixed (0/1/[2]) and never overlap with these, since the two branches are
   // mutually exclusive on isHabit.
   const int logIdx = canLog ? 0 : -1;
   const int completeHabitIdx = canLog ? 1 : 0;
   const int habitFocusIdx = canLog ? 2 : 1;
+  const int rescheduleIdx = canReschedule ? 2 : -1;
 
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
-      [this, logIdx, completeHabitIdx, habitFocusIdx](const ActivityResult& result) {
+      [this, logIdx, completeHabitIdx, habitFocusIdx, rescheduleIdx](const ActivityResult& result) {
         // Confirm may still be physically down (the popup answers on the
         // press, this screen on the release). Back is swallowed whenever the
         // result was cancelled at all, since dismissing the popup with Back
@@ -164,7 +183,7 @@ void QuickPickActivity::showOptions() {
             completeSuggestedTask();
           } else if (idx == 1) {
             offerFocusSession();
-          } else if (idx == 2) {
+          } else if (idx == rescheduleIdx) {
             offerReschedule();
           }
         }
@@ -236,6 +255,8 @@ void QuickPickActivity::completeSuggestedTask() {
 }
 
 void QuickPickActivity::offerReschedule() {
+  // Only ever reached for a non-recurring task -- showOptions() leaves
+  // Reschedule off the menu entirely for a recurring one.
   const auto& tasks = TODOIST_TASKS.getTasks();
   size_t cacheIndex = tasks.size();
   for (size_t i = 0; i < tasks.size(); i++) {
@@ -245,62 +266,12 @@ void QuickPickActivity::offerReschedule() {
     }
   }
   if (cacheIndex >= tasks.size()) return;  // gone already
+  const uint16_t seed = tasks[cacheIndex].dueDays != todoist::DUE_NONE
+                            ? tasks[cacheIndex].dueDays
+                            : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
 
-  auto openPicker = [this]() {
-    // Re-resolve: a warning popup may have sat on top for as long as the user
-    // took to answer.
-    const auto& tasks2 = TODOIST_TASKS.getTasks();
-    size_t idx = tasks2.size();
-    for (size_t i = 0; i < tasks2.size(); i++) {
-      if (tasks2[i].id == itemId) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx >= tasks2.size()) return;  // gone already
-    const uint16_t seed = tasks2[idx].dueDays != todoist::DUE_NONE
-                              ? tasks2[idx].dueDays
-                              : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
-
-    startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
-                           [this](const ActivityResult& result) {
-                             if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
-                               swallowConfirmRelease = true;
-                             }
-                             if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
-                               swallowBackRelease = true;
-                             }
-                             if (result.isCancelled) return;
-                             const auto* date = std::get_if<DateResult>(&result.data);
-                             if (!date) return;
-
-                             // Re-resolve: the picker sat on top for as long as the user took to answer.
-                             const auto& tasks3 = TODOIST_TASKS.getTasks();
-                             size_t idx3 = tasks3.size();
-                             for (size_t i = 0; i < tasks3.size(); i++) {
-                               if (tasks3[i].id == itemId) {
-                                 idx3 = i;
-                                 break;
-                               }
-                             }
-                             if (idx3 < tasks3.size()) {
-                               RenderLock lock(*this);
-                               organizerActions::rescheduleTask(idx3, date->packedDate);
-                             }
-                             if (!currentPickStillEligible()) reroll();
-                           });
-  };
-
-  if (!tasks[cacheIndex].isRecurring) {
-    openPicker();
-    return;
-  }
-
-  // Todoist has no way to reschedule a single occurrence of a recurring task
-  // without replacing its recurrence entirely - warn before that happens.
-  startActivityForResult(std::make_unique<ConfirmationActivity>(
-                             renderer, mappedInput, tr(STR_RESCHEDULE_RECURRING_PROMPT), tasks[cacheIndex].content),
-                         [this, openPicker](const ActivityResult& result) {
+  startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
+                         [this](const ActivityResult& result) {
                            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
                              swallowConfirmRelease = true;
                            }
@@ -308,7 +279,23 @@ void QuickPickActivity::offerReschedule() {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
-                           openPicker();
+                           const auto* date = std::get_if<DateResult>(&result.data);
+                           if (!date) return;
+
+                           // Re-resolve: the picker sat on top for as long as the user took to answer.
+                           const auto& tasks2 = TODOIST_TASKS.getTasks();
+                           size_t idx = tasks2.size();
+                           for (size_t i = 0; i < tasks2.size(); i++) {
+                             if (tasks2[i].id == itemId) {
+                               idx = i;
+                               break;
+                             }
+                           }
+                           if (idx < tasks2.size()) {
+                             RenderLock lock(*this);
+                             organizerActions::rescheduleTask(idx, date->packedDate);
+                           }
+                           if (!currentPickStillEligible()) reroll();
                          });
 }
 
@@ -434,8 +421,8 @@ void QuickPickActivity::render(RenderLock&&) {
   const auto mood = COMPANION.currentMood();
   const char* label = companion::moodLabel(mood);
 
-  // Today's completed tasks and habits, as a bulleted list under the mood
-  // label - same font and weight as the label itself, one line each.
+  // Left column: mood label (bold) plus today's completed tasks/habits as a
+  // bulleted list (regular weight) underneath.
   char taskCount[24];
   const int tasksToday = static_cast<int>(TODOIST_TASKS.getCompletedToday());
   snprintf(taskCount, sizeof(taskCount), tasksToday == 1 ? tr(STR_COMPANION_STATS_TASK) : tr(STR_COMPANION_STATS_TASKS),
@@ -449,6 +436,22 @@ void QuickPickActivity::render(RenderLock&&) {
   const std::string taskStatLine = std::string("\xE2\x80\xA2 ") + taskCount;
   const std::string habitStatLine = std::string("\xE2\x80\xA2 ") + habitCount;
 
+  // Right column: lifetime info -- name, age, best-ever single-day score.
+  // Each row is a bold label immediately followed by a regular value, so
+  // every row needs two drawText() calls -- one call takes a single style
+  // for the whole string.
+  const std::string nameValue = companion::COMPANION_NAMES[static_cast<size_t>(id)];
+  const std::string ageValue = CompanionTracker::formatAge(COMPANION_STATE.activatedDay);
+  char highscoreBuf[8];
+  snprintf(highscoreBuf, sizeof(highscoreBuf), "%u", COMPANION_STATE.ledger.bestDayPoints);
+
+  const std::string nameBold = std::string(tr(STR_COMPANION_NAME)) + ":";
+  const std::string nameRegular = " " + nameValue;
+  const std::string ageBold = std::string(tr(STR_COMPANION_AGE)) + ":";
+  const std::string ageRegular = " " + ageValue;
+  const std::string highscoreBold = std::string(tr(STR_COMPANION_HIGHSCORE)) + ":";
+  const std::string highscoreRegular = std::string(" ") + highscoreBuf;
+
   const std::string text = poolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : pickedText;
   const auto textFit = companion::fitBubbleText(renderer, UI_10_FONT_ID, text, maxTextWidth, MIN_BUBBLE_TEXT_WIDTH, 4);
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
@@ -456,9 +459,10 @@ void QuickPickActivity::render(RenderLock&&) {
   const int bubbleBlock = bubbleH + TAIL_LENGTH + BUBBLE_GAP;
   const int bubbleWidth = textFit.textWidth + PAD * 2;
 
-  const int labelH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
-  const int statsLineH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
-  const int statusBlock = LABEL_GAP + labelH + STATS_GAP + statsLineH * 2 + STATS_LINE_GAP;
+  // Both columns share one line height (same font, three rows each), so the
+  // two land level with each other row for row.
+  const int infoLineH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
+  const int statusBlock = LABEL_GAP + infoLineH * 3 + ROW_GAP * 2;
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 1;
@@ -489,16 +493,43 @@ void QuickPickActivity::render(RenderLock&&) {
   const int spriteTop = blockTop + bubbleBlock;
   companion::drawPose(renderer, id, mood, centreX - spriteW / 2, spriteTop, scale);
 
+  // Two independently left-aligned columns, centred as one group under the
+  // sprite: mood+stats on the left, lifetime info on the right.
+  auto rowWidth = [&](const std::string& boldPart, const std::string& regularPart) {
+    return renderer.getTextWidth(UI_10_FONT_ID, boldPart.c_str(), EpdFontFamily::BOLD) +
+           renderer.getTextWidth(UI_10_FONT_ID, regularPart.c_str(), EpdFontFamily::REGULAR);
+  };
   const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
-  const int labelY = spriteTop + spriteH + LABEL_GAP;
-  renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
+  const int taskLineW = renderer.getTextWidth(UI_10_FONT_ID, taskStatLine.c_str(), EpdFontFamily::REGULAR);
+  const int habitLineW = renderer.getTextWidth(UI_10_FONT_ID, habitStatLine.c_str(), EpdFontFamily::REGULAR);
+  const int leftColumnW = std::max({labelW, taskLineW, habitLineW});
 
-  const int taskLineW = renderer.getTextWidth(UI_10_FONT_ID, taskStatLine.c_str(), EpdFontFamily::BOLD);
-  const int habitLineW = renderer.getTextWidth(UI_10_FONT_ID, habitStatLine.c_str(), EpdFontFamily::BOLD);
-  const int statsTop = labelY + labelH + STATS_GAP;
-  renderer.drawText(UI_10_FONT_ID, centreX - taskLineW / 2, statsTop, taskStatLine.c_str(), true, EpdFontFamily::BOLD);
-  renderer.drawText(UI_10_FONT_ID, centreX - habitLineW / 2, statsTop + statsLineH + STATS_LINE_GAP,
-                    habitStatLine.c_str(), true, EpdFontFamily::BOLD);
+  const int nameRowW = rowWidth(nameBold, nameRegular);
+  const int ageRowW = rowWidth(ageBold, ageRegular);
+  const int highscoreRowW = rowWidth(highscoreBold, highscoreRegular);
+  const int rightColumnW = std::max({nameRowW, ageRowW, highscoreRowW});
+
+  const int groupW = leftColumnW + COLUMN_GAP + rightColumnW;
+  const int leftX = centreX - groupW / 2;
+  const int rightX = leftX + leftColumnW + COLUMN_GAP;
+
+  const int infoTop = spriteTop + spriteH + LABEL_GAP;
+  const int row1Y = infoTop;
+  const int row2Y = row1Y + infoLineH + ROW_GAP;
+  const int row3Y = row2Y + infoLineH + ROW_GAP;
+
+  renderer.drawText(UI_10_FONT_ID, leftX, row1Y, label, true, EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, leftX, row2Y, taskStatLine.c_str(), true, EpdFontFamily::REGULAR);
+  renderer.drawText(UI_10_FONT_ID, leftX, row3Y, habitStatLine.c_str(), true, EpdFontFamily::REGULAR);
+
+  auto drawLabelledRow = [&](const int y, const std::string& boldPart, const std::string& regularPart) {
+    renderer.drawText(UI_10_FONT_ID, rightX, y, boldPart.c_str(), true, EpdFontFamily::BOLD);
+    const int boldW = renderer.getTextWidth(UI_10_FONT_ID, boldPart.c_str(), EpdFontFamily::BOLD);
+    renderer.drawText(UI_10_FONT_ID, rightX + boldW, y, regularPart.c_str(), true, EpdFontFamily::REGULAR);
+  };
+  drawLabelledRow(row1Y, nameBold, nameRegular);
+  drawLabelledRow(row2Y, ageBold, ageRegular);
+  drawLabelledRow(row3Y, highscoreBold, highscoreRegular);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), "",
                                             poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM));
