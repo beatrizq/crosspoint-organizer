@@ -38,8 +38,6 @@ constexpr int LABEL_GAP = 4;
 // info on the right) -- both columns share this so their three rows land
 // level with each other.
 constexpr int ROW_GAP = 4;
-// Between the two columns themselves.
-constexpr int COLUMN_GAP = 24;
 // getTextHeight() reports the ascender only, but drawText() takes y as the
 // top and descenders hang below it.
 constexpr int DESCENDER_ALLOWANCE = 3;
@@ -462,7 +460,8 @@ void QuickPickActivity::render(RenderLock&&) {
   // Both columns share one line height (same font, three rows each), so the
   // two land level with each other row for row.
   const int infoLineH = renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE;
-  const int statusBlock = LABEL_GAP + infoLineH * 3 + ROW_GAP * 2;
+  const int infoBlockH = infoLineH * 3 + ROW_GAP * 2;
+  const int statusBlock = LABEL_GAP + infoBlockH;
 
   // Whole-pixel scales only: fractional scaling would smear the baked dither.
   int scale = 1;
@@ -476,10 +475,18 @@ void QuickPickActivity::render(RenderLock&&) {
 
   const int spriteW = companion::poseWidth(scale);
   const int spriteH = companion::poseHeight(scale);
-  const int blockH = bubbleBlock + spriteH + statusBlock;
-  const int blockTop = contentTop + (contentHeight - blockH) / 2;
   const int centreX = pageWidth / 2;
   const int bubbleX = centreX - bubbleWidth / 2;
+
+  // Bubble + sprite anchor at the top of the content area rather than being
+  // centred as part of one big bubble+sprite+info assembly -- that used to
+  // split the sprite scale's rounding-to-a-whole-pixel leftover space evenly
+  // above the bubble and below the info row. Anchoring at the top instead
+  // means all of that leftover space collects below the sprite, where it
+  // actually belongs to the two-column info row (see infoTop below): the
+  // row's own space really is "everything from the sprite down to the
+  // buttons", not just a fixed gap after the sprite.
+  const int blockTop = contentTop;
 
   companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
                               companion::TailSide::Bottom);
@@ -493,8 +500,10 @@ void QuickPickActivity::render(RenderLock&&) {
   const int spriteTop = blockTop + bubbleBlock;
   companion::drawPose(renderer, id, mood, centreX - spriteW / 2, spriteTop, scale);
 
-  // Two independently left-aligned columns, centred as one group under the
-  // sprite: mood+stats on the left, lifetime info on the right.
+  // Two independent halves of the content width under the sprite -- mood+
+  // stats on the left, lifetime info on the right -- each block centred
+  // within its own half rather than the pair centred as one group, so one
+  // column's width can never pull the other off its half's own centre.
   auto rowWidth = [&](const std::string& boldPart, const std::string& regularPart) {
     return renderer.getTextWidth(UI_10_FONT_ID, boldPart.c_str(), EpdFontFamily::BOLD) +
            renderer.getTextWidth(UI_10_FONT_ID, regularPart.c_str(), EpdFontFamily::REGULAR);
@@ -509,11 +518,20 @@ void QuickPickActivity::render(RenderLock&&) {
   const int highscoreRowW = rowWidth(highscoreBold, highscoreRegular);
   const int rightColumnW = std::max({nameRowW, ageRowW, highscoreRowW});
 
-  const int groupW = leftColumnW + COLUMN_GAP + rightColumnW;
-  const int leftX = centreX - groupW / 2;
-  const int rightX = leftX + leftColumnW + COLUMN_GAP;
+  const int halfWidth = contentWidth / 2;
+  const int leftHalfCentreX = MARGIN + halfWidth / 2;
+  const int rightHalfCentreX = centreX + halfWidth / 2;
+  const int leftX = leftHalfCentreX - leftColumnW / 2;
+  const int rightX = rightHalfCentreX - rightColumnW / 2;
 
-  const int infoTop = spriteTop + spriteH + LABEL_GAP;
+  // The info row's own space is everything from the sprite's bottom down to
+  // the buttons (see blockTop above) -- centre the actual 3-line block
+  // within that, rather than pinning it to the top of that space with a
+  // fixed gap. Both columns are the same height, so this also centres them
+  // vertically relative to each other.
+  const int spriteBottom = spriteTop + spriteH;
+  const int infoAreaBottom = contentTop + contentHeight;
+  const int infoTop = spriteBottom + std::max(0, (infoAreaBottom - spriteBottom - infoBlockH) / 2);
   const int row1Y = infoTop;
   const int row2Y = row1Y + infoLineH + ROW_GAP;
   const int row3Y = row2Y + infoLineH + ROW_GAP;
