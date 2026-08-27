@@ -450,7 +450,9 @@ void QuickPickActivity::render(RenderLock&&) {
   const std::string highscoreBold = std::string(tr(STR_COMPANION_HIGHSCORE)) + ":";
   const std::string highscoreRegular = std::string(" ") + highscoreBuf;
 
-  const std::string text = poolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : pickedText;
+  const std::string text = mood == companion::Mood::Sleeping ? std::string(tr(STR_COMPANION_SLEEPING_BUBBLE))
+                           : poolEmpty                       ? std::string(tr(STR_QUICK_PICK_EMPTY))
+                                                             : pickedText;
   const auto textFit = companion::fitBubbleText(renderer, UI_10_FONT_ID, text, maxTextWidth, MIN_BUBBLE_TEXT_WIDTH, 4);
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
   const int bubbleH = static_cast<int>(textFit.lines.size()) * lineH + PAD * 2;

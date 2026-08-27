@@ -191,7 +191,12 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   // Suggests a task/habit instead of a mood quote -- rolled once in onEnter()
   // (see homeSuggestionText's own comment) and reused verbatim here on every
   // repaint, so navigating the menu never changes what is being suggested.
-  const std::string suggestion = homeSuggestionPoolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : homeSuggestionText;
+  // Sleeping overrides the suggestion outright: a resting companion has
+  // nothing to nag about.
+  const std::string suggestion =
+      mood == companion::Mood::Sleeping
+          ? std::string(tr(STR_COMPANION_SLEEPING_BUBBLE))
+          : (homeSuggestionPoolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : homeSuggestionText);
 
   // The bubble is measured before the character is sized: the suggestion needs
   // however many lines it needs, and the character takes what is left.
