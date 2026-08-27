@@ -33,7 +33,7 @@ constexpr int TAIL_LENGTH = 16;
 constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
 // Between the character and the two-column info block below it.
-constexpr int LABEL_GAP = 4;
+constexpr int LABEL_GAP = 20;
 // Between adjacent rows within one column (mood/stats on the left, lifetime
 // info on the right) -- both columns share this so their three rows land
 // level with each other.
@@ -478,15 +478,11 @@ void QuickPickActivity::render(RenderLock&&) {
   const int centreX = pageWidth / 2;
   const int bubbleX = centreX - bubbleWidth / 2;
 
-  // Bubble + sprite anchor at the top of the content area rather than being
-  // centred as part of one big bubble+sprite+info assembly -- that used to
-  // split the sprite scale's rounding-to-a-whole-pixel leftover space evenly
-  // above the bubble and below the info row. Anchoring at the top instead
-  // means all of that leftover space collects below the sprite, where it
-  // actually belongs to the two-column info row (see infoTop below): the
-  // row's own space really is "everything from the sprite down to the
-  // buttons", not just a fixed gap after the sprite.
-  const int blockTop = contentTop;
+  // Bubble + sprite + info centred as one assembly within the content area,
+  // so the companion itself sits in the middle of the screen rather than
+  // pinned to the top.
+  const int totalBlockH = bubbleBlock + spriteH + statusBlock;
+  const int blockTop = contentTop + std::max(0, (contentHeight - totalBlockH) / 2);
 
   companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
                               companion::TailSide::Bottom);
@@ -524,14 +520,7 @@ void QuickPickActivity::render(RenderLock&&) {
   const int leftX = leftHalfCentreX - leftColumnW / 2;
   const int rightX = rightHalfCentreX - rightColumnW / 2;
 
-  // The info row's own space is everything from the sprite's bottom down to
-  // the buttons (see blockTop above) -- centre the actual 3-line block
-  // within that, rather than pinning it to the top of that space with a
-  // fixed gap. Both columns are the same height, so this also centres them
-  // vertically relative to each other.
-  const int spriteBottom = spriteTop + spriteH;
-  const int infoAreaBottom = contentTop + contentHeight;
-  const int infoTop = spriteBottom + std::max(0, (infoAreaBottom - spriteBottom - infoBlockH) / 2);
+  const int infoTop = spriteTop + spriteH + LABEL_GAP;
   const int row1Y = infoTop;
   const int row2Y = row1Y + infoLineH + ROW_GAP;
   const int row3Y = row2Y + infoLineH + ROW_GAP;
