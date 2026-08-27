@@ -178,18 +178,20 @@ BubbleFit fitBubbleText(const GfxRenderer& renderer, const int fontId, const std
 
 const char* moodLabel(const Mood mood) {
   switch (mood) {
-    case Mood::Thriving:
-      return tr(STR_COMPANION_MOOD_THRIVING);
     case Mood::Happy:
       return tr(STR_COMPANION_MOOD_HAPPY);
-    case Mood::Peckish:
-      return tr(STR_COMPANION_MOOD_PECKISH);
+    case Mood::Satisfied:
+      return tr(STR_COMPANION_MOOD_SATISFIED);
+    case Mood::Cranky:
+      return tr(STR_COMPANION_MOOD_CRANKY);
     case Mood::Neglected:
       return tr(STR_COMPANION_MOOD_NEGLECTED);
     case Mood::Milestone:
       return tr(STR_COMPANION_MOOD_MILESTONE);
+    case Mood::Sleeping:
+      return tr(STR_COMPANION_MOOD_SLEEPING);
   }
-  return tr(STR_COMPANION_MOOD_HAPPY);
+  return tr(STR_COMPANION_MOOD_SATISFIED);
 }
 
 }  // namespace companion

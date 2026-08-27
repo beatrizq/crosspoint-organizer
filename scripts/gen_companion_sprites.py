@@ -9,11 +9,11 @@ asset pipeline:
     name: Sophocles
     kind: fox
 
-    [thriving]
+    [happy]
     ..............##..........##......
     ... 30 rows of 34 characters ...
 
-    [happy]
+    [satisfied]
     ...
 
 Cell characters:
@@ -39,11 +39,13 @@ import sys
 
 WIDTH = 34
 HEIGHT = 30
-# "milestone" is a mood like the rest: its own art block, generated the same
-# way as thriving/happy/peckish/neglected. It is never returned by the ladder
-# in CompanionMood (evaluate() only ever yields the first four); callers apply
-# it as a one-shot override when a streak record is beaten.
-MOODS = ["thriving", "happy", "peckish", "neglected", "milestone"]
+# "milestone" and "sleeping" are moods like the rest: their own art block,
+# generated the same way as happy/satisfied/cranky/neglected. Neither is ever
+# returned by the ladder in CompanionMood (evaluate() only ever yields the
+# first four); callers apply them as overrides -- milestone when the best-ever
+# single-day tasks+habits total is beaten, sleeping during the configured
+# sleep window.
+MOODS = ["happy", "satisfied", "cranky", "neglected", "milestone", "sleeping"]
 VALID_CELLS = set(".#wod")
 
 

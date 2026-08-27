@@ -27,7 +27,7 @@ companion::CompanionId CompanionTracker::activeId() {
   return static_cast<companion::CompanionId>(id);
 }
 
-bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
+bool CompanionTracker::resolveLocalDayAndMinute(int32_t& outDay, uint16_t& outMinuteOfDay) {
   uint16_t year = 0;
   uint8_t month = 0;
   uint8_t day = 0;
@@ -35,18 +35,27 @@ bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
   uint8_t minute = 0;
 
   if (!halClock.getUtcDateTime(year, month, day, hour, minute)) return false;
-  outDay = companion::localDayNumber(year, month, day, hour, minute, signedUtcOffsetQuarterHours());
+  const int32_t offset = signedUtcOffsetQuarterHours();
+  outDay = companion::localDayNumber(year, month, day, hour, minute, offset);
+  outMinuteOfDay = companion::localMinuteOfDay(hour, minute, offset);
   return true;
+}
+
+bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
+  uint16_t ignoredMinute = 0;
+  return resolveLocalDayAndMinute(outDay, ignoredMinute);
 }
 
 void CompanionTracker::refreshDay() {
   int32_t day = 0;
-  if (!resolveLocalDay(day)) {
+  uint16_t minuteOfDay = 0;
+  if (!resolveLocalDayAndMinute(day, minuteOfDay)) {
     clockValid = false;
     return;
   }
   clockValid = true;
   localDay = day;
+  localMinuteOfDay = minuteOfDay;
 }
 
 void CompanionTracker::refreshForDisplay() {
@@ -82,10 +91,24 @@ companion::MoodInput CompanionTracker::buildMoodInput() const {
   return companion::moodInputFor(COMPANION_STATE.ledger, localDay, clockValid, tasksToday, habitsToday);
 }
 
+bool CompanionTracker::isWithinSleepWindow() const {
+  if (!clockValid) return false;
+  const uint16_t start =
+      static_cast<uint16_t>(SETTINGS.companionSleepStartHour) * 60 + SETTINGS.companionSleepStartMinute;
+  const uint16_t end = static_cast<uint16_t>(SETTINGS.companionSleepEndHour) * 60 + SETTINGS.companionSleepEndMinute;
+  return companion::withinSleepWindow(localMinuteOfDay, start, end);
+}
+
 companion::Mood CompanionTracker::currentMood() const {
-  // A beaten streak record holds the companion at the Milestone mood for the
-  // rest of the day it was earned (see CompanionState::milestoneDay), ahead
-  // of the usual ladder. Gated on clockValid: without a fresh reading,
+  // Sleeping is checked first, ahead of even Milestone: a beaten record is
+  // still worth celebrating, but not while the companion should visually read
+  // as asleep. milestoneDay is a day-scoped flag that survives the wait --
+  // nothing is lost, only deferred until the companion is awake again with
+  // that same local day still current.
+  if (isWithinSleepWindow()) return companion::Mood::Sleeping;
+  // A beaten best-day-points record holds the companion at the Milestone mood
+  // for the rest of the day it was earned (see CompanionState::milestoneDay),
+  // ahead of the usual ladder. Gated on clockValid: without a fresh reading,
   // localDay is whatever the last valid one was, and comparing a stale day
   // against milestoneDay could match (or fail to) by accident.
   if (clockValid && COMPANION_STATE.milestoneDay == localDay) return companion::Mood::Milestone;

@@ -317,6 +317,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // (0 = off, 1 = on). Off gives the sprite the freed space to draw a scale
   // step bigger.
   uint8_t companionShowMoodLabel = 1;
+  // Sleep window the companion shows the Sleeping mood during, local wall-clock
+  // time. Default 22:00-07:00. May wrap past midnight (start > end); start ==
+  // end means the window never applies (24 awake hours, not 24 asleep).
+  uint8_t companionSleepStartHour = 22;
+  uint8_t companionSleepStartMinute = 0;
+  uint8_t companionSleepEndHour = 7;
+  uint8_t companionSleepEndMinute = 0;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
   // Dictionary folder name under /dictionaries (empty = no dictionary)

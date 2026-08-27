@@ -7,28 +7,31 @@
 // exercised by host unit tests before it ever reaches the device.
 namespace companion {
 
-// Milestone is not a ladder outcome -- evaluate() never returns it. It is an
-// external override callers apply for one paint when a streak record is
-// beaten (see CompanionState::milestonePending), the same way the old
-// milestone quote used to override which line was said rather than which
-// mood earned it.
-enum class Mood : uint8_t { Thriving = 0, Happy = 1, Peckish = 2, Neglected = 3, Milestone = 4 };
+// Milestone and Sleeping are not ladder outcomes -- evaluate() never returns
+// either. Both are external overrides callers apply ahead of the ladder:
+// Milestone for one paint when the best-ever single-day tasks+habits total is
+// beaten (see CompanionState::milestoneDay), the same way the old milestone
+// quote used to override which line was said rather than which mood earned
+// it; Sleeping for as long as the wall clock sits inside the user's
+// configured sleep window, taking priority even over Milestone since a
+// sleeping companion should not also be shown celebrating.
+enum class Mood : uint8_t { Happy = 0, Satisfied = 1, Cranky = 2, Neglected = 3, Milestone = 4, Sleeping = 5 };
 
 // Tunables kept in one struct so tests can pin behaviour without rebuilding the
 // firmware defaults. Tasks and habits are weighted identically -- each
 // completed task or completed habit is worth one point -- so either can carry
-// the ladder to Thriving on its own, or the two can mix freely.
+// the ladder to Happy on its own, or the two can mix freely.
 struct MoodThresholds {
-  uint16_t thrivingPoints = 3;  // combined tasks+habits completed today for Thriving
-  uint16_t happyPoints = 1;     // combined tasks+habits completed today to count as "did something"
-  uint8_t neglectedDays = 3;    // quiet days at or above which the mood bottoms out
+  uint16_t happyPoints = 3;      // combined tasks+habits completed today for Happy
+  uint16_t satisfiedPoints = 1;  // combined tasks+habits completed today to count as "did something"
+  uint8_t neglectedDays = 3;     // quiet days at or above which the mood bottoms out
 };
 
 struct MoodInput {
   uint16_t tasksCompletedToday = 0;
   uint16_t habitsCompletedToday = 0;
   // Whole calendar days between the last day that qualified (cleared
-  // happyPoints) and today. 0 = qualified today, no qualifying day yet
+  // satisfiedPoints) and today. 0 = qualified today, no qualifying day yet
   // (brand new companion), or a clock correction; 1 = one full day with zero
   // activity; 2 = two, and so on.
   uint16_t daysSinceLastActive = 0;
@@ -45,17 +48,17 @@ struct MoodInput {
 
 // Maps today's organizing activity onto one of the four drawn poses.
 //
-// With a valid clock the ladder is: enough combined points today -> Thriving,
-// some activity today -> Happy, otherwise Peckish immediately and Neglected
+// With a valid clock the ladder is: enough combined points today -> Happy,
+// some activity today -> Satisfied, otherwise Cranky immediately and Neglected
 // once neglectedDays quiet days have passed. Mood reflects only today's own
 // effort -- a streak from a previous day earns nothing today it did not also
 // earn today. A brand new companion (nothing ever qualified) starts at
-// Peckish rather than Happy: it has done nothing yet either, so there is
+// Cranky rather than Satisfied: it has done nothing yet either, so there is
 // nothing to grace.
 //
 // Without a clock, elapsed days cannot be measured, so neglect is unknowable
-// and the result never falls below Happy. Today's task/habit counts are
-// live reads regardless of clock validity, so Thriving stays reachable.
+// and the result never falls below Satisfied. Today's task/habit counts are
+// live reads regardless of clock validity, so Happy stays reachable.
 Mood evaluate(const MoodInput& in, const MoodThresholds& t = {});
 
 // Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's
@@ -79,28 +82,46 @@ int32_t daysBetween(int32_t fromYear, uint32_t fromMonth, uint32_t fromDay, int3
 int32_t localDayNumber(int32_t year, uint32_t month, uint32_t day, uint32_t hour, uint32_t minute,
                        int32_t utcOffsetQuarterHours);
 
+// Local wall-clock minutes since midnight (0..1439) for a UTC wall-clock
+// reading, same offset convention as localDayNumber -- that function keeps
+// only the day component of this same conversion, this one keeps only the
+// intraday remainder.
+uint16_t localMinuteOfDay(uint32_t hour, uint32_t minute, int32_t utcOffsetQuarterHours);
+
+// True when `nowMinuteOfDay` falls within [startMinuteOfDay, endMinuteOfDay),
+// treating start > end as a window that wraps past midnight (e.g. 22:00 to
+// 07:00). start == end means the window never applies -- an all-day window
+// would make "awake" meaningless, so equal bounds read as "no window" rather
+// than "always asleep".
+bool withinSleepWindow(uint16_t nowMinuteOfDay, uint16_t startMinuteOfDay, uint16_t endMinuteOfDay);
+
 /**
- * @brief Streak bookkeeping for the decay ladder.
+ * @brief Day-qualifying and record bookkeeping for the decay ladder and Milestone.
  *
  * Today's task and habit counts each live in their own owning cache
  * (TodoistTaskCache, HabitifyHabitCache), which already resets them daily, so
  * nothing about today's counts is duplicated here. This ledger only remembers
- * the last day that cleared happyPoints and the resulting streak -- state
- * neither of those caches has any reason to know about.
+ * the last day that cleared satisfiedPoints (for the decay ladder's
+ * daysSinceLastActive) and the highest combined tasks+habits total ever
+ * completed in a single day (for Milestone) -- state neither of those caches
+ * has any reason to know about.
  */
 struct DayLedger {
   // Sentinel for "no day has ever qualified".
   static constexpr int32_t NEVER = INT32_MIN;
 
-  int32_t lastQualifyingDay = NEVER;  // last local day that cleared happyPoints
-  uint16_t streakDays = 0;
-  uint16_t bestStreakDays = 0;
+  int32_t lastQualifyingDay = NEVER;  // last local day that cleared satisfiedPoints
+  uint16_t bestDayPoints = 0;         // highest combined tasks+habits total ever completed in one day
 };
 
-// Re-derives whether `today` has now cleared happyPoints of combined
-// tasks+habits effort and, the first time it does, extends (or restarts) the
-// streak. Idempotent for the rest of the day, and a no-op while today still
-// falls short. Returns true when the ledger changed and the caller should
+// Re-derives whether `today` has now cleared satisfiedPoints of combined
+// tasks+habits effort, updating lastQualifyingDay the first time it does (a
+// no-op on a later call the same day), and separately checks whether today's
+// live point total is a new all-time high for bestDayPoints. The two are
+// independent: unlike lastQualifyingDay, bestDayPoints must keep being
+// re-checked on every call the same day, since today's total only grows as
+// more is completed and a new record can land on any one of those calls, not
+// just the first. Returns true when the ledger changed and the caller should
 // persist.
 bool creditQualifyingDay(DayLedger& ledger, int32_t today, uint16_t tasksCompletedToday, uint16_t habitsCompletedToday,
                          const MoodThresholds& t = {});

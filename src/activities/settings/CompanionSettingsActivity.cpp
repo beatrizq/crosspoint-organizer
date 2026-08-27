@@ -8,10 +8,10 @@
 #include <cstdio>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/settings/CompanionSleepTimeActivity.h"
 #include "activities/settings/CompanionWallpaperSettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "companion/CompanionSprites.generated.h"
@@ -23,10 +23,19 @@
 
 namespace {
 constexpr int ROW_ENABLED = 0;
-constexpr int ROW_CHARACTER = 1;
-constexpr int ROW_SHOW_MOOD_LABEL = 2;
-constexpr int ROW_MOOD_WALLPAPERS = 3;
-constexpr int ROW_ACTIVE_FOR = 4;
+constexpr int ROW_SHOW_MOOD_LABEL = 1;
+constexpr int ROW_MOOD_WALLPAPERS = 2;
+constexpr int ROW_SLEEP_START = 3;
+constexpr int ROW_SLEEP_END = 4;
+constexpr int ROW_ACTIVE_FOR = 5;
+
+// "HH:MM" for a Sleep start/end row's value column -- digits need no
+// translation.
+std::string sleepTimeValue(const uint8_t hour, const uint8_t minute) {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%02d:%02d", hour, minute);
+  return std::string(buf);
+}
 
 // "N/5" set, for the Mood Wallpapers row's value column -- digits need no
 // translation, so this skips adding a format string just for them.
@@ -37,23 +46,6 @@ std::string wallpaperCountValue() {
   char buf[8];
   snprintf(buf, sizeof(buf), "%d/%d", static_cast<int>(count), static_cast<int>(companion::MOOD_COUNT));
   return std::string(buf);
-}
-
-// Name plus species, because a list of six bare proper nouns tells you nothing
-// about what you are choosing. The popup cannot show sprites: its FreeInkUI
-// DialogOption has no icon slot, and adding one would mean patching the SDK
-// submodule and losing it on the next update.
-std::vector<std::string> characterLabels() {
-  std::vector<std::string> labels;
-  labels.reserve(companion::COMPANION_COUNT);
-  for (int i = 0; i < companion::COMPANION_COUNT; i++) {
-    std::string label = companion::COMPANION_NAMES[i];
-    label += " (";
-    label += companion::COMPANION_KINDS[i];
-    label += ")";
-    labels.emplace_back(std::move(label));
-  }
-  return labels;
 }
 
 // "Active for" value: days while under a month old, then months, then years --
@@ -86,7 +78,6 @@ std::string formatAge(const int32_t activatedDay) {
 
 void CompanionSettingsActivity::onEnter() {
   Activity::onEnter();
-  if (SETTINGS.companionId >= companion::COMPANION_COUNT) SETTINGS.companionId = 0;
   selectedIndex = 0;
   swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   stampActivationIfNeeded();
@@ -129,13 +120,6 @@ void CompanionSettingsActivity::handleSelection() {
                              });
       return;
     }
-    case ROW_CHARACTER:
-      optionPopup.show(StrId::STR_COMPANION_CHARACTER, characterLabels(), SETTINGS.companionId, [this](int idx) {
-        SETTINGS.companionId = static_cast<uint8_t>(idx);
-        SETTINGS.saveToFile();
-      });
-      requestUpdate();
-      return;
     case ROW_SHOW_MOOD_LABEL:
       SETTINGS.companionShowMoodLabel = (SETTINGS.companionShowMoodLabel + 1) % 2;
       break;
@@ -153,6 +137,21 @@ void CompanionSettingsActivity::handleSelection() {
                                }
                                requestUpdate();
                              });
+      return;
+    case ROW_SLEEP_START:
+    case ROW_SLEEP_END:
+      startActivityForResult(
+          std::make_unique<CompanionSleepTimeActivity>(renderer, mappedInput, selectedIndex == ROW_SLEEP_START),
+          [this](const ActivityResult&) {
+            // Same reasoning as ROW_MOOD_WALLPAPERS above.
+            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+              swallowConfirmRelease = true;
+            }
+            if (mappedInput.isPressed(MappedInputManager::Button::Back)) {
+              swallowBackRelease = true;
+            }
+            requestUpdate();
+          });
       return;
     default:
       // ROW_ACTIVE_FOR is a read-only info row.
@@ -227,9 +226,6 @@ void CompanionSettingsActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
 
-  const uint8_t characterIdx = SETTINGS.companionId < companion::COMPANION_COUNT ? SETTINGS.companionId : 0;
-  const std::string characterValue =
-      std::string(companion::COMPANION_NAMES[characterIdx]) + " (" + companion::COMPANION_KINDS[characterIdx] + ")";
   const std::string ageValue = formatAge(COMPANION_STATE.activatedDay);
 
   GUI.drawList(
@@ -238,27 +234,31 @@ void CompanionSettingsActivity::render(RenderLock&&) {
         switch (index) {
           case ROW_ENABLED:
             return std::string(tr(STR_COMPANION_ENABLED));
-          case ROW_CHARACTER:
-            return std::string(tr(STR_COMPANION_CHARACTER));
           case ROW_SHOW_MOOD_LABEL:
             return std::string(tr(STR_COMPANION_SHOW_MOOD_LABEL));
           case ROW_MOOD_WALLPAPERS:
             return std::string(tr(STR_COMPANION_MOOD_WALLPAPERS));
+          case ROW_SLEEP_START:
+            return std::string(tr(STR_COMPANION_SLEEP_START));
+          case ROW_SLEEP_END:
+            return std::string(tr(STR_COMPANION_SLEEP_END));
           default:
             return std::string(tr(STR_COMPANION_ACTIVE_FOR));
         }
       },
       nullptr, nullptr,
-      [&characterValue, &ageValue](int index) -> std::string {
+      [&ageValue](int index) -> std::string {
         switch (index) {
           case ROW_ENABLED:
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-          case ROW_CHARACTER:
-            return characterValue;
           case ROW_SHOW_MOOD_LABEL:
             return SETTINGS.companionShowMoodLabel ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_MOOD_WALLPAPERS:
             return wallpaperCountValue();
+          case ROW_SLEEP_START:
+            return sleepTimeValue(SETTINGS.companionSleepStartHour, SETTINGS.companionSleepStartMinute);
+          case ROW_SLEEP_END:
+            return sleepTimeValue(SETTINGS.companionSleepEndHour, SETTINGS.companionSleepEndMinute);
           default:
             return ageValue;
         }

@@ -242,8 +242,9 @@ void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
   const int walkX = static_cast<int>(step) * WALK_TRAVEL / (WALK_STEPS - 1);
   const int bob = (companionFrame % 2) ? BOB_HEIGHT : 0;
 
-  // A neglected companion stops pacing, which is most of what says so.
-  const bool restless = mood != companion::Mood::Neglected;
+  // A neglected companion stops pacing, which is most of what says so. A
+  // sleeping one stops for the same reason a sleeping character stays put.
+  const bool restless = mood != companion::Mood::Neglected && mood != companion::Mood::Sleeping;
   // Centred on the range it walks rather than on its own width, so it does not
   // appear to drift.
   const int laneX = colX + (colW - spriteW - WALK_TRAVEL) / 2;

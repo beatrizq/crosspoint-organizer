@@ -22,10 +22,10 @@ class CompanionState : public PersistableStore<CompanionState> {
 
  public:
   companion::DayLedger ledger;
-  // Local day number a streak record was last beaten on. The companion reads
-  // as the Milestone mood for the rest of that day (see
-  // CompanionTracker::currentMood()) rather than for one paint only, so
-  // Home, the sleep screen, and anywhere else that asks all agree without
+  // Local day number the best-ever single-day tasks+habits total was last
+  // beaten on. The companion reads as the Milestone mood for the rest of that
+  // day (see CompanionTracker::currentMood()) rather than for one paint only,
+  // so Home, the sleep screen, and anywhere else that asks all agree without
   // needing to coordinate over who gets to consume a one-shot flag; it just
   // stops matching once the day rolls past it, on its own.
   // companion::DayLedger::NEVER until a record has ever been beaten.
@@ -42,7 +42,7 @@ class CompanionState : public PersistableStore<CompanionState> {
   bool fromJson(JsonVariantConst doc);
 
   // Credits today's combined tasks+habits effort into the ledger. `localDay`
-  // is ignored (no streak update) when clockValid is false, since day
+  // is ignored (no ledger update) when clockValid is false, since day
   // arithmetic would be meaningless without a real calendar day to key it to.
   // Returns true when something changed and the caller should persist.
   bool recordActivity(int32_t localDay, bool clockValid, uint16_t tasksCompletedToday, uint16_t habitsCompletedToday);
