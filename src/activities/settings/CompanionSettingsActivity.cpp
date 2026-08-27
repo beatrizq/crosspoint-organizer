@@ -28,8 +28,7 @@ constexpr int ROW_SLEEP_END = 3;
 constexpr int ROW_HAPPY_POINTS = 4;
 constexpr int ROW_SATISFIED_POINTS = 5;
 constexpr int ROW_NEGLECTED_DAYS = 6;
-constexpr int ROW_AGE = 7;
-constexpr int ROW_RESET = 8;
+constexpr int ROW_RESET = 7;
 
 // "HH:MM" for a Sleep start/end row's value column -- digits need no
 // translation.
@@ -138,9 +137,6 @@ void CompanionSettingsActivity::handleSelection() {
             COMPANION_STATE.saveToFile();
             requestUpdate();
           });
-      return;
-    default:
-      // ROW_AGE is a read-only info row.
       return;
   }
   SETTINGS.saveToFile();
@@ -284,8 +280,6 @@ void CompanionSettingsActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
 
-  const std::string ageValue = CompanionTracker::formatAge(COMPANION_STATE.activatedDay);
-
   GUI.drawList(
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
@@ -304,14 +298,12 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return std::string(tr(STR_COMPANION_SATISFIED_AT));
           case ROW_NEGLECTED_DAYS:
             return std::string(tr(STR_COMPANION_NEGLECTED_AFTER));
-          case ROW_AGE:
-            return std::string(tr(STR_COMPANION_AGE));
           default:
             return std::string(tr(STR_COMPANION_RESET));
         }
       },
       nullptr, nullptr,
-      [&ageValue](int index) -> std::string {
+      [](int index) -> std::string {
         switch (index) {
           case ROW_ENABLED:
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
@@ -327,14 +319,12 @@ void CompanionSettingsActivity::render(RenderLock&&) {
             return thresholdValue(StrId::STR_COMPANION_POINTS_FORMAT, SETTINGS.companionSatisfiedPoints);
           case ROW_NEGLECTED_DAYS:
             return thresholdValue(StrId::STR_COMPANION_DAYS_FORMAT, SETTINGS.companionNeglectedDays);
-          case ROW_AGE:
-            return ageValue;
           default:
             // ROW_RESET is an action row with nothing to show in this column.
             return std::string();
         }
       },
-      true, [](int index) -> bool { return index == ROW_AGE; });
+      true);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
