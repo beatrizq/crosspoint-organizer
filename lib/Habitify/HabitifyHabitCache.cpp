@@ -3,7 +3,17 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <cctype>
 #include <utility>
+
+namespace {
+// A-Z by name, case-insensitive, matching the order Habitify's own app shows.
+bool byNameCaseInsensitive(const HabitifyHabit& a, const HabitifyHabit& b) {
+  return std::lexicographical_compare(
+      a.name.begin(), a.name.end(), b.name.begin(), b.name.end(),
+      [](const unsigned char l, const unsigned char r) { return std::tolower(l) < std::tolower(r); });
+}
+}  // namespace
 
 void HabitifyHabitCache::toJson(JsonDocument& doc) const {
   char iso[11];
@@ -50,6 +60,8 @@ bool HabitifyHabitCache::fromJson(JsonVariantConst doc) {
     habit.pendingComplete = obj["pendingComplete"] | false;
     habits.push_back(std::move(habit));
   }
+  // A cache saved before A-Z ordering existed may not be sorted yet.
+  std::sort(habits.begin(), habits.end(), byNameCaseInsensitive);
 
   LOG_DBG("HHC", "Loaded %zu habits, %zu with unpushed progress", habits.size(), pendingCount());
   return true;
@@ -71,6 +83,7 @@ void HabitifyHabitCache::setHabits(std::vector<HabitifyHabit>&& fetched, const u
     }
   }
 
+  std::sort(fetched.begin(), fetched.end(), byNameCaseInsensitive);
   habits = std::move(fetched);
   if (date != civil::NO_DATE) syncDate = date;
 }

@@ -44,8 +44,9 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   bool hasSynced() const { return syncDate != civil::NO_DATE; }
 
   /**
-   * Replaces the list after a successful fetch, keeping the habit order the API
-   * returned - which is the order Habitify itself shows.
+   * Replaces the list after a successful fetch, sorted A-Z by name (case-
+   * insensitive) to match the order Habitify's own app shows - the API's own
+   * response order is not reliably alphabetical.
    *
    * Pending progress is carried across by id for any habit that survives the
    * fetch. It has to be: the push and the re-fetch are separate requests, and a

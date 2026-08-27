@@ -118,7 +118,15 @@ void HabitsActivity::formatProgress(const HabitifyHabit& habit, char* out, const
     snprintf(out, outSize, "%g", static_cast<double>(habit.shownCurrent()));
     return;
   }
-  snprintf(out, outSize, "%g/%g", static_cast<double>(habit.shownCurrent()), static_cast<double>(habit.target));
+  // completedByStatus can go true (Complete tapped locally, or Habitify's own
+  // status already says done) before current/pending's own arithmetic has
+  // caught up to target -- show target/target rather than a fraction that
+  // would still read as short right next to the row's own bold "done"
+  // styling (see isComplete()). The underlying figures are untouched; this
+  // only affects what gets drawn.
+  const float shown =
+      habit.completedByStatus && habit.shownCurrent() < habit.target ? habit.target : habit.shownCurrent();
+  snprintf(out, outSize, "%g/%g", static_cast<double>(shown), static_cast<double>(habit.target));
 }
 
 void HabitsActivity::drawRow(const RowLayout& layout) const {
@@ -134,9 +142,7 @@ void HabitsActivity::drawRow(const RowLayout& layout) const {
   // of the row's own font between them, so the gap tracks the font-size setting
   // and a truncated name cannot run into the number.
   const int gap = renderer.getSpaceWidth(layout.titleFont) * 2;
-  // A met goal is set in bold, so a finished habit is distinguishable at a glance
-  // without needing a tick glyph the themes do not all provide.
-  const auto style = habit.isComplete() ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+  const EpdFontFamily::Style style = EpdFontFamily::REGULAR;
   const int progressWidth = renderer.getTextWidth(layout.titleFont, progress, style);
   const int nameWidth = std::max(0, layout.width - progressWidth - gap);
 
@@ -144,6 +150,17 @@ void HabitsActivity::drawRow(const RowLayout& layout) const {
   renderer.drawText(layout.titleFont, layout.x, layout.textY, shownName.c_str(), layout.ink, style);
   renderer.drawText(layout.titleFont, layout.x + layout.width - progressWidth, layout.textY, progress, layout.ink,
                     style);
+
+  // A met goal is greyed, so a finished habit is distinguishable at a glance
+  // without needing a tick glyph the themes do not all provide. Dithered
+  // rather than a real grey -- the panel is 1-bit -- same technique
+  // dimText() already uses for a row's subordinate text elsewhere on these
+  // screens; skipped on a selected row (ink false), which is already
+  // inverted and would dither wrong.
+  if (habit.isComplete()) {
+    dimText(layout.x, layout.textY, layout.titleFont, shownName.c_str(), layout.ink);
+    dimText(layout.x + layout.width - progressWidth, layout.textY, layout.titleFont, progress, layout.ink);
+  }
 }
 
 void HabitsActivity::formatStatus(char* out, const size_t outSize) const {

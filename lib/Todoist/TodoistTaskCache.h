@@ -77,7 +77,12 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   void completeTaskAt(size_t index);
 
   const std::vector<std::string>& getPendingIds() const { return pendingIds; }
-  bool hasPending() const { return !pendingIds.empty(); }
+  // True with a pending completion OR a pending reschedule -- either one is
+  // something the next sync still needs to push.
+  bool hasPending() const { return !pendingIds.empty() || !pendingReschedules.empty(); }
+  // Completions plus reschedules awaiting push, for the "N to sync" status
+  // line -- both are equally "something not on the server yet".
+  size_t pendingSyncCount() const { return pendingIds.size() + pendingReschedules.size(); }
   // Called once the server accepted (or already knew about) the completion.
   void clearPending(const std::string& id);
 

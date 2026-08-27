@@ -222,7 +222,7 @@ void TasksActivity::formatStatus(char* out, const size_t outSize) const {
   if (TODOIST_TASKS.hasPending()) {
     char waiting[32];
     snprintf(waiting, sizeof(waiting), tr(STR_TODOIST_PENDING_COMPLETIONS),
-             static_cast<int>(TODOIST_TASKS.getPendingIds().size()));
+             static_cast<int>(TODOIST_TASKS.pendingSyncCount()));
     snprintf(out, outSize, "%s %s | %s", date, waiting, count);
     return;
   }
@@ -254,10 +254,19 @@ void TasksActivity::showRowOptions() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
   if (cacheIndex < 0) return;
 
-  std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION), tr(STR_RESCHEDULE_TASK)};
+  // Todoist has no way to reschedule a single occurrence of a recurring task
+  // without replacing its recurrence entirely, and the warning that fact
+  // requires doesn't fit the popup -- simplest and clearest is to just not
+  // offer Reschedule for a recurring task at all.
+  const bool canReschedule = !TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].isRecurring;
+
+  std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION)};
+  if (canReschedule) options.push_back(tr(STR_RESCHEDULE_TASK));
+  const int rescheduleIdx = canReschedule ? 2 : -1;
+
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
-      [this, cacheIndex](const ActivityResult& result) {
+      [this, cacheIndex, rescheduleIdx](const ActivityResult& result) {
         // Confirm may still be physically down (the popup answers on the
         // press, this screen on the release) -- same dance completeSelectedTask()
         // does below for the popup it pushes in turn.
@@ -273,7 +282,7 @@ void TasksActivity::showRowOptions() {
           completeSelectedTask();
         } else if (idx == 1) {
           offerFocusSession(cacheIndex);
-        } else if (idx == 2) {
+        } else if (idx == rescheduleIdx) {
           offerReschedule(cacheIndex);
         }
       });
@@ -303,61 +312,37 @@ void TasksActivity::offerFocusSession(const int cacheIndex) {
 }
 
 void TasksActivity::offerReschedule(const int cacheIndex) {
+  // Only ever reached for a non-recurring task -- showRowOptions() leaves
+  // Reschedule off the menu entirely for a recurring one.
   if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
-
-  auto openPicker = [this](const int idx) {
-    // Re-checked: a warning popup may have sat on top for as long as the user
-    // took to answer.
-    if (idx < 0 || static_cast<size_t>(idx) >= TODOIST_TASKS.getTasks().size()) return;
-    const auto& task = TODOIST_TASKS.getTasks()[static_cast<size_t>(idx)];
-    const uint16_t seed =
-        task.dueDays != todoist::DUE_NONE ? task.dueDays : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
-
-    startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
-                           [this, idx](const ActivityResult& result) {
-                             if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
-                               swallowConfirmRelease = true;
-                             }
-                             if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
-                               swallowBackRelease = true;
-                             }
-                             if (result.isCancelled) return;
-                             const auto* date = std::get_if<DateResult>(&result.data);
-                             if (!date) return;
-                             if (idx < 0 || static_cast<size_t>(idx) >= TODOIST_TASKS.getTasks().size()) return;
-
-                             {
-                               // Same reasoning as performTaskCompletion(): the render task reads
-                               // the list, and a reschedule can move the task between tabs just
-                               // as completing one removes it from all of them.
-                               RenderLock lock(*this);
-                               organizerActions::rescheduleTask(static_cast<size_t>(idx), date->packedDate);
-                               rebuildTabs();
-                             }
-                             updateSleepScreen();
-                           });
-  };
-
   const auto& task = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)];
-  if (!task.isRecurring) {
-    openPicker(cacheIndex);
-    return;
-  }
+  const uint16_t seed =
+      task.dueDays != todoist::DUE_NONE ? task.dueDays : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
 
-  // Todoist has no way to reschedule a single occurrence of a recurring task
-  // without replacing its recurrence entirely - warn before that happens.
-  startActivityForResult(
-      std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_RESCHEDULE_RECURRING_PROMPT), task.content),
-      [this, cacheIndex, openPicker](const ActivityResult& result) {
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
-          swallowConfirmRelease = true;
-        }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
-          swallowBackRelease = true;
-        }
-        if (result.isCancelled) return;
-        openPicker(cacheIndex);
-      });
+  startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
+                         [this, cacheIndex](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           const auto* date = std::get_if<DateResult>(&result.data);
+                           if (!date) return;
+                           if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size())
+                             return;
+
+                           {
+                             // Same reasoning as performTaskCompletion(): the render task reads
+                             // the list, and a reschedule can move the task between tabs just
+                             // as completing one removes it from all of them.
+                             RenderLock lock(*this);
+                             organizerActions::rescheduleTask(static_cast<size_t>(cacheIndex), date->packedDate);
+                             rebuildTabs();
+                           }
+                           updateSleepScreen();
+                         });
 }
 
 void TasksActivity::completeSelectedTask() {
