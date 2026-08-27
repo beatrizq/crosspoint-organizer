@@ -39,8 +39,15 @@ class TasksActivity final : public OrganizerScreenActivity {
   // what the filter returned, so the two are mapped through `visibleTabs`.
   enum class TabKind : uint8_t { ALL, OVERDUE, TODAY, UPCOMING, NO_DATE };
 
-  explicit TasksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialTab = 0)
-      : OrganizerScreenActivity("Tasks", renderer, mappedInput, initialTab) {}
+  // selectTaskId, when non-empty, jumps straight to that task on first paint:
+  // whichever tab it falls in, at its own row, rather than wherever
+  // initialTab/row 0 would otherwise land. One-shot -- cleared once applied,
+  // so a later tab switch behaves normally.
+  explicit TasksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialTab = 0,
+                         std::string selectTaskId = "")
+      : OrganizerScreenActivity("Tasks", renderer, mappedInput, initialTab), selectTaskId(std::move(selectTaskId)) {}
+
+  void onEnter() override;
 
  protected:
   const char* screenTitle() const override;
@@ -84,11 +91,23 @@ class TasksActivity final : public OrganizerScreenActivity {
   // have to be rebuilt on every sync, tab switch and completion.
   int cacheIndexForRow(int row) const;
 
+  // Select opens this first, rather than completeSelectedTask() directly --
+  // see rowConfirmLabel()/onRowConfirm().
+  void showRowOptions();
   // Asks first; performTaskCompletion() is what actually closes the task.
   void completeSelectedTask();
   void performTaskCompletion(int cacheIndex);
   void performTaskSync();
+  // The Options menu's "Focus session" entry opens this: a duration picker,
+  // then organizerActions::beginFocusSession() for the same task.
+  void offerFocusSession(int cacheIndex);
+  // The Options menu's "Reschedule" entry opens this: a warning first if the
+  // task is recurring (see TodoistTask::isRecurring), then the date picker.
+  void offerReschedule(int cacheIndex);
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};
+
+  // See the constructor comment. Consumed and cleared in onEnter().
+  std::string selectTaskId;
 };

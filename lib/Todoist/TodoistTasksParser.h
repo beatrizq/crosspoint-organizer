@@ -8,19 +8,21 @@
 /**
  * SAX-style extractor for the Todoist "get tasks by filter" response:
  *
- *   {"results":[{"id":"...","content":"...","due":{"date":"2026-08-17",...},...}],"next_cursor":null}
+ *   {"results":[{"id":"...","content":"...",
+ *                "due":{"date":"2026-08-17","is_recurring":false,...},...}],"next_cursor":null}
  *
- * Only id, content and due.date are kept; every other field (project, labels,
- * priority, description, duration) is walked past without being stored. The
- * body is fed in as it arrives off the socket, so a 200-task response never
- * exists in RAM as a whole — only the ~200 bytes of the task being assembled.
+ * Only id, content, due.date and due.is_recurring are kept; every other field
+ * (project, labels, priority, description, duration) is walked past without
+ * being stored. The body is fed in as it arrives off the socket, so a
+ * 200-task response never exists in RAM as a whole — only the ~200 bytes of
+ * the task being assembled.
  */
 class TodoistTasksParser {
  public:
   // Invoked once per task object, as soon as it closes. dueDate is "" when the
   // task has no due object (possible for tasks pulled in by a filter's
-  // secondary clauses).
-  using TaskSink = void (*)(void* ctx, const char* id, const char* content, const char* dueDate);
+  // secondary clauses); isRecurring is meaningless in that case too.
+  using TaskSink = void (*)(void* ctx, const char* id, const char* content, const char* dueDate, bool isRecurring);
 
   TodoistTasksParser(TaskSink sink, void* sinkCtx);
 
@@ -48,6 +50,7 @@ class TodoistTasksParser {
     TASK_CONTENT,
     TASK_DUE,
     DUE_DATE,
+    DUE_IS_RECURRING,
   };
 
   static void sOnKey(void* ctx, const char* key, size_t len);
@@ -78,4 +81,5 @@ class TodoistTasksParser {
   char currentId[32];
   char currentContent[121];
   char currentDue[11];
+  bool currentIsRecurring;
 };

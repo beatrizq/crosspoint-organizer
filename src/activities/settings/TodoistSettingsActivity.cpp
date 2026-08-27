@@ -26,6 +26,7 @@ constexpr int ROW_HINT = 4;
 void TodoistSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
 }
 
@@ -39,7 +40,13 @@ void TodoistSettingsActivity::loop() {
     return;
   }
 
+  // This screen's own activation trigger is the press, not the release (see
+  // below), so the guard mirrors that: cleared on the release of whatever was
+  // already down at entry, rather than on the next press.
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) return;
     activateSelected();
     return;
   }

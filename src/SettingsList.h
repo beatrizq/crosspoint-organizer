@@ -15,11 +15,10 @@
 #include "KOReaderCredentialStore.h"
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
-#include "companion/CompanionSprites.generated.h"
 #include "util/DictionaryRegistry.h"
 
 /**
- * The "sleep screen from an app" setting.
+ * The "what feeds the sleep screen" setting.
  *
  * Built by a function because it is registered twice: category-less in the master
  * list, which is what persists it, and pushed explicitly into the Organizer tab
@@ -28,12 +27,14 @@
  *
  * Labelled with the services rather than with the nicknames: every other row in
  * Settings names the service, and a list of user-chosen names would not tell you
- * which account each one is.
+ * which account each one is. Custom is the odd one out: it has no service to
+ * name, and picking it opens the SD file browser (SettingsActivity) rather
+ * than just recording the choice.
  */
 inline SettingInfo buildOrganizerSleepAppSetting(const StrId category = StrId::STR_NONE_OPT) {
   return SettingInfo::Enum(
       StrId::STR_SLEEP_SCREEN_APP, &CrossPointSettings::organizerSleepApp,
-      {StrId::STR_STATE_OFF, StrId::STR_TODOIST, StrId::STR_GOOGLE_CALENDAR, StrId::STR_YNAB, StrId::STR_HABITIFY},
+      {StrId::STR_CUSTOM, StrId::STR_TODOIST, StrId::STR_GOOGLE_CALENDAR, StrId::STR_YNAB, StrId::STR_HABITIFY},
       "organizerSleepApp", category);
 }
 
@@ -197,35 +198,6 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
   return s;
 }
 
-// Companion picker. The options are the generated character names, so adding a
-// .grid file surfaces a new choice with no change here. Category is
-// STR_COMPANION, not STR_CAT_DISPLAY: it still needs to be in this list for
-// toJson()/fromJson() (persistence walks this list by key, not by category),
-// but the on-device UI reaches it through its own dedicated screen
-// (CompanionSettingsActivity, off the Organizer tab) rather than the generic
-// Display list, so it must not also match one of the five on-device buckets.
-inline SettingInfo buildCompanionCharacterSetting() {
-  SettingInfo s;
-  s.nameId = StrId::STR_COMPANION_CHARACTER;
-  s.type = SettingType::ENUM;
-  s.valuePtr = &CrossPointSettings::companionId;
-  s.key = "companionId";
-  s.category = StrId::STR_COMPANION;
-  // Name plus species, because a list of bare proper nouns tells you nothing
-  // about what you are choosing. The popup cannot show sprites: its FreeInkUI
-  // DialogOption has no icon slot, and adding one would mean patching the SDK
-  // submodule and losing it on the next update.
-  s.enumStringValues.reserve(companion::COMPANION_COUNT);
-  for (int i = 0; i < companion::COMPANION_COUNT; i++) {
-    std::string label = companion::COMPANION_NAMES[i];
-    label += " (";
-    label += companion::COMPANION_KINDS[i];
-    label += ")";
-    s.enumStringValues.emplace_back(std::move(label));
-  }
-  return s;
-}
-
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
@@ -284,15 +256,32 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
 
-        // --- Companion (persisted here, rendered by its own dedicated screen --
-        // see the comment on buildCompanionCharacterSetting()) ---
+        // --- Companion (persisted here, rendered by its own dedicated screen) ---
         SettingInfo::Toggle(StrId::STR_COMPANION_ENABLED, &CrossPointSettings::companionEnabled, "companionEnabled",
-                            StrId::STR_COMPANION),
-        buildCompanionCharacterSetting(),
-        SettingInfo::Toggle(StrId::STR_COMPANION_ON_HOME, &CrossPointSettings::companionOnHome, "companionOnHome",
                             StrId::STR_COMPANION),
         SettingInfo::Toggle(StrId::STR_COMPANION_SHOW_MOOD_LABEL, &CrossPointSettings::companionShowMoodLabel,
                             "companionShowMoodLabel", StrId::STR_COMPANION),
+        // Sleep window, local wall-clock time -- rendered on-device as two HH:MM
+        // rows (CompanionSettingsActivity), but persisted here as four plain
+        // bytes since that is what toJson()/fromJson() walk by key.
+        SettingInfo::Value(StrId::STR_COMPANION_SLEEP_START_HOUR, &CrossPointSettings::companionSleepStartHour,
+                           {0, 23, 1}, "companionSleepStartHour", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_SLEEP_START_MINUTE, &CrossPointSettings::companionSleepStartMinute,
+                           {0, 59, 1}, "companionSleepStartMinute", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_SLEEP_END_HOUR, &CrossPointSettings::companionSleepEndHour, {0, 23, 1},
+                           "companionSleepEndHour", StrId::STR_COMPANION),
+        // Mood ladder tuning. Independent per-field ranges are all the generic
+        // toJson()/fromJson() loop can enforce -- the happyPoints > satisfied-
+        // Points cross-field constraint can't be expressed here, so
+        // CompanionTracker clamps again defensively wherever these are read.
+        SettingInfo::Value(StrId::STR_COMPANION_HAPPY_AT, &CrossPointSettings::companionHappyPoints, {1, 20, 1},
+                           "companionHappyPoints", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_SATISFIED_AT, &CrossPointSettings::companionSatisfiedPoints, {1, 20, 1},
+                           "companionSatisfiedPoints", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_NEGLECTED_AFTER, &CrossPointSettings::companionNeglectedDays,
+                           {1, 14, 1}, "companionNeglectedDays", StrId::STR_COMPANION),
+        SettingInfo::Value(StrId::STR_COMPANION_SLEEP_END_MINUTE, &CrossPointSettings::companionSleepEndMinute,
+                           {0, 59, 1}, "companionSleepEndMinute", StrId::STR_COMPANION),
 
         // --- Reader ---
         // Built-in font-family entry. Replaced per-call with a registry-aware

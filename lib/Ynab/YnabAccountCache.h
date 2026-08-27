@@ -62,6 +62,14 @@ class YnabAccountCache : public PersistableStore<YnabAccountCache> {
   // The account at `index`, or nullptr when out of range.
   const YnabAccount* accountAt(size_t index) const;
 
+  // Combined count of transactions dated on each account's own last sync day.
+  // Accounts sync independently (see the class comment), so there is no
+  // single "today" to compare every transaction against; each account's own
+  // transactionsSyncDate stands in for it instead, the same way
+  // GCalEventCache::getTodayCount() uses its one sync date. An account never
+  // synced (transactionsSyncDate == NO_DATE) contributes nothing.
+  size_t getTodayTransactionCount() const;
+
   void clear() { accounts.clear(); }
 };
 

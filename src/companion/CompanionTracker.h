@@ -2,6 +2,7 @@
 #include <CompanionMood.h>
 
 #include <cstdint>
+#include <string>
 
 #include "CompanionSprites.generated.h"
 
@@ -37,8 +38,9 @@ class CompanionTracker {
 
   // Call right after a task completes or habit progress changes, locally or
   // via sync. Re-resolves the day, then credits today's combined tasks+habits
-  // total into the streak the first time it clears the qualifying bar this
-  // day, and persists only when that actually happened.
+  // total into the ledger -- the qualifying-day marker the first time it
+  // clears the bar this day, and the best-day-points record on every call
+  // that beats it -- and persists only when something actually changed.
   void recordActivity();
 
   // Cheap: uses the cached day plus live reads of today's task/habit counts
@@ -61,11 +63,23 @@ class CompanionTracker {
   // untouched) when the clock has no usable reading yet.
   static bool resolveLocalDay(int32_t& outDay);
 
+  // "3 days" / "2 months" / "1 year" (or the not-yet/today wording at either
+  // end) for a companion active since `activatedDay`. Shared by the settings
+  // screen's "Active for" row and QuickPickActivity's "Age" line, so the two
+  // can never drift out of sync with each other.
+  static std::string formatAge(int32_t activatedDay);
+
  private:
   CompanionTracker() = default;
 
-  // Reads the RTC and recomputes the cached local day. Does I2C.
+  // Reads the RTC and recomputes the cached local day plus local
+  // minute-of-day. Does I2C.
   void refreshDay();
+
+  // Single RTC read behind both resolveLocalDay() and refreshDay(), so the day
+  // and the intraday minute they derive always come from the same reading
+  // rather than two I2C transactions that could straddle a midnight rollover.
+  static bool resolveLocalDayAndMinute(int32_t& outDay, uint16_t& outMinuteOfDay);
 
   // Habits marked complete right now, read live from HABITIFY_HABITS -- it
   // already resets daily on its own, so nothing about it needs persisting
@@ -73,10 +87,19 @@ class CompanionTracker {
   static uint16_t liveHabitsCompletedToday();
 
   // Single source for the mood inputs, so the pose and any figure shown beside
-  // it are always derived from the same numbers.
-  companion::MoodInput buildMoodInput() const;
+  // it are always derived from the same numbers. `thresholds` matters for its
+  // satisfiedPoints -- see MoodInput::daysSinceLastActive's fallback logic in
+  // moodInputFor() -- so callers pass the same thresholds they will go on to
+  // call evaluate() with.
+  companion::MoodInput buildMoodInput(const companion::MoodThresholds& thresholds) const;
+
+  // Cheap: cached minute-of-day plus the settings fields, no I2C. Gated on
+  // clockValid the same way the Milestone check is -- a stale minuteOfDay
+  // from before the clock was last valid must not accidentally match.
+  bool isWithinSleepWindow() const;
 
   int32_t localDay = 0;
+  uint16_t localMinuteOfDay = 0;
   bool clockValid = false;
 };
 

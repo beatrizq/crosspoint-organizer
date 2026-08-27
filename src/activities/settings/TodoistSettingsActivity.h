@@ -26,4 +26,12 @@ class TodoistSettingsActivity final : public Activity {
 
   void handleSelection();
   // Puts the wallpaper and the sleep screen mode back as they were before the
+
+  // SettingsActivity dispatches this screen on Confirm going down, so that
+  // same press can still be seen here once this screen is already active.
+  // Unswallowed, it reads as a fresh Confirm-press on row 0 (Nickname) and
+  // opens the keyboard before the user has touched anything. Armed in
+  // onEnter() only when Confirm is still physically down at that point, and
+  // cleared once it is released.
+  bool swallowConfirmRelease = false;
 };

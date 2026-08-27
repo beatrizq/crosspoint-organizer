@@ -32,8 +32,13 @@ class HabitsActivity final : public OrganizerScreenActivity {
   enum class Tab : uint8_t { TODAY = 0 };
   static constexpr int TAB_COUNT = 1;
 
-  explicit HabitsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : OrganizerScreenActivity("Habits", renderer, mappedInput, static_cast<int>(Tab::TODAY)) {}
+  // selectHabitId, when non-empty, selects that habit's row on first paint
+  // instead of row 0. One-shot -- cleared once applied.
+  explicit HabitsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string selectHabitId = "")
+      : OrganizerScreenActivity("Habits", renderer, mappedInput, static_cast<int>(Tab::TODAY)),
+        selectHabitId(std::move(selectHabitId)) {}
+
+  void onEnter() override;
 
  protected:
   const char* screenTitle() const override;
@@ -58,10 +63,23 @@ class HabitsActivity final : public OrganizerScreenActivity {
   int cacheIndexForRow(int row) const;
   bool isVisible(size_t cacheIndex) const;
 
+  // See the constructor comment. Consumed and cleared in onEnter().
+  std::string selectHabitId;
+
+  // Select opens this first, rather than completeSelectedHabit() directly --
+  // see rowConfirmLabel()/onRowConfirm().
+  void showRowOptions();
   // Opens the number entry; performIncrement() is what actually moves the number.
   void completeSelectedHabit();
   void performIncrement(int cacheIndex, float amount);
+  // The Options menu's "Complete" entry opens this: marks the habit done
+  // directly, via organizerActions::completeHabit() - works even for a
+  // goal-less habit completeSelectedHabit()'s number entry cannot touch.
+  void markSelectedHabitComplete();
   void performSync();
+  // The Options menu's "Focus session" entry opens this: a duration picker,
+  // then organizerActions::beginFocusSession() for the same habit.
+  void offerFocusSession(int cacheIndex);
   // Renders progress as "x/y", or as a bare count for a habit with no goal.
   void formatProgress(const HabitifyHabit& habit, char* out, size_t outSize) const;
 };

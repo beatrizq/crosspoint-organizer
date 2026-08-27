@@ -1,0 +1,604 @@
+<title>Pancake Sprite Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #efede8;
+    --panel: #ffffff;
+    --ink: #1a1917;
+    --ink-soft: #6b665c;
+    --line: #d8d4cb;
+    --line-strong: #b8b3a6;
+    --accent: #c1712f;
+    --accent-soft: #e7c9a6;
+    --accent-ink: #ffffff;
+    --transparent-a: #f4f2ed;
+    --transparent-b: #e6e2d8;
+    --shadow: 0 1px 2px rgba(26, 25, 23, 0.06), 0 8px 24px rgba(26, 25, 23, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #17181a;
+      --panel: #221f1c;
+      --ink: #f2eee6;
+      --ink-soft: #ada89c;
+      --line: #3a362f;
+      --line-strong: #4c473d;
+      --accent: #e2954f;
+      --accent-soft: #5b3f22;
+      --accent-ink: #1a1917;
+      --transparent-a: #221f1c;
+      --transparent-b: #2c2822;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #17181a;
+    --panel: #221f1c;
+    --ink: #f2eee6;
+    --ink-soft: #ada89c;
+    --line: #3a362f;
+    --line-strong: #4c473d;
+    --accent: #e2954f;
+    --accent-soft: #5b3f22;
+    --accent-ink: #1a1917;
+    --transparent-a: #221f1c;
+    --transparent-b: #2c2822;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    margin: 0;
+    padding: 32px 16px 64px;
+    display: flex;
+    justify-content: center;
+  }
+  .app { width: 100%; max-width: 720px; }
+
+  header.page { margin-bottom: 20px; }
+  h1 {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 4px;
+    text-wrap: balance;
+  }
+  .sub {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+  }
+  .tab:hover { border-color: var(--line-strong); color: var(--ink); }
+  .tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .tab:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .toolrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .palette { display: flex; gap: 6px; }
+  .swatch {
+    width: 34px; height: 34px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    cursor: pointer;
+    position: relative;
+    display: flex; align-items: flex-end; justify-content: flex-end;
+    padding: 2px 3px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.6rem;
+    color: var(--ink-soft);
+  }
+  .swatch.selected { border-color: var(--accent); border-width: 2px; box-shadow: 0 0 0 2px var(--accent-soft); }
+  .swatch[data-cell="."] { background: repeating-conic-gradient(var(--transparent-a) 0% 25%, var(--transparent-b) 0% 50%) 0 0/10px 10px; }
+  .swatch[data-cell="#"] { background: var(--ink); color: var(--paper); }
+  .swatch[data-cell="w"] { background: #fff; border-color: var(--line-strong); }
+  .swatch[data-cell="o"] { background: repeating-conic-gradient(var(--accent) 0% 25%, #fff 0% 50%) 0 0/10px 10px; }
+  .swatch[data-cell="d"] { background: repeating-conic-gradient(var(--accent-soft) 0% 25%, #fff 0% 50%) 0 0/14px 14px; }
+
+  .preview-toggle {
+    display: flex; align-items: center; gap: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+  }
+  .switch {
+    width: 36px; height: 20px; border-radius: 10px;
+    background: var(--line); position: relative; cursor: pointer; border: none;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%; background: var(--panel);
+    transition: transform 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { transform: translateX(16px); }
+
+  .canvas-wrap { display: flex; justify-content: center; overflow-x: auto; }
+  canvas {
+    image-rendering: pixelated;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .statusrow {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 10px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button.btn {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.btn:hover { border-color: var(--line-strong); }
+  button.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  h2.section {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+  }
+  textarea {
+    width: 100%;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px;
+    resize: vertical;
+  }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    font-size: 0.76rem; color: var(--ink-soft);
+    margin-top: 12px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend b { font-family: "IBM Plex Mono", monospace; color: var(--ink); }
+</style>
+
+<div class="app">
+  <header class="page">
+    <h1>Pancake Sprite Editor</h1>
+    <p class="sub">34&times;30, 1-bit. Paint with the palette, drag to fill, toggle device preview to see the real dither.</p>
+  </header>
+
+  <div class="card">
+    <div class="tabs" id="tabs"></div>
+
+    <div class="toolrow">
+      <div class="palette" id="palette"></div>
+      <div class="preview-toggle">
+        <span id="modeLabel">Edit</span>
+        <button class="switch" id="previewSwitch" aria-label="Toggle device preview"></button>
+      </div>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="grid" width="1" height="1"></canvas>
+    </div>
+
+    <div class="statusrow">
+      <span id="hoverInfo">row –, col –</span>
+      <span id="modeInfo"></span>
+    </div>
+
+    <div class="legend">
+      <span><b>1 .</b> transparent</span>
+      <span><b>2 #</b> ink</span>
+      <span><b>3 w</b> paper</span>
+      <span><b>4 o</b> dither 50%</span>
+      <span><b>5 d</b> dither 25%</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolrow">
+      <h2 class="section" style="margin:0">Grid text</h2>
+      <div class="actions">
+        <button class="btn" id="resetBtn">Reset this mood</button>
+        <button class="btn" id="copyModeBtn">Copy this mood</button>
+        <button class="btn primary" id="copyBtn">Copy all</button>
+      </div>
+    </div>
+    <textarea id="exportBox" rows="8" readonly></textarea>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Load grid text</h2>
+    <p class="sub" style="margin:0 0 10px">
+      Paste either a full block (with <code>[mood]</code> headers) to load several moods at once,
+      or just a bare 34&times;30 grid with no header — that loads into whichever tab is active now:
+      <b id="loadTargetMood" style="font-family:'IBM Plex Mono',monospace"></b>.
+    </p>
+    <textarea id="importBox" rows="6" placeholder="Paste a .grid-format block, or a single bare 30-line grid, then click Load."></textarea>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn primary" id="loadBtn">Load</button>
+      <span class="sub" id="loadStatus"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const WIDTH = 34, HEIGHT = 30, CELL = 15;
+const MOODS = ["happy", "satisfied", "cranky", "neglected", "milestone", "sleeping"];
+const PENS = [".", "#", "w", "o", "d"];
+const STORAGE_KEY = "pancake-sprite-editor-v7";
+
+// -- default draft, seeded from the current design ---------------------------
+const DEFAULT_GRIDS = {"happy": ["..................................", ".....#............................", "....#.#...........................", ".....#......##########........#...", "..#......####........####....#.#..", ".#.#...###..............###...#...", "..#...##..................##......", ".....##....................##.....", "....##......................##....", "....#........................#....", "...##......#.#......#.#......##...", "...#.......###......###.......#...", "...#.......###.####.###.......#...", "...##...........##...........##...", "...##.....###........###.....##...", "....##.....##........##.....##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", ".....###..................###.....", ".......####............####.......", "..........##############..........", ".................................."], "satisfied": ["..................................", "..................................", "..................................", "............##########............", ".........####........####.........", ".......###..............###.......", "......##..................##......", ".....##....................##.....", "....##......................##....", "....#........................#....", "...##......#.#......#.#......##...", "...#.......###......###.......#...", "...#.......###.#..#.###.......#...", "...##...........##...........##...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", ".....###..................###.....", ".......####............####.......", "..........##############..........", ".................................."], "cranky": ["..................................", "..................................", "..................................", "............##########............", ".........####........####.........", ".......###..............###.......", "......##..................##......", ".....##....................##.....", "....##......................##....", "....#........................#....", "...##......###......###......##...", "...#.......###......###.......#...", "...#.......#.#......#.#.......#...", "...##..........####..........##...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", ".....###..................###.....", ".......####............####.......", "..........##############..........", ".................................."], "neglected": ["..................................", "..................................", "..................................", "............##########............", ".........####........####.........", ".......###..............###.......", "......##..................##......", ".....##....................##.....", "....##......................##....", "....#........................#....", "...##........................##...", "...#.......###......###.......#...", "...#.......##.......##........#...", "...##...........##...........##...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", ".....###..................###.....", ".......####............####.......", "..........##############..........", ".................................."], "milestone": ["..................................", "....#.............................", "..#.#.............................", "..#.#.......##########............", "..#......####........####.........", "....#..###..............###.......", "..#...##...###......###...##......", ".....##...#...#....#...#...##.....", "....##......................##....", "....#......#.#......#.#......#....", "...##......###......###......##...", "...#.......###......###.......#...", "...#...........####...........#...", "...##..........####..........##...", "...##..........####..........##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", ".....###..................###.....", ".......####............####.......", "..........##############..........", ".................................."], "sleeping": ["...............................###", "..............................###.", ".............................###..", "............##########.......###..", ".........####........####....###..", ".......###..............###...###.", "......##..................##...###", ".....##....................##.....", "....##......................##....", "....#........................#....", "...##........................##...", "...#.......###......###.......#...", "...#...........####...........#...", "...##..........####..........##...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", "....####..................####....", "...##..####............####..##...", "...#......##############......#...", "...##........................##...", "....##......................##....", ".....###..................###.....", ".......####............####.......", "..........##############..........", ".................................."]};
+
+function ditherInk(cell, x, y) {
+  if (cell === "#") return true;
+  if (cell === "o") return (x + y) % 2 === 0;
+  if (cell === "d") return x % 2 === 0 && y % 2 === 0;
+  return false;
+}
+
+function loadGrids() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const ok = MOODS.every((m) => Array.isArray(parsed[m]) && parsed[m].length === HEIGHT);
+      if (ok) return parsed;
+    }
+  } catch (e) {
+    /* private mode / disabled storage: fall back below */
+  }
+  return JSON.parse(JSON.stringify(DEFAULT_GRIDS));
+}
+
+function saveGrids() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(grids));
+  } catch (e) {
+    /* not persisted this session; editing still works in memory */
+  }
+}
+
+let grids = loadGrids();
+let currentMood = MOODS[0];
+let currentPen = "#";
+let previewMode = false;
+let painting = false;
+
+const canvas = document.getElementById("grid");
+canvas.width = WIDTH * CELL;
+canvas.height = HEIGHT * CELL;
+const ctx = canvas.getContext("2d");
+
+const tabsEl = document.getElementById("tabs");
+MOODS.forEach((m) => {
+  const b = document.createElement("button");
+  b.className = "tab" + (m === currentMood ? " active" : "");
+  b.textContent = m;
+  b.dataset.mood = m;
+  b.addEventListener("click", () => {
+    currentMood = m;
+    [...tabsEl.children].forEach((c) => c.classList.toggle("active", c.dataset.mood === m));
+    render();
+    updateExport();
+    updateLoadTarget();
+  });
+  tabsEl.appendChild(b);
+});
+
+function updateLoadTarget() {
+  document.getElementById("loadTargetMood").textContent = currentMood;
+}
+updateLoadTarget();
+
+const paletteEl = document.getElementById("palette");
+const PEN_LABELS = { ".": "1", "#": "2", w: "3", o: "4", d: "5" };
+PENS.forEach((p) => {
+  const b = document.createElement("button");
+  b.className = "swatch" + (p === currentPen ? " selected" : "");
+  b.dataset.cell = p;
+  b.textContent = PEN_LABELS[p];
+  b.title = p;
+  b.addEventListener("click", () => selectPen(p));
+  paletteEl.appendChild(b);
+});
+
+function selectPen(p) {
+  currentPen = p;
+  [...paletteEl.children].forEach((c) => c.classList.toggle("selected", c.dataset.cell === p));
+}
+
+document.addEventListener("keydown", (e) => {
+  const idx = "12345".indexOf(e.key);
+  if (idx !== -1) selectPen(PENS[idx]);
+});
+
+const previewSwitch = document.getElementById("previewSwitch");
+const modeLabel = document.getElementById("modeLabel");
+const modeInfo = document.getElementById("modeInfo");
+previewSwitch.addEventListener("click", () => {
+  previewMode = !previewMode;
+  previewSwitch.classList.toggle("on", previewMode);
+  modeLabel.textContent = previewMode ? "Device" : "Edit";
+  modeInfo.textContent = previewMode ? "showing exact on-device dither" : "";
+  render();
+});
+
+function setCell(row, col, val) {
+  const r = grids[currentMood][row];
+  grids[currentMood][row] = r.slice(0, col) + val + r.slice(col + 1);
+}
+
+function paintAt(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const col = Math.floor(((clientX - rect.left) * scaleX) / CELL);
+  const row = Math.floor(((clientY - rect.top) * scaleY) / CELL);
+  if (col < 0 || col >= WIDTH || row < 0 || row >= HEIGHT) return null;
+  if (!previewMode) {
+    setCell(row, col, currentPen);
+    render();
+    updateExport();
+    saveGrids();
+  }
+  return { row, col };
+}
+
+const hoverInfo = document.getElementById("hoverInfo");
+function updateHover(row, col) {
+  if (row == null) {
+    hoverInfo.textContent = "row –, col –";
+    return;
+  }
+  const cell = grids[currentMood][row][col];
+  hoverInfo.textContent = `row ${row}, col ${col} — "${cell}"`;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  painting = true;
+  canvas.setPointerCapture(e.pointerId);
+  const pos = paintAt(e.clientX, e.clientY);
+  if (pos) updateHover(pos.row, pos.col);
+});
+canvas.addEventListener("pointermove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const col = Math.floor(((e.clientX - rect.left) * scaleX) / CELL);
+  const row = Math.floor(((e.clientY - rect.top) * scaleY) / CELL);
+  if (col >= 0 && col < WIDTH && row >= 0 && row < HEIGHT) updateHover(row, col);
+  else updateHover(null);
+  if (painting) paintAt(e.clientX, e.clientY);
+});
+canvas.addEventListener("pointerup", () => { painting = false; });
+canvas.addEventListener("pointerleave", () => { updateHover(null); });
+
+function styleFor(cell, x, y) {
+  const cs = getComputedStyle(document.documentElement);
+  const ink = cs.getPropertyValue("--ink").trim();
+  const accent = cs.getPropertyValue("--accent").trim();
+  const accentSoft = cs.getPropertyValue("--accent-soft").trim();
+  const paper = "#ffffff";
+  const ta = cs.getPropertyValue("--transparent-a").trim();
+  const tb = cs.getPropertyValue("--transparent-b").trim();
+
+  if (previewMode) return ditherInk(cell, x, y) ? ink : paper;
+
+  if (cell === "#") return ink;
+  if (cell === "w") return paper;
+  if (cell === ".") return (x + y) % 2 === 0 ? ta : tb;
+  if (cell === "o") return ditherInk(cell, x, y) ? accent : paper;
+  if (cell === "d") return ditherInk(cell, x, y) ? accentSoft : paper;
+  return paper;
+}
+
+function render() {
+  const rows = grids[currentMood];
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < WIDTH; x++) {
+      ctx.fillStyle = styleFor(rows[y][x], x, y);
+      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+    }
+  }
+  if (!previewMode) {
+    const cs = getComputedStyle(document.documentElement);
+    ctx.strokeStyle = cs.getPropertyValue("--line").trim();
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= WIDTH; x++) {
+      ctx.beginPath();
+      ctx.moveTo(x * CELL + 0.5, 0);
+      ctx.lineTo(x * CELL + 0.5, HEIGHT * CELL);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= HEIGHT; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * CELL + 0.5);
+      ctx.lineTo(WIDTH * CELL, y * CELL + 0.5);
+      ctx.stroke();
+    }
+  }
+}
+
+const exportBox = document.getElementById("exportBox");
+function buildExportText() {
+  const lines = ["name: Pancake", "kind: pancake", ""];
+  MOODS.forEach((m) => {
+    lines.push(`[${m}]`);
+    lines.push(...grids[m]);
+    lines.push("");
+  });
+  return lines.join("\n");
+}
+function buildExportTextForMood(m) {
+  return grids[m].join("\n");
+}
+function updateExport() {
+  exportBox.value = buildExportText();
+}
+
+async function copyText(text, btnId, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    flashStatus(btnId, label);
+    return;
+  } catch (e) {
+    /* fall through to the manual-select fallback below */
+  }
+  // Clipboard API blocked (sandboxed context, permissions, etc.): fall back to
+  // a temporary offscreen textarea so Ctrl/Cmd+C still works, without
+  // disturbing the persistent "all moods" export box.
+  const tmp = document.createElement("textarea");
+  tmp.value = text;
+  tmp.style.position = "fixed";
+  tmp.style.opacity = "0";
+  document.body.appendChild(tmp);
+  tmp.focus();
+  tmp.select();
+  flashStatus(btnId, "Selected — press Ctrl/Cmd+C");
+  setTimeout(() => document.body.removeChild(tmp), 3000);
+}
+
+document.getElementById("copyBtn").addEventListener("click", () => copyText(buildExportText(), "copyBtn", "Copied"));
+document.getElementById("copyModeBtn").addEventListener("click", () =>
+  copyText(buildExportTextForMood(currentMood), "copyModeBtn", "Copied")
+);
+
+function flashStatus(btnId, msg) {
+  const btn = document.getElementById(btnId);
+  const original = btn.textContent;
+  btn.textContent = msg;
+  setTimeout(() => { btn.textContent = original; }, 1400);
+}
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  grids[currentMood] = DEFAULT_GRIDS[currentMood].slice();
+  render();
+  updateExport();
+  saveGrids();
+});
+
+function validateRow(line, context) {
+  if (line.length !== WIDTH) throw new Error(`row ${context} is ${line.length} chars, expected ${WIDTH}: "${line}"`);
+  for (const ch of line) {
+    if (PENS.indexOf(ch) === -1) throw new Error(`invalid cell "${ch}" ${context}`);
+  }
+}
+
+// Bare grid: no `[mood]` header at all - just this mood's 30 rows, pasted
+// straight from "Copy this mood" (or hand-typed). Loads into whichever tab is
+// active. A block with at least one `[mood]` header is parsed as before and
+// can update several moods at once.
+function parseGridText(text, activeMood) {
+  const rawLines = text.split("\n").map((l) => l.replace(/\r$/, ""));
+  const hasHeader = rawLines.some((l) => /^\[[a-z]+\]$/.test(l.trim()));
+
+  if (!hasHeader) {
+    const lines = rawLines.slice();
+    while (lines.length && lines[0].trim() === "") lines.shift();
+    while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+    if (lines.length !== HEIGHT) {
+      throw new Error(`expected ${HEIGHT} rows for a single mood (no [mood] header found), got ${lines.length}`);
+    }
+    lines.forEach((line, i) => validateRow(line, `${i}`));
+    return { [activeMood]: lines };
+  }
+
+  const out = {};
+  let current = null;
+  for (const line of rawLines) {
+    const stripped = line.trim();
+    if (stripped.startsWith("[") && stripped.endsWith("]")) {
+      current = stripped.slice(1, -1);
+      out[current] = [];
+      continue;
+    }
+    if (current === null || stripped === "") continue;
+    validateRow(line, `under [${current}]`);
+    out[current].push(line);
+  }
+  for (const m of Object.keys(out)) {
+    if (out[m].length !== HEIGHT) throw new Error(`[${m}] has ${out[m].length} rows, expected ${HEIGHT}`);
+  }
+  return out;
+}
+
+const loadStatus = document.getElementById("loadStatus");
+document.getElementById("loadBtn").addEventListener("click", () => {
+  try {
+    const parsed = parseGridText(document.getElementById("importBox").value, currentMood);
+    const loadedMoods = MOODS.filter((m) => parsed[m]);
+    if (loadedMoods.length === 0) throw new Error("no recognized mood section found");
+    loadedMoods.forEach((m) => { grids[m] = parsed[m]; });
+    render();
+    updateExport();
+    saveGrids();
+    loadStatus.textContent = "Loaded: " + loadedMoods.join(", ");
+    loadStatus.style.color = "";
+  } catch (e) {
+    loadStatus.textContent = "Error: " + e.message;
+    loadStatus.style.color = "#c0392b";
+  }
+});
+
+render();
+updateExport();
+</script>

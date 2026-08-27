@@ -67,9 +67,32 @@ struct FilePathResult {
   std::string path;
 };
 
-using ResultVariant =
-    std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult, IntervalResult,
-                 PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult, FilePathResult>;
+// A date picked in RescheduleTaskActivity: packed days since 2000-01-01, the
+// same form TodoistTask::dueDays already uses (see lib/CivilTime/CivilTime.h).
+struct DateResult {
+  uint16_t packedDate = 0;
+};
+
+// What QuickPickActivity was showing when it exited -- possibly rerolled via
+// its own Random action, so the caller (Home) can keep its own small bubble
+// in sync rather than showing whatever it originally rolled.
+struct QuickPickResult {
+  std::string text;
+  std::string itemId;
+  bool isHabit = false;
+  bool poolEmpty = true;
+};
+
+// Which entry OptionsMenuActivity's popup was dismissed on. Only meaningful
+// when the result is not cancelled -- Back/tap-outside reports isCancelled
+// instead of an index.
+struct OptionPickResult {
+  int index = 0;
+};
+
+using ResultVariant = std::variant<std::monostate, WifiResult, KeyboardResult, MenuResult, ChapterResult, PercentResult,
+                                   IntervalResult, PageResult, ProgressChangeResult, NetworkModeResult, FootnoteResult,
+                                   FilePathResult, QuickPickResult, OptionPickResult, DateResult>;
 
 struct ActivityResult {
   bool isCancelled = false;

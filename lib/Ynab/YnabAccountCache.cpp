@@ -102,3 +102,14 @@ void YnabAccountCache::setTransactions(const std::string& accountId, std::vector
 const YnabAccount* YnabAccountCache::accountAt(const size_t index) const {
   return index < accounts.size() ? &accounts[index] : nullptr;
 }
+
+size_t YnabAccountCache::getTodayTransactionCount() const {
+  size_t total = 0;
+  for (const auto& account : accounts) {
+    if (account.transactionsSyncDate == civil::NO_DATE) continue;
+    total += static_cast<size_t>(
+        std::count_if(account.transactions.begin(), account.transactions.end(),
+                      [&account](const YnabTransaction& t) { return t.date == account.transactionsSyncDate; }));
+  }
+  return total;
+}

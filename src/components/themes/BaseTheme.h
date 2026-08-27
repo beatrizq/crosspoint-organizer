@@ -52,6 +52,13 @@ struct ThemeMetrics {
   int homeCoverTileHeight;
   int homeRecentBooksCount;
   bool homeContinueReadingInMenu;
+  // False when a theme's own drawRecentBookCover() has moved off Home
+  // entirely (see ReadMenuActivity, which calls the same per-theme function
+  // for its own leading row instead) -- distinct from
+  // homeContinueReadingInMenu, which is about whether the *menu* carries a
+  // "Read"/"Continue reading" entry, not about whether the cover card itself
+  // draws.
+  bool homeShowsCoverCard;
   int homeMenuTopOffset;
   // Home menu as tiles rather than rows: columns across, and the height of one
   // tile including its label. Zero columns keeps the list.
@@ -156,6 +163,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .homeCoverTileHeight = 400,
                                  .homeRecentBooksCount = 1,
                                  .homeContinueReadingInMenu = false,
+                                 .homeShowsCoverCard = true,
                                  .homeMenuTopOffset = 10,
                                  .buttonHintsHeight = 40,
                                  .sideButtonHintsWidth = 30,
@@ -282,9 +290,13 @@ class BaseTheme {
   // Vertical step between tile rows, given the height the grid has to fill and
   // how many tiles go in it. The activity hit-tests with this too.
   virtual int getGridRowStep(int contentHeight, int buttonCount) const;
+  // badgeCount, when given, returns a notification-style count for a tile (0 =
+  // no badge). A theme that has no room to draw one - anything falling back to
+  // drawButtonMenu's row list - is free to ignore it.
   virtual void drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon) const;
+                              const std::function<UIIcon(int index)>& rowIcon,
+                              const std::function<int(int index)>& badgeCount = nullptr) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
                                int selectedIndex) const;

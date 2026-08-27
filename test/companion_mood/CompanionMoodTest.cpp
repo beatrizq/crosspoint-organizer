@@ -23,42 +23,42 @@ MoodInput withClock(uint16_t tasksToday, uint16_t habitsToday, uint16_t daysSinc
 
 // ---------------------------------------------------------------- mood ladder
 
-TEST(CompanionMood, EnoughTasksAloneIsThriving) {
+TEST(CompanionMood, EnoughTasksAloneIsHappy) {
   const MoodThresholds t;
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 0)), Mood::Thriving);
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints + 5, 0, 0)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints, 0, 0)), Mood::Happy);
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints + 5, 0, 0)), Mood::Happy);
 }
 
-TEST(CompanionMood, EnoughHabitsAloneIsThriving) {
+TEST(CompanionMood, EnoughHabitsAloneIsHappy) {
   const MoodThresholds t;
-  EXPECT_EQ(companion::evaluate(withClock(0, t.thrivingPoints, 0)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(0, t.happyPoints, 0)), Mood::Happy);
 }
 
-TEST(CompanionMood, TasksAndHabitsMixToReachThriving) {
+TEST(CompanionMood, TasksAndHabitsMixToReachHappy) {
   const MoodThresholds t;
-  ASSERT_GE(t.thrivingPoints, 2);
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints - 1, 1, 0)), Mood::Thriving);
+  ASSERT_GE(t.happyPoints, 2);
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints - 1, 1, 0)), Mood::Happy);
 }
 
-TEST(CompanionMood, JustUnderThrivingIsStillHappy) {
+TEST(CompanionMood, JustUnderHappyIsStillSatisfied) {
   const MoodThresholds t;
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints - 1, 0, 0)), Mood::Happy);
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 0)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints - 1, 0, 0)), Mood::Satisfied);
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints, 0, 0)), Mood::Happy);
 }
 
-TEST(CompanionMood, AnyCompletionTodayIsHappy) {
-  EXPECT_EQ(companion::evaluate(withClock(1, 0, 0)), Mood::Happy);
-  EXPECT_EQ(companion::evaluate(withClock(0, 1, 0)), Mood::Happy);
+TEST(CompanionMood, AnyCompletionTodayIsSatisfied) {
+  EXPECT_EQ(companion::evaluate(withClock(1, 0, 0)), Mood::Satisfied);
+  EXPECT_EQ(companion::evaluate(withClock(0, 1, 0)), Mood::Satisfied);
 }
 
 TEST(CompanionMood, NoGraceForYesterdaysActivity) {
   // Nothing done today: mood decays immediately, with no carry-over credit
   // for whatever happened on a previous day.
-  EXPECT_EQ(companion::evaluate(withClock(0, 0, 1)), Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 1)), Mood::Cranky);
 }
 
-TEST(CompanionMood, StaysPeckishUntilNeglectedDaysIsReached) {
-  EXPECT_EQ(companion::evaluate(withClock(0, 0, 2)), Mood::Peckish);
+TEST(CompanionMood, StaysCrankyUntilNeglectedDaysIsReached) {
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 2)), Mood::Cranky);
 }
 
 TEST(CompanionMood, ThreeQuietDaysIsNeglected) {
@@ -71,37 +71,37 @@ TEST(CompanionMood, NeglectIsRecoverableTheSameDay) {
   // straight back to the top.
   EXPECT_EQ(companion::evaluate(withClock(0, 0, 400)), Mood::Neglected);
   const MoodThresholds t;
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 400)), Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints, 0, 400)), Mood::Happy);
 }
 
 TEST(CompanionMood, ThresholdsAreConfigurable) {
   MoodThresholds relaxed;
-  relaxed.thrivingPoints = 1;
+  relaxed.happyPoints = 1;
   relaxed.neglectedDays = 7;
-  EXPECT_EQ(companion::evaluate(withClock(1, 0, 0), relaxed), Mood::Thriving);
-  EXPECT_EQ(companion::evaluate(withClock(0, 0, 5), relaxed), Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(withClock(1, 0, 0), relaxed), Mood::Happy);
+  EXPECT_EQ(companion::evaluate(withClock(0, 0, 5), relaxed), Mood::Cranky);
   EXPECT_EQ(companion::evaluate(withClock(0, 0, 7), relaxed), Mood::Neglected);
 }
 
 // -------------------------------------------------------- clockless fallback
 
-TEST(CompanionMood, WithoutClockNeverFallsBelowHappy) {
+TEST(CompanionMood, WithoutClockNeverFallsBelowSatisfied) {
   MoodInput in;
   in.clockValid = false;
   in.tasksCompletedToday = 0;
   in.habitsCompletedToday = 0;
   in.daysSinceLastActive = 999;  // garbage without a clock; must be ignored
-  EXPECT_EQ(companion::evaluate(in), Mood::Happy);
+  EXPECT_EQ(companion::evaluate(in), Mood::Satisfied);
 }
 
-TEST(CompanionMood, WithoutClockThrivingStillReachable) {
+TEST(CompanionMood, WithoutClockHappyStillReachable) {
   // Today's task/habit counts are live reads independent of the RTC, so
-  // Thriving must stay reachable even when the clock is invalid.
+  // Happy must stay reachable even when the clock is invalid.
   const MoodThresholds t;
   MoodInput in;
   in.clockValid = false;
-  in.tasksCompletedToday = t.thrivingPoints;
-  EXPECT_EQ(companion::evaluate(in), Mood::Thriving);
+  in.tasksCompletedToday = t.happyPoints;
+  EXPECT_EQ(companion::evaluate(in), Mood::Happy);
 }
 
 // ------------------------------------------------------------ calendar maths
@@ -200,50 +200,52 @@ namespace {
 constexpr int32_t kDay = 20000;  // arbitrary local day number
 }  // namespace
 
-TEST(CompanionLedger, FirstQualifyingDayStartsAStreak) {
+TEST(CompanionLedger, FirstQualifyingDaySetsLastQualifyingDayAndRecord) {
   DayLedger led;
   EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 1, 0));
-  EXPECT_EQ(led.streakDays, 1);
-  EXPECT_EQ(led.bestStreakDays, 1);
+  EXPECT_EQ(led.bestDayPoints, 1);
   EXPECT_EQ(led.lastQualifyingDay, kDay);
 }
 
-TEST(CompanionLedger, SecondCreditSameDayDoesNotDoubleCount) {
+TEST(CompanionLedger, HigherPointsLaterSameDayStillUpdatesTheRecord) {
+  // Today's total only grows as more is completed, so a later call the same
+  // day with a higher total must still register as a new high, even though
+  // lastQualifyingDay itself does not move again.
   DayLedger led;
   EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 1, 0));
-  // A second task completed later the same day must not extend the streak
-  // again.
+  EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 2, 0));
+  EXPECT_EQ(led.bestDayPoints, 2);
+  EXPECT_EQ(led.lastQualifyingDay, kDay);
+}
+
+TEST(CompanionLedger, SameOrLowerPointsSameDayReportsNoChange) {
+  DayLedger led;
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  // Neither the qualifying-day marker nor the record moves, so nothing
+  // changed and the caller should not persist.
   EXPECT_FALSE(companion::creditQualifyingDay(led, kDay, 2, 0));
-  EXPECT_EQ(led.streakDays, 1);
+  EXPECT_EQ(led.bestDayPoints, 3);
 }
 
-TEST(CompanionLedger, ConsecutiveDaysExtendTheStreak) {
+TEST(CompanionLedger, ALaterDayWithFewerPointsDoesNotBeatTheRecord) {
   DayLedger led;
-  for (int32_t d = 0; d < 5; ++d) companion::creditQualifyingDay(led, kDay + d, 1, 0);
-  EXPECT_EQ(led.streakDays, 5);
-  EXPECT_EQ(led.bestStreakDays, 5);
-}
-
-TEST(CompanionLedger, GapResetsStreakButKeepsBest) {
-  DayLedger led;
-  for (int32_t d = 0; d < 4; ++d) companion::creditQualifyingDay(led, kDay + d, 1, 0);
-  ASSERT_EQ(led.streakDays, 4);
-  companion::creditQualifyingDay(led, kDay + 10, 1, 0);  // week-long gap
-  EXPECT_EQ(led.streakDays, 1);
-  EXPECT_EQ(led.bestStreakDays, 4);
+  companion::creditQualifyingDay(led, kDay, 5, 0);
+  companion::creditQualifyingDay(led, kDay + 10, 1, 0);
+  EXPECT_EQ(led.bestDayPoints, 5);
+  EXPECT_EQ(led.lastQualifyingDay, kDay + 10) << "the qualifying-day marker still moves forward";
 }
 
 TEST(CompanionLedger, ZeroActivityDoesNotQualifyTheDay) {
   DayLedger led;
   EXPECT_FALSE(companion::creditQualifyingDay(led, kDay, 0, 0));
-  EXPECT_EQ(led.streakDays, 0);
+  EXPECT_EQ(led.bestDayPoints, 0);
   EXPECT_EQ(led.lastQualifyingDay, DayLedger::NEVER);
 }
 
 TEST(CompanionLedger, HabitsAloneQualifyJustLikeTasks) {
   DayLedger led;
   EXPECT_TRUE(companion::creditQualifyingDay(led, kDay, 0, 1));
-  EXPECT_EQ(led.streakDays, 1);
+  EXPECT_EQ(led.bestDayPoints, 1);
 }
 
 TEST(CompanionLedger, MoodInputReportsTodaysCounts) {
@@ -253,7 +255,7 @@ TEST(CompanionLedger, MoodInputReportsTodaysCounts) {
   EXPECT_EQ(in.tasksCompletedToday, 2);
   EXPECT_EQ(in.habitsCompletedToday, 1);
   EXPECT_EQ(in.daysSinceLastActive, 0);
-  EXPECT_EQ(companion::evaluate(in), companion::Mood::Thriving);
+  EXPECT_EQ(companion::evaluate(in), companion::Mood::Happy);
 }
 
 TEST(CompanionLedger, MoodInputReflectsLiveCountsOnANewDay) {
@@ -261,32 +263,31 @@ TEST(CompanionLedger, MoodInputReflectsLiveCountsOnANewDay) {
   companion::creditQualifyingDay(led, kDay, 3, 0);
   // A new day: the caller passes 0 (yesterday's completions do not carry),
   // and the ledger reports one day since the last qualifying day. With no
-  // activity credited today, that is already enough to read as Peckish -
+  // activity credited today, that is already enough to read as Cranky -
   // yesterday's streak buys no grace today.
   const auto in = companion::moodInputFor(led, kDay + 1, true, 0, 0);
   EXPECT_EQ(in.tasksCompletedToday, 0);
   EXPECT_EQ(in.daysSinceLastActive, 1);
-  EXPECT_EQ(companion::evaluate(in), companion::Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(in), companion::Mood::Cranky);
 }
 
 TEST(CompanionLedger, MoodDecaysAcrossQuietDays) {
   DayLedger led;
   companion::creditQualifyingDay(led, kDay, 3, 0);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0, 0)), companion::Mood::Peckish);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), companion::Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0, 0)), companion::Mood::Cranky);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), companion::Mood::Cranky);
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0, 0)), companion::Mood::Neglected);
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 60, true, 0, 0)), companion::Mood::Neglected);
 }
 
-TEST(CompanionLedger, FreshCompanionStartsPeckishNotHappy) {
+TEST(CompanionLedger, FreshCompanionStartsCrankyNotSatisfied) {
   // Nothing has ever qualified, so there is nothing earned to grace: a brand
-  // new companion starts the ladder at Peckish, the same as any other day
-  // with zero activity, rather than getting a free Happy on day one.
+  // new companion starts the ladder at Cranky, the same as any other day
+  // with zero activity, rather than getting a free Satisfied on day one.
   const DayLedger led;
   const auto in = companion::moodInputFor(led, kDay, true, 0, 0);
   EXPECT_EQ(in.daysSinceLastActive, 0);
-  EXPECT_FALSE(in.everQualified);
-  EXPECT_EQ(companion::evaluate(in), companion::Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(in), companion::Mood::Cranky);
 }
 
 TEST(CompanionLedger, BackwardsClockDoesNotReadAsNeglect) {
@@ -302,12 +303,12 @@ TEST(CompanionLedger, ClocklessModeUsesLiveCountsOnly) {
   companion::creditQualifyingDay(led, kDay, 3, 0);
   const auto idle = companion::moodInputFor(led, kDay + 99, false, 0, 0);
   EXPECT_FALSE(idle.clockValid);
-  EXPECT_EQ(companion::evaluate(idle), companion::Mood::Happy);
+  EXPECT_EQ(companion::evaluate(idle), companion::Mood::Satisfied);
 
   const MoodThresholds t;
-  const auto active = companion::moodInputFor(led, kDay + 99, false, t.thrivingPoints, 0);
-  EXPECT_EQ(active.tasksCompletedToday, t.thrivingPoints);
-  EXPECT_EQ(companion::evaluate(active), companion::Mood::Thriving);
+  const auto active = companion::moodInputFor(led, kDay + 99, false, t.happyPoints, 0);
+  EXPECT_EQ(active.tasksCompletedToday, t.happyPoints);
+  EXPECT_EQ(companion::evaluate(active), companion::Mood::Happy);
 }
 
 // ------------------------------------------------------------ reachability
@@ -335,62 +336,137 @@ TEST(CompanionReachability, EveryMoodOccursOverALivedTimeline) {
   observe(day + 4, 0, 0);  // and another
   observe(day + 9, 0, 0);  // long gone
 
-  EXPECT_EQ(seen.count(Mood::Thriving), 1u) << "Thriving unreachable";
   EXPECT_EQ(seen.count(Mood::Happy), 1u) << "Happy unreachable";
-  EXPECT_EQ(seen.count(Mood::Peckish), 1u) << "Peckish unreachable";
+  EXPECT_EQ(seen.count(Mood::Satisfied), 1u) << "Satisfied unreachable";
+  EXPECT_EQ(seen.count(Mood::Cranky), 1u) << "Cranky unreachable";
   EXPECT_EQ(seen.count(Mood::Neglected), 1u) << "Neglected unreachable";
   EXPECT_EQ(seen.size(), 4u);
 }
 
 TEST(CompanionReachability, NoGraceDayAfterQualifying) {
   // Zero activity the day right after a qualifying day must already read as
-  // Peckish, not Happy - there is no one-day grace carried over. Peckish then
+  // Cranky, not Satisfied - there is no one-day grace carried over. Cranky then
   // holds through the rest of the neglectedDays window before bottoming out.
   DayLedger led;
   companion::creditQualifyingDay(led, kDay, 3, 0);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 0, true, 3, 0)), Mood::Thriving);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0, 0)), Mood::Peckish);
-  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), Mood::Peckish);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 0, true, 3, 0)), Mood::Happy);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 1, true, 0, 0)), Mood::Cranky);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 2, true, 0, 0)), Mood::Cranky);
   EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay + 3, true, 0, 0)), Mood::Neglected);
+}
+
+TEST(CompanionReachability, SameDayRegressionDropsBackToTheLadder) {
+  // Today already cleared the bar (crediting a task/habit completion), but
+  // live points have since dropped -- the only way that happens is
+  // un-completing something and syncing the lower count back down. The mood
+  // must reflect that live drop, not hold at Satisfied on the strength of a
+  // bar that was cleared earlier the same day and no longer is.
+  DayLedger led;
+  companion::creditQualifyingDay(led, kDay, 3, 0);
+  ASSERT_EQ(companion::evaluate(companion::moodInputFor(led, kDay, true, 3, 0)), Mood::Happy);
+  EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, kDay, true, 0, 0)), Mood::Cranky)
+      << "live points back to zero the same day must not stay graced at Satisfied";
+}
+
+TEST(CompanionReachability, SameDayRegressionFallsBackToThePreviousGenuineDay) {
+  // Genuinely qualified several days ago, quiet since, then briefly
+  // qualified today before undoing it. daysSinceLastActive must reflect the
+  // older genuine day (via DayLedger::previousQualifyingDay), not read as
+  // "0 days since active" just because today's now-undone credit is still
+  // the most recently recorded lastQualifyingDay.
+  DayLedger led;
+  companion::creditQualifyingDay(led, kDay, 3, 0);                     // genuine activity, several days ago
+  companion::creditQualifyingDay(led, kDay + 5, 2, 0);                 // briefly qualifies today...
+  const auto in = companion::moodInputFor(led, kDay + 5, true, 0, 0);  // ...then undone, synced back to 0
+  EXPECT_EQ(in.daysSinceLastActive, 5) << "should fall back to the day before today's now-invalid credit";
+  EXPECT_EQ(companion::evaluate(in), Mood::Neglected);
 }
 
 TEST(CompanionReachability, EveryTierIsExitableBackToTheTop) {
   // Recovery must work from the floor, with no penalty box. Starts at one quiet
-  // day: with zero the companion is already Thriving on day 0's credit, so
+  // day: with zero the companion is already Happy on day 0's credit, so
   // there is nothing to recover from.
   const MoodThresholds t;
   for (int32_t quietDays : {1, 2, 3, 50, 5000}) {
     DayLedger led;
-    companion::creditQualifyingDay(led, kDay, t.thrivingPoints, 0);
+    companion::creditQualifyingDay(led, kDay, t.happyPoints, 0);
     const int32_t today = kDay + quietDays;
-    ASSERT_NE(companion::evaluate(companion::moodInputFor(led, today, true, 0, 0)), Mood::Thriving) << quietDays;
+    ASSERT_NE(companion::evaluate(companion::moodInputFor(led, today, true, 0, 0)), Mood::Happy) << quietDays;
 
-    companion::creditQualifyingDay(led, today, t.thrivingPoints, 0);
-    EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, today, true, t.thrivingPoints, 0)), Mood::Thriving)
+    companion::creditQualifyingDay(led, today, t.happyPoints, 0);
+    EXPECT_EQ(companion::evaluate(companion::moodInputFor(led, today, true, t.happyPoints, 0)), Mood::Happy)
         << "could not recover after " << quietDays << " quiet days";
   }
 }
 
 TEST(CompanionReachability, ThresholdBoundariesAreExact) {
   const MoodThresholds t;
-  ASSERT_GT(t.thrivingPoints, t.happyPoints) << "Thriving must sit above Happy or a tier is unreachable";
+  ASSERT_GT(t.happyPoints, t.satisfiedPoints) << "Happy must sit above Satisfied or a tier is unreachable";
 
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints - 1, 0, 0)), Mood::Happy) << "one point short of Thriving";
-  EXPECT_EQ(companion::evaluate(withClock(t.thrivingPoints, 0, 0)), Mood::Thriving) << "exactly Thriving";
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints - 1, 0, 0)), Mood::Satisfied) << "one point short of Happy";
+  EXPECT_EQ(companion::evaluate(withClock(t.happyPoints, 0, 0)), Mood::Happy) << "exactly Happy";
 
   DayLedger low;
-  EXPECT_FALSE(companion::creditQualifyingDay(low, kDay, t.happyPoints - 1, 0))
-      << "below happyPoints must not qualify the day";
+  EXPECT_FALSE(companion::creditQualifyingDay(low, kDay, t.satisfiedPoints - 1, 0))
+      << "below satisfiedPoints must not qualify the day";
   EXPECT_EQ(low.lastQualifyingDay, DayLedger::NEVER);
-  EXPECT_TRUE(companion::creditQualifyingDay(low, kDay, t.happyPoints, 0)) << "exactly happyPoints must qualify";
+  EXPECT_TRUE(companion::creditQualifyingDay(low, kDay, t.satisfiedPoints, 0))
+      << "exactly satisfiedPoints must qualify";
   EXPECT_EQ(low.lastQualifyingDay, kDay);
 }
 
 TEST(CompanionReachability, EveryMoodHasArtAndIsIndexable) {
   // The enum is used to index the generated sprite and quote tables, so the
-  // values must stay contiguous from zero with no gaps.
-  EXPECT_EQ(static_cast<int>(Mood::Thriving), 0);
-  EXPECT_EQ(static_cast<int>(Mood::Happy), 1);
-  EXPECT_EQ(static_cast<int>(Mood::Peckish), 2);
+  // values must stay contiguous from zero with no gaps. Milestone and
+  // Sleeping are never returned by evaluate() -- both are external overrides
+  // -- but still need an index into those same tables, so they belong in this
+  // contiguous run too.
+  EXPECT_EQ(static_cast<int>(Mood::Happy), 0);
+  EXPECT_EQ(static_cast<int>(Mood::Satisfied), 1);
+  EXPECT_EQ(static_cast<int>(Mood::Cranky), 2);
   EXPECT_EQ(static_cast<int>(Mood::Neglected), 3);
+  EXPECT_EQ(static_cast<int>(Mood::Milestone), 4);
+  EXPECT_EQ(static_cast<int>(Mood::Sleeping), 5);
+}
+
+// -------------------------------------------------------------- sleep window
+
+TEST(CompanionSleepWindow, LocalMinuteOfDayMatchesUtcAtZeroOffset) {
+  EXPECT_EQ(companion::localMinuteOfDay(0, 0, 0), 0);
+  EXPECT_EQ(companion::localMinuteOfDay(23, 59, 0), 1439);
+  EXPECT_EQ(companion::localMinuteOfDay(12, 30, 0), 12 * 60 + 30);
+}
+
+TEST(CompanionSleepWindow, LocalMinuteOfDayWrapsForwardAndBackward) {
+  // 23:30 UTC in UTC+1 is 00:30 the next local day.
+  EXPECT_EQ(companion::localMinuteOfDay(23, 30, 4), 30);
+  // 00:30 UTC in UTC-1 is 23:30 the previous local day.
+  EXPECT_EQ(companion::localMinuteOfDay(0, 30, -4), 23 * 60 + 30);
+}
+
+TEST(CompanionSleepWindow, SameDayWindow) {
+  // 01:00-06:00, entirely within one calendar day.
+  const uint16_t start = 60, end = 360;
+  EXPECT_FALSE(companion::withinSleepWindow(0, start, end)) << "before the window";
+  EXPECT_TRUE(companion::withinSleepWindow(60, start, end)) << "start is inclusive";
+  EXPECT_TRUE(companion::withinSleepWindow(200, start, end));
+  EXPECT_FALSE(companion::withinSleepWindow(360, start, end)) << "end is exclusive";
+  EXPECT_FALSE(companion::withinSleepWindow(1000, start, end)) << "after the window";
+}
+
+TEST(CompanionSleepWindow, OvernightWindowWrapsPastMidnight) {
+  // 22:00-07:00.
+  const uint16_t start = 22 * 60, end = 7 * 60;
+  EXPECT_TRUE(companion::withinSleepWindow(22 * 60, start, end)) << "start is inclusive";
+  EXPECT_TRUE(companion::withinSleepWindow(23 * 60 + 30, start, end)) << "late evening";
+  EXPECT_TRUE(companion::withinSleepWindow(0, start, end)) << "midnight";
+  EXPECT_TRUE(companion::withinSleepWindow(6 * 60 + 59, start, end)) << "just before end";
+  EXPECT_FALSE(companion::withinSleepWindow(7 * 60, start, end)) << "end is exclusive";
+  EXPECT_FALSE(companion::withinSleepWindow(12 * 60, start, end)) << "midday, clearly awake";
+}
+
+TEST(CompanionSleepWindow, EqualStartAndEndMeansNoWindow) {
+  EXPECT_FALSE(companion::withinSleepWindow(0, 0, 0));
+  EXPECT_FALSE(companion::withinSleepWindow(500, 500, 500));
+  EXPECT_FALSE(companion::withinSleepWindow(1439, 500, 500));
 }

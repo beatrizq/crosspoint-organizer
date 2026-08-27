@@ -14,6 +14,7 @@
 #include <TodoistClient.h>
 #include <TodoistStore.h>
 #include <TodoistTaskCache.h>
+#include <YnabAccountCache.h>
 #include <YnabCategoryCache.h>
 #include <YnabClient.h>
 #include <YnabStore.h>
@@ -179,6 +180,37 @@ const char* runTasks() {
     TODOIST_TASKS.clearPending(id);
   }
 
+  // Same reasoning, same queue-then-fetch ordering, for locally-made
+  // reschedules: push them before fetching so the list that comes back
+  // already shows the new dates. A copy, for the same reason as pending
+  // above - clearPendingReschedule() mutates the queue as we go.
+  if (error == TodoistClient::OK) {
+    const auto reschedules = TODOIST_TASKS.getPendingReschedules();
+    for (const auto& reschedule : reschedules) {
+      resetTaskWatchdogIfSubscribed();
+      char isoDate[11];
+      todoist::isoFromDueDays(reschedule.dueDays, isoDate, sizeof(isoDate));
+      error = TodoistClient::rescheduleTask(reschedule.taskId, isoDate);
+      resetTaskWatchdogIfSubscribed();
+      if (error == TodoistClient::NOT_FOUND) {
+        // Gone (deleted, or already completed elsewhere) - nowhere left to
+        // apply this, and holding it "pending" forever would wedge every
+        // future sync behind it, the same way an orphaned Habitify push once
+        // did (see runHabits()'s own NOT_FOUND handling).
+        LOG_ERR("OSYNC", "Task %s no longer exists; dropping its pending reschedule", reschedule.taskId.c_str());
+        TODOIST_TASKS.clearPendingReschedule(reschedule.taskId);
+        error = TodoistClient::OK;
+        continue;
+      }
+      if (error != TodoistClient::OK) {
+        LOG_ERR("OSYNC", "Reschedule push failed for %s: %s", reschedule.taskId.c_str(),
+                TodoistClient::errorString(error));
+        break;  // keep the rest queued for the next attempt
+      }
+      TODOIST_TASKS.clearPendingReschedule(reschedule.taskId);
+    }
+  }
+
   std::vector<TodoistTask> fetched;
   std::string serverDate;
   if (error == TodoistClient::OK) {
@@ -201,6 +233,31 @@ const char* runTasks() {
     RenderLock lock;
     TODOIST_TASKS.setTasks(std::move(fetched), today);
   }
+
+  // A completed task never shows up in the open-task fetch above, so a task
+  // finished in the Todoist app - not on this device - would otherwise never
+  // be counted. This asks Todoist directly for today's completions matching
+  // the same Filter setting, so app-side completions credit the companion the
+  // same way Habitify's already do. Best-effort: the open-task list above is
+  // this sync's real job, so a failure here does not fail the sync itself -
+  // it just leaves today's completed count and the companion's credit stale
+  // until the next attempt.
+  if (error == TodoistClient::OK && !today.empty()) {
+    resetTaskWatchdogIfSubscribed();
+    uint16_t completedCount = 0;
+    const TodoistClient::Error countError = TodoistClient::fetchCompletedCountForDay(today, completedCount);
+    resetTaskWatchdogIfSubscribed();
+    if (countError == TodoistClient::OK) {
+      RenderLock lock;
+      TODOIST_TASKS.setCompletedToday(completedCount, today);
+      // Gated on success: a failed fetch means nothing here actually changed,
+      // so there is nothing new to credit.
+      COMPANION.recordActivity();
+    } else {
+      LOG_ERR("OSYNC", "Completed-count fetch failed: %s", TodoistClient::errorString(countError));
+    }
+  }
+
   // Persists the fetched list and whatever the queue push managed to clear, so a
   // failed fetch after a successful push is still recorded.
   TODOIST_TASKS.saveToFile();
@@ -263,10 +320,6 @@ const char* runBudget() {
   // YNAB says which month it answered for, so nothing here needs a clock. That
   // matters on boards with no RTC, and it keeps this to a single call against a
   // token allowed 200 requests an hour.
-  //
-  // The account tabs are deliberately not synced here. Each is another request
-  // against that same hourly allowance, and they are per-tab by design; a
-  // sync-everything that quietly spent five of them would be the wrong trade.
   std::vector<YnabCategory> fetched;
   uint16_t month = civil::NO_DATE;
   resetTaskWatchdogIfSubscribed();
@@ -281,6 +334,43 @@ const char* runBudget() {
     YNAB_CATEGORIES.setCategories(std::move(fetched), month);
   }
   YNAB_CATEGORIES.saveToFile();
+
+  // Sync All is the one place "sync everything" should actually mean
+  // everything, so every already-known account also gets its transactions
+  // refreshed here - each is its own request against the same 200/hour
+  // allowance BudgetActivity's own per-tab sync is deliberately stingy with
+  // (see YnabAccountCache's own comment), but a user who asked to sync
+  // everything should not have part of one already-configured integration
+  // silently skipped. The account list itself still is not refetched here:
+  // discovering accounts stays a Settings-only action, since that costs its
+  // own request for something that changes about once a year.
+  //
+  // A copy of the ids: setTransactions() mutates the account list as we go,
+  // and the fetch loop should walk the accounts as they stood when it started.
+  std::vector<std::string> accountIds;
+  accountIds.reserve(YNAB_ACCOUNTS.getAccounts().size());
+  for (const auto& account : YNAB_ACCOUNTS.getAccounts()) accountIds.push_back(account.id);
+
+  std::vector<YnabTransaction> transactionsFetched;
+  for (const auto& accountId : accountIds) {
+    resetTaskWatchdogIfSubscribed();
+    uint16_t date = civil::NO_DATE;
+    const YnabClient::Error txError = YnabClient::fetchTransactions(accountId, transactionsFetched, date);
+    resetTaskWatchdogIfSubscribed();
+    if (txError == YnabClient::RATE_LIMITED) {
+      LOG_ERR("OSYNC", "Account transaction fetch rate-limited; skipping the rest");
+      break;
+    }
+    if (txError != YnabClient::OK) {
+      LOG_ERR("OSYNC", "Account transaction fetch failed for %s: %s", accountId.c_str(),
+              YnabClient::errorString(txError));
+      continue;
+    }
+    RenderLock lock;
+    YNAB_ACCOUNTS.setTransactions(accountId, std::move(transactionsFetched), date);
+  }
+  if (!accountIds.empty()) YNAB_ACCOUNTS.saveToFile();
+
   return error == YnabClient::OK ? nullptr : budgetErrorText(error);
 }
 
@@ -307,12 +397,56 @@ const char* runHabits() {
   HabitifyClient::Error error = HabitifyClient::OK;
   for (const auto& entry : owed) {
     resetTaskWatchdogIfSubscribed();
-    error = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
-    if (error != HabitifyClient::OK) {
-      LOG_ERR("OSYNC", "Habit push failed for %s: %s", entry.id.c_str(), HabitifyClient::errorString(error));
+    const HabitifyClient::Error pushError = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
+    if (pushError == HabitifyClient::NOT_FOUND) {
+      // The habit no longer exists server-side - deleted, or replaced with a new
+      // one in the app. There is nowhere left to push this progress, and unlike
+      // Todoist's closeTask() (a 404 there means "already done", so it counts as
+      // success) a missing habit can never accept a log. Holding it "owed"
+      // forever would wedge every future sync behind it: the fetch below only
+      // runs once every entry here has pushed clean, so the same dead id would
+      // fail again next time, and again after that.
+      LOG_ERR("OSYNC", "Habit %s no longer exists; dropping its unpushed progress", entry.id.c_str());
+      HABITIFY_HABITS.clearPending(entry.id, entry.amount);
+      continue;
+    }
+    if (pushError != HabitifyClient::OK) {
+      error = pushError;
+      LOG_ERR("OSYNC", "Habit push failed for %s: %s", entry.id.c_str(), HabitifyClient::errorString(pushError));
       break;  // keep the rest owed for the next attempt
     }
     HABITIFY_HABITS.clearPending(entry.id, entry.amount);
+  }
+
+  // Complete taps are pushed the same way, via Habitify's dedicated endpoint -
+  // independent of the numeric progress queue above, since completing is "mark
+  // done" rather than "add N". A copy, for the same reason as owed above.
+  if (error == HabitifyClient::OK) {
+    std::vector<std::string> completions;
+    completions.reserve(HABITIFY_HABITS.getHabits().size());
+    for (const auto& habit : HABITIFY_HABITS.getHabits()) {
+      if (habit.pendingComplete) completions.push_back(habit.id);
+    }
+    for (const auto& habitId : completions) {
+      resetTaskWatchdogIfSubscribed();
+      const HabitifyClient::Error completeError = HabitifyClient::completeHabit(habitId);
+      if (completeError == HabitifyClient::NOT_FOUND) {
+        // Same reasoning as the progress queue's own NOT_FOUND handling above:
+        // a gone habit can never accept a complete, so holding it queued
+        // forever would wedge every future sync behind it.
+        LOG_ERR("OSYNC", "Habit %s no longer exists; dropping its pending complete", habitId.c_str());
+        HABITIFY_HABITS.clearPendingComplete(habitId);
+        continue;
+      }
+      if (completeError != HabitifyClient::OK) {
+        error = completeError;
+        LOG_ERR("OSYNC", "Habit complete push failed for %s: %s", habitId.c_str(),
+                HabitifyClient::errorString(completeError));
+        break;  // keep the rest queued for the next attempt
+      }
+      HABITIFY_HABITS.clearPendingComplete(habitId);
+    }
+    resetTaskWatchdogIfSubscribed();
   }
 
   std::vector<HabitifyHabit> fetched;
@@ -328,11 +462,14 @@ const char* runHabits() {
     // Carries over anything still owed - a press that landed between the push
     // above and this fetch.
     HABITIFY_HABITS.setHabits(std::move(fetched), date);
+    // Catches a habit completed elsewhere (the Habitify app itself, say) that
+    // this device never saw a local press for. Gated on success: a failed
+    // fetch means the cache did not change, so there is nothing new to credit,
+    // and running it anyway would just cost a needless SD write on a sync that
+    // already failed.
+    COMPANION.recordActivity();
   }
   HABITIFY_HABITS.saveToFile();
-  // Catches a habit completed elsewhere (the Habitify app itself, say) that
-  // this device never saw a local press for.
-  COMPANION.recordActivity();
   return error == HabitifyClient::OK ? nullptr : habitErrorText(error);
 }
 

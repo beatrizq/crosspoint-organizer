@@ -39,5 +39,6 @@ echo "cppcheck over ${#FILES[@]} files..."
   --suppress=badBitmaskCheck:src/companion/CompanionState.cpp \
   --suppress=badBitmaskCheck:src/util/BookmarkFile.cpp \
   --suppress=badBitmaskCheck:lib/Todoist/TodoistTaskCache.cpp \
+  --suppress=badBitmaskCheck:src/CrossPointState.cpp \
   --inline-suppr --quiet --template="{file}:{line}: [{severity}] {message} [{id}]" \
   "${FILES[@]}" 2>&1 | grep -vE "^$" | sort -u

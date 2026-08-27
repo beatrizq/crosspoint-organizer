@@ -33,6 +33,7 @@ void YnabSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
   state = State::MENU;
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
 }
 
@@ -46,7 +47,13 @@ void YnabSettingsActivity::loop() {
     return;
   }
 
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      swallowConfirmRelease = false;
+      return;
+    }
     if (state == State::FAILED) {
       RenderLock lock(*this);
       state = State::MENU;

@@ -44,8 +44,9 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   bool hasSynced() const { return syncDate != civil::NO_DATE; }
 
   /**
-   * Replaces the list after a successful fetch, keeping the habit order the API
-   * returned - which is the order Habitify itself shows.
+   * Replaces the list after a successful fetch, sorted A-Z by name (case-
+   * insensitive) to match the order Habitify's own app shows - the API's own
+   * response order is not reliably alphabetical.
    *
    * Pending progress is carried across by id for any habit that survives the
    * fetch. It has to be: the push and the re-fetch are separate requests, and a
@@ -66,6 +67,14 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   bool hasPending() const;
   // Habits carrying unpushed progress, for the header's count.
   size_t pendingCount() const;
+
+  // Marks the habit complete immediately (completedByStatus set optimistically,
+  // so the row reads done and the companion can credit it right away) and
+  // queues a complete push for the next sync. No-op for an unknown index.
+  void completeHabitAt(size_t index);
+  // Called once the server accepted a queued complete, or the habit it was for
+  // turned out to already be gone.
+  void clearPendingComplete(const std::string& habitId);
 
   void clear();
 };

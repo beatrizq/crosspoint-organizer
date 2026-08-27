@@ -2,10 +2,12 @@
 
 #include <HabitifyHabitCache.h>
 #include <HalClock.h>
+#include <I18n.h>
 #include <Logging.h>
 #include <TodoistTaskCache.h>
 
 #include <algorithm>
+#include <cstdio>
 
 #include "CompanionState.h"
 #include "CrossPointSettings.h"
@@ -17,6 +19,23 @@ int32_t signedUtcOffsetQuarterHours() {
   if (biased > 104) biased = 104;  // guard a corrupted persisted value
   return static_cast<int32_t>(biased) - 48;
 }
+
+// Builds the mood ladder's thresholds from the user's settings, clamped
+// defensively so evaluate() and creditQualifyingDay() never see an invalid
+// configuration -- CompanionSettingsActivity already keeps happyPoints above
+// satisfiedPoints and both fields >= 1 on every edit, but this is the one
+// place every reader goes through, so it is also the backstop against a
+// hand-edited settings.json or a write that reached CrossPointSettings some
+// other way (e.g. the web settings API, which clamps each field to its own
+// range independently and has no way to enforce the relationship between
+// two).
+companion::MoodThresholds thresholdsFromSettings() {
+  companion::MoodThresholds t;
+  t.satisfiedPoints = std::max<uint16_t>(1, SETTINGS.companionSatisfiedPoints);
+  t.happyPoints = std::max<uint16_t>(static_cast<uint16_t>(t.satisfiedPoints + 1), SETTINGS.companionHappyPoints);
+  t.neglectedDays = std::max<uint8_t>(1, SETTINGS.companionNeglectedDays);
+  return t;
+}
 }  // namespace
 
 bool CompanionTracker::isEnabled() { return SETTINGS.companionEnabled != 0; }
@@ -27,7 +46,7 @@ companion::CompanionId CompanionTracker::activeId() {
   return static_cast<companion::CompanionId>(id);
 }
 
-bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
+bool CompanionTracker::resolveLocalDayAndMinute(int32_t& outDay, uint16_t& outMinuteOfDay) {
   uint16_t year = 0;
   uint8_t month = 0;
   uint8_t day = 0;
@@ -35,18 +54,27 @@ bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
   uint8_t minute = 0;
 
   if (!halClock.getUtcDateTime(year, month, day, hour, minute)) return false;
-  outDay = companion::localDayNumber(year, month, day, hour, minute, signedUtcOffsetQuarterHours());
+  const int32_t offset = signedUtcOffsetQuarterHours();
+  outDay = companion::localDayNumber(year, month, day, hour, minute, offset);
+  outMinuteOfDay = companion::localMinuteOfDay(hour, minute, offset);
   return true;
+}
+
+bool CompanionTracker::resolveLocalDay(int32_t& outDay) {
+  uint16_t ignoredMinute = 0;
+  return resolveLocalDayAndMinute(outDay, ignoredMinute);
 }
 
 void CompanionTracker::refreshDay() {
   int32_t day = 0;
-  if (!resolveLocalDay(day)) {
+  uint16_t minuteOfDay = 0;
+  if (!resolveLocalDayAndMinute(day, minuteOfDay)) {
     clockValid = false;
     return;
   }
   clockValid = true;
   localDay = day;
+  localMinuteOfDay = minuteOfDay;
 }
 
 void CompanionTracker::refreshForDisplay() {
@@ -70,22 +98,82 @@ void CompanionTracker::recordActivity() {
   const uint16_t tasksToday = TODOIST_TASKS.getCompletedToday();
   const uint16_t habitsToday = liveHabitsCompletedToday();
 
-  if (!COMPANION_STATE.recordActivity(localDay, clockValid, tasksToday, habitsToday)) return;
+  if (!COMPANION_STATE.recordActivity(localDay, clockValid, tasksToday, habitsToday, thresholdsFromSettings())) return;
   if (!COMPANION_STATE.saveToFile()) {
     LOG_ERR("COMP", "Failed to save companion state");
   }
 }
 
-companion::MoodInput CompanionTracker::buildMoodInput() const {
+companion::MoodInput CompanionTracker::buildMoodInput(const companion::MoodThresholds& thresholds) const {
   const uint16_t tasksToday = TODOIST_TASKS.getCompletedToday();
   const uint16_t habitsToday = liveHabitsCompletedToday();
-  return companion::moodInputFor(COMPANION_STATE.ledger, localDay, clockValid, tasksToday, habitsToday);
+  return companion::moodInputFor(COMPANION_STATE.ledger, localDay, clockValid, tasksToday, habitsToday, thresholds);
 }
 
-companion::Mood CompanionTracker::currentMood() const { return companion::evaluate(buildMoodInput()); }
+bool CompanionTracker::isWithinSleepWindow() const {
+  if (!clockValid) return false;
+  const uint16_t start =
+      static_cast<uint16_t>(SETTINGS.companionSleepStartHour) * 60 + SETTINGS.companionSleepStartMinute;
+  const uint16_t end = static_cast<uint16_t>(SETTINGS.companionSleepEndHour) * 60 + SETTINGS.companionSleepEndMinute;
+  return companion::withinSleepWindow(localMinuteOfDay, start, end);
+}
+
+companion::Mood CompanionTracker::currentMood() const {
+  // Sleeping is checked first, ahead of even Milestone: a beaten record is
+  // still worth celebrating, but not while the companion should visually read
+  // as asleep. milestoneDay is a day-scoped flag that survives the wait --
+  // nothing is lost, only deferred until the companion is awake again with
+  // that same local day still current.
+  if (isWithinSleepWindow()) return companion::Mood::Sleeping;
+
+  const auto thresholds = thresholdsFromSettings();
+  const auto in = buildMoodInput(thresholds);
+  // A beaten best-day-points record holds the companion at the Milestone mood
+  // for the rest of the day it was earned (see CompanionState::milestoneDay),
+  // ahead of the usual ladder. Gated on clockValid: without a fresh reading,
+  // localDay is whatever the last valid one was, and comparing a stale day
+  // against milestoneDay could match (or fail to) by accident.
+  if (clockValid && COMPANION_STATE.milestoneDay == localDay) {
+    const uint32_t points = static_cast<uint32_t>(in.tasksCompletedToday) + in.habitsCompletedToday;
+    // Re-checked against live points rather than trusted as a one-shot flag:
+    // normal completions only ever add to today's total, so this is always
+    // true for the rest of a normal day, but today's live count can also
+    // drop if something completed earlier gets undone (in the Todoist/
+    // Habitify app, synced back down) -- at that point the record it
+    // claimed is no longer actually true right now, and the ladder should
+    // reflect today's live count the same as any other day.
+    if (points >= COMPANION_STATE.ledger.bestDayPoints) return companion::Mood::Milestone;
+  }
+  return companion::evaluate(in, thresholds);
+}
 
 uint16_t CompanionTracker::pointsToday() const {
-  const auto in = buildMoodInput();
+  const auto in = buildMoodInput(thresholdsFromSettings());
   const uint32_t total = static_cast<uint32_t>(in.tasksCompletedToday) + in.habitsCompletedToday;
   return static_cast<uint16_t>(total > UINT16_MAX ? UINT16_MAX : total);
+}
+
+std::string CompanionTracker::formatAge(const int32_t activatedDay) {
+  if (activatedDay == companion::DayLedger::NEVER) return std::string(tr(STR_COMPANION_AGE_NOT_YET));
+
+  int32_t today = 0;
+  if (!resolveLocalDay(today)) return std::string(tr(STR_COMPANION_AGE_NOT_YET));
+
+  // A clock correction could put "today" before the stamped day; floor at 0
+  // rather than showing a negative age.
+  const int32_t elapsed = today > activatedDay ? today - activatedDay : 0;
+  char buf[32];
+  if (elapsed < 1) return std::string(tr(STR_COMPANION_AGE_TODAY));
+  if (elapsed < 30) {
+    snprintf(buf, sizeof(buf), elapsed == 1 ? tr(STR_COMPANION_AGE_DAY) : tr(STR_COMPANION_AGE_DAYS), elapsed);
+    return std::string(buf);
+  }
+  if (elapsed < 365) {
+    const int32_t months = elapsed / 30;
+    snprintf(buf, sizeof(buf), months == 1 ? tr(STR_COMPANION_AGE_MONTH) : tr(STR_COMPANION_AGE_MONTHS), months);
+    return std::string(buf);
+  }
+  const int32_t years = elapsed / 365;
+  snprintf(buf, sizeof(buf), years == 1 ? tr(STR_COMPANION_AGE_YEAR) : tr(STR_COMPANION_AGE_YEARS), years);
+  return std::string(buf);
 }

@@ -2,6 +2,9 @@
 #include <CompanionMood.h>
 #include <GfxRenderer.h>
 
+#include <string>
+#include <vector>
+
 #include "CompanionSprites.generated.h"
 
 namespace companion {
@@ -27,16 +30,6 @@ constexpr int poseHeight(const int scale) { return SPRITE_HEIGHT * scale; }
 // no second set of art is needed.
 void drawPose(const GfxRenderer& renderer, CompanionId id, Mood mood, int x, int y, int scale, bool mirrored = false);
 
-// Picks one of a companion's lines for the given mood. `rotation` is wrapped
-// into range, so callers can pass any counter (a visit count, a day number)
-// without knowing how many lines a character has. Returns nullptr when the
-// indices are out of range.
-const char* quoteFor(CompanionId id, Mood mood, uint32_t rotation);
-
-// How many lines a companion has for a mood, so a caller can pick an index
-// itself (to avoid repeating the previous one) rather than only rotating.
-uint8_t quoteCountFor(CompanionId id, Mood mood);
-
 // Which edge the tail hangs off, so the bubble can point at a companion beside
 // it or below it.
 enum class TailSide : uint8_t { Left, Bottom };
@@ -46,16 +39,35 @@ enum class TailSide : uint8_t { Left, Bottom };
  *
  * The interior is cleared to paper before the outline is stroked, so callers can
  * draw text straight afterwards without worrying about what was underneath.
- * `tailLength` is how far the tail reaches beyond the bubble body.
+ * `tailLength` is how far the tail reaches beyond the bubble body. `lineWidth`
+ * defaults to the same thickness a selected tile's outline uses elsewhere
+ * (see LyraTheme's selectionLineWidth) so the two selection-adjacent strokes
+ * read as the same weight.
  */
 void drawSpeechBubble(const GfxRenderer& renderer, int x, int y, int w, int h, int tailLength,
-                      TailSide side = TailSide::Left);
+                      TailSide side = TailSide::Left, int lineWidth = 2);
+
+// Wrapped lines plus the text column width the bubble should actually use --
+// see fitBubbleText().
+struct BubbleFit {
+  std::vector<std::string> lines;
+  int textWidth;
+};
+
+/**
+ * Wraps `text` at `fontId` against `maxTextWidth`, and reports how wide the
+ * bubble's text column actually needs to be: the text's own single-line
+ * width when it fits without wrapping, so a short line's bubble does not
+ * stretch to fill whatever room happened to be available, or `maxTextWidth`
+ * itself once wrapping kicks in, since that is what the wrap points were
+ * chosen against. Never narrower than `minTextWidth`, so a one-word line
+ * still gets a bubble with room for the tail and rounded corners.
+ */
+BubbleFit fitBubbleText(const GfxRenderer& renderer, int fontId, const std::string& text, int maxTextWidth,
+                        int minTextWidth, int maxLines);
 
 // Translated name of a mood, for the status label under the character. Unlike
 // the character quotes this is UI chrome, so it comes from the string table.
 const char* moodLabel(Mood mood);
-
-// The character's one-off line for beating their own best streak.
-const char* milestoneQuoteFor(CompanionId id, uint32_t rotation);
 
 }  // namespace companion

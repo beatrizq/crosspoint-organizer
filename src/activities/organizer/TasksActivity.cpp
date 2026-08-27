@@ -19,11 +19,13 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
+#include "RescheduleTaskActivity.h"
 #include "activities/util/ConfirmationActivity.h"
-#include "companion/CompanionTracker.h"
+#include "activities/util/OptionsMenuActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
+#include "util/OrganizerActions.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
@@ -31,6 +33,46 @@ void TasksActivity::loadCaches() {
   TODOIST_TASKS.loadFromFile();
   TODOIST_STORE.loadFromFile();
   rebuildTabs();
+}
+
+void TasksActivity::onEnter() {
+  OrganizerScreenActivity::onEnter();
+  if (selectTaskId.empty()) return;
+
+  const std::string targetId = std::move(selectTaskId);
+  selectTaskId.clear();  // one-shot, regardless of whether the id is still found below
+
+  const auto& tasks = TODOIST_TASKS.getTasks();
+  int targetCacheIndex = -1;
+  for (size_t i = 0; i < tasks.size(); i++) {
+    if (tasks[i].id == targetId) {
+      targetCacheIndex = static_cast<int>(i);
+      break;
+    }
+  }
+  // Gone (completed/deleted since the pick was made): leave onEnter()'s
+  // default selection (tab 0, row 0) rather than landing on nothing.
+  if (targetCacheIndex < 0) return;
+
+  // ALL (always visibleTabs[0]) matches everything, so it is only used as the
+  // fallback -- a more specific tab, when one matches, is what the task
+  // actually belongs to.
+  int targetTab = 0;
+  for (size_t t = 1; t < visibleTabs.size(); t++) {
+    if (matchesKind(visibleTabs[t], static_cast<size_t>(targetCacheIndex))) {
+      targetTab = static_cast<int>(t);
+      break;
+    }
+  }
+  setTab(targetTab);
+
+  const int rows = rowCount();
+  for (int row = 0; row < rows; row++) {
+    if (cacheIndexForRow(row) == targetCacheIndex) {
+      selectedIndex = row + 1;
+      break;
+    }
+  }
 }
 
 const char* TasksActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Tasks); }
@@ -180,7 +222,7 @@ void TasksActivity::formatStatus(char* out, const size_t outSize) const {
   if (TODOIST_TASKS.hasPending()) {
     char waiting[32];
     snprintf(waiting, sizeof(waiting), tr(STR_TODOIST_PENDING_COMPLETIONS),
-             static_cast<int>(TODOIST_TASKS.getPendingIds().size()));
+             static_cast<int>(TODOIST_TASKS.pendingSyncCount()));
     snprintf(out, outSize, "%s %s | %s", date, waiting, count);
     return;
   }
@@ -204,9 +246,104 @@ bool TasksActivity::rowsHaveSubtitle() const {
   return kind != TabKind::TODAY && kind != TabKind::NO_DATE;
 }
 
-const char* TasksActivity::rowConfirmLabel() const { return tr(STR_COMPLETE_TASK); }
+const char* TasksActivity::rowConfirmLabel() const { return tr(STR_SELECT); }
 
-void TasksActivity::onRowConfirm() { completeSelectedTask(); }
+void TasksActivity::onRowConfirm() { showRowOptions(); }
+
+void TasksActivity::showRowOptions() {
+  const int cacheIndex = cacheIndexForRow(selectedRow());
+  if (cacheIndex < 0) return;
+
+  // Todoist has no way to reschedule a single occurrence of a recurring task
+  // without replacing its recurrence entirely, and the warning that fact
+  // requires doesn't fit the popup -- simplest and clearest is to just not
+  // offer Reschedule for a recurring task at all.
+  const bool canReschedule = !TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].isRecurring;
+
+  std::vector<std::string> options{tr(STR_COMPLETE_TASK), tr(STR_FOCUS_SESSION)};
+  if (canReschedule) options.push_back(tr(STR_RESCHEDULE_TASK));
+  const int rescheduleIdx = canReschedule ? 2 : -1;
+
+  startActivityForResult(
+      std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
+      [this, cacheIndex, rescheduleIdx](const ActivityResult& result) {
+        // Confirm may still be physically down (the popup answers on the
+        // press, this screen on the release) -- same dance completeSelectedTask()
+        // does below for the popup it pushes in turn.
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        const int idx = std::get<OptionPickResult>(result.data).index;
+        if (idx == 0) {
+          completeSelectedTask();
+        } else if (idx == 1) {
+          offerFocusSession(cacheIndex);
+        } else if (idx == rescheduleIdx) {
+          offerReschedule(cacheIndex);
+        }
+      });
+}
+
+void TasksActivity::offerFocusSession(const int cacheIndex) {
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
+  const std::string text = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].content;
+  const std::string id = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].id;
+
+  startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
+                                                               organizerActions::focusSessionDurationOptions()),
+                         [this, text, id](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           const int idx = std::get<OptionPickResult>(result.data).index;
+                           if (idx < 0 || idx >= organizerActions::FOCUS_SESSION_DURATIONS_COUNT) return;
+                           organizerActions::beginFocusSession(text, id, /*isHabit=*/false,
+                                                               organizerActions::FOCUS_SESSION_DURATIONS_MINUTES[idx],
+                                                               renderer, mappedInput);
+                         });
+}
+
+void TasksActivity::offerReschedule(const int cacheIndex) {
+  // Only ever reached for a non-recurring task -- showRowOptions() leaves
+  // Reschedule off the menu entirely for a recurring one.
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
+  const auto& task = TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)];
+  const uint16_t seed =
+      task.dueDays != todoist::DUE_NONE ? task.dueDays : todoist::dueDaysFromIso(TODOIST_TASKS.getSyncDate().c_str());
+
+  startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
+                         [this, cacheIndex](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           const auto* date = std::get_if<DateResult>(&result.data);
+                           if (!date) return;
+                           if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size())
+                             return;
+
+                           {
+                             // Same reasoning as performTaskCompletion(): the render task reads
+                             // the list, and a reschedule can move the task between tabs just
+                             // as completing one removes it from all of them.
+                             RenderLock lock(*this);
+                             organizerActions::rescheduleTask(static_cast<size_t>(cacheIndex), date->packedDate);
+                             rebuildTabs();
+                           }
+                           updateSleepScreen();
+                         });
+}
 
 void TasksActivity::completeSelectedTask() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
@@ -244,14 +381,11 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
   // took to answer, and an index is not a task.
   if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
 
-  LOG_DBG("TASKS", "Completing task: %s", TODOIST_TASKS.getTasks()[static_cast<size_t>(cacheIndex)].content.c_str());
   {
     // The render task reads the task list; hold the lock across the removal so
     // it never paints a half-updated list.
     RenderLock lock(*this);
-    // Queued locally and pushed on the next sync, so completing works with the
-    // radio off; the row leaves the list immediately either way.
-    TODOIST_TASKS.completeTaskAt(static_cast<size_t>(cacheIndex));
+    organizerActions::completeTask(static_cast<size_t>(cacheIndex));
     // Completing the last task in a tab takes that tab away, so the bar is rebuilt
     // before the selection is settled. rebuildTabs() keeps the same kind selected
     // where it survives and clamps the row selection itself.
@@ -260,10 +394,6 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
     if (selectedRow() >= remaining) selectedIndex = remaining;
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
-  TODOIST_TASKS.saveToFile();
-  // A completion is one of the two things the companion reacts to; credit it
-  // immediately rather than waiting for the next sync or Home visit.
-  COMPANION.recordActivity();
   // The sleep screen tracks the list, not the sync: a task completed with the
   // radio off changes what is on screen just as much as a fetch does.
   updateSleepScreen();

@@ -16,10 +16,11 @@
 #include "MappedInputManager.h"
 #include "OrganizerLabels.h"
 #include "activities/util/IntervalSelectionActivity.h"
-#include "companion/CompanionTracker.h"
+#include "activities/util/OptionsMenuActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
+#include "util/OrganizerActions.h"
 #include "util/OrganizerSync.h"
 #include "util/TaskWatchdog.h"
 
@@ -35,6 +36,34 @@ constexpr int HABIT_LOG_LARGE_STEP = 5;
 void HabitsActivity::loadCaches() {
   HABITIFY_HABITS.loadFromFile();
   HABITIFY_STORE.loadFromFile();
+}
+
+void HabitsActivity::onEnter() {
+  OrganizerScreenActivity::onEnter();
+  if (selectHabitId.empty()) return;
+
+  const std::string targetId = std::move(selectHabitId);
+  selectHabitId.clear();  // one-shot, regardless of whether the id is still found below
+
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  int targetCacheIndex = -1;
+  for (size_t i = 0; i < habits.size(); i++) {
+    if (habits[i].id == targetId) {
+      targetCacheIndex = static_cast<int>(i);
+      break;
+    }
+  }
+  // Gone, or hidden by "hide completed" since the pick was made: leave
+  // onEnter()'s default selection (row 0) rather than landing on nothing.
+  if (targetCacheIndex < 0 || !isVisible(static_cast<size_t>(targetCacheIndex))) return;
+
+  const int rows = rowCount();
+  for (int row = 0; row < rows; row++) {
+    if (cacheIndexForRow(row) == targetCacheIndex) {
+      selectedIndex = row + 1;
+      break;
+    }
+  }
 }
 
 const char* HabitsActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Habits); }
@@ -89,7 +118,15 @@ void HabitsActivity::formatProgress(const HabitifyHabit& habit, char* out, const
     snprintf(out, outSize, "%g", static_cast<double>(habit.shownCurrent()));
     return;
   }
-  snprintf(out, outSize, "%g/%g", static_cast<double>(habit.shownCurrent()), static_cast<double>(habit.target));
+  // completedByStatus can go true (Complete tapped locally, or Habitify's own
+  // status already says done) before current/pending's own arithmetic has
+  // caught up to target -- show target/target rather than a fraction that
+  // would still read as short right next to the row's own bold "done"
+  // styling (see isComplete()). The underlying figures are untouched; this
+  // only affects what gets drawn.
+  const float shown =
+      habit.completedByStatus && habit.shownCurrent() < habit.target ? habit.target : habit.shownCurrent();
+  snprintf(out, outSize, "%g/%g", static_cast<double>(shown), static_cast<double>(habit.target));
 }
 
 void HabitsActivity::drawRow(const RowLayout& layout) const {
@@ -105,9 +142,7 @@ void HabitsActivity::drawRow(const RowLayout& layout) const {
   // of the row's own font between them, so the gap tracks the font-size setting
   // and a truncated name cannot run into the number.
   const int gap = renderer.getSpaceWidth(layout.titleFont) * 2;
-  // A met goal is set in bold, so a finished habit is distinguishable at a glance
-  // without needing a tick glyph the themes do not all provide.
-  const auto style = habit.isComplete() ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+  const EpdFontFamily::Style style = EpdFontFamily::REGULAR;
   const int progressWidth = renderer.getTextWidth(layout.titleFont, progress, style);
   const int nameWidth = std::max(0, layout.width - progressWidth - gap);
 
@@ -115,6 +150,17 @@ void HabitsActivity::drawRow(const RowLayout& layout) const {
   renderer.drawText(layout.titleFont, layout.x, layout.textY, shownName.c_str(), layout.ink, style);
   renderer.drawText(layout.titleFont, layout.x + layout.width - progressWidth, layout.textY, progress, layout.ink,
                     style);
+
+  // A met goal is greyed, so a finished habit is distinguishable at a glance
+  // without needing a tick glyph the themes do not all provide. Dithered
+  // rather than a real grey -- the panel is 1-bit -- same technique
+  // dimText() already uses for a row's subordinate text elsewhere on these
+  // screens; skipped on a selected row (ink false), which is already
+  // inverted and would dither wrong.
+  if (habit.isComplete()) {
+    dimText(layout.x, layout.textY, layout.titleFont, shownName.c_str(), layout.ink);
+    dimText(layout.x + layout.width - progressWidth, layout.textY, layout.titleFont, progress, layout.ink);
+  }
 }
 
 void HabitsActivity::formatStatus(char* out, const size_t outSize) const {
@@ -160,12 +206,74 @@ const char* HabitsActivity::syncingMessage() const { return tr(STR_HABITIFY_SYNC
 const char* HabitsActivity::rowConfirmLabel() const {
   const int cacheIndex = cacheIndexForRow(selectedRow());
   if (cacheIndex < 0) return "";
-  // A habit with no goal has no unit either, so there is nothing to log against
-  // it; saying "Log" would promise an action that cannot happen.
-  return HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty() ? "" : tr(STR_HABITIFY_LOG);
+  // Complete needs no unit, so every habit has something to offer here now -
+  // a goal-less one just skips straight to Options without a Log entry.
+  return tr(STR_SELECT);
 }
 
-void HabitsActivity::onRowConfirm() { completeSelectedHabit(); }
+void HabitsActivity::onRowConfirm() { showRowOptions(); }
+
+void HabitsActivity::showRowOptions() {
+  const int cacheIndex = cacheIndexForRow(selectedRow());
+  if (cacheIndex < 0) return;
+  // A habit with no goal has no unit, so nothing can be logged against it (see
+  // logHabit()) - Log is left off the menu rather than shown and silently
+  // failing. Complete needs no unit, so it is offered either way.
+  const bool canLog = !HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].unitSymbol.empty();
+  std::vector<std::string> options;
+  if (canLog) options.push_back(tr(STR_HABITIFY_LOG));
+  options.push_back(tr(STR_COMPLETE_HABIT));
+  options.push_back(tr(STR_FOCUS_SESSION));
+  const int logIdx = canLog ? 0 : -1;
+  const int completeIdx = canLog ? 1 : 0;
+  const int focusIdx = canLog ? 2 : 1;
+
+  startActivityForResult(
+      std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
+      [this, cacheIndex, logIdx, completeIdx, focusIdx](const ActivityResult& result) {
+        // Confirm may still be physically down (the popup answers on the
+        // press, this screen on the release) -- same dance completeSelectedHabit()
+        // does below for the picker it pushes in turn.
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        const int idx = std::get<OptionPickResult>(result.data).index;
+        if (idx == logIdx) {
+          completeSelectedHabit();
+        } else if (idx == completeIdx) {
+          markSelectedHabitComplete();
+        } else if (idx == focusIdx) {
+          offerFocusSession(cacheIndex);
+        }
+      });
+}
+
+void HabitsActivity::offerFocusSession(const int cacheIndex) {
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= HABITIFY_HABITS.getHabits().size()) return;
+  const std::string text = HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].name;
+  const std::string id = HABITIFY_HABITS.getHabits()[static_cast<size_t>(cacheIndex)].id;
+
+  startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
+                                                               organizerActions::focusSessionDurationOptions()),
+                         [this, text, id](const ActivityResult& result) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                             swallowConfirmRelease = true;
+                           }
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                             swallowBackRelease = true;
+                           }
+                           if (result.isCancelled) return;
+                           const int idx = std::get<OptionPickResult>(result.data).index;
+                           if (idx < 0 || idx >= organizerActions::FOCUS_SESSION_DURATIONS_COUNT) return;
+                           organizerActions::beginFocusSession(text, id, /*isHabit=*/true,
+                                                               organizerActions::FOCUS_SESSION_DURATIONS_MINUTES[idx],
+                                                               renderer, mappedInput);
+                         });
+}
 
 void HabitsActivity::completeSelectedHabit() {
   const int cacheIndex = cacheIndexForRow(selectedRow());
@@ -216,18 +324,25 @@ void HabitsActivity::performIncrement(const int cacheIndex, const float amount) 
     // The render task reads the habit list; hold the lock across the change so it
     // never paints a half-updated row.
     RenderLock lock(*this);
-    const auto& habits = HABITIFY_HABITS.getHabits();
-    if (habits[static_cast<size_t>(cacheIndex)].unitSymbol.empty()) return;
-    LOG_DBG("HABITS", "+%g to %s", static_cast<double>(amount), habits[static_cast<size_t>(cacheIndex)].name.c_str());
-    HABITIFY_HABITS.addPending(static_cast<size_t>(cacheIndex), amount);
+    organizerActions::logHabit(static_cast<size_t>(cacheIndex), amount);
   }
-  HABITIFY_HABITS.saveToFile();
-  // A completion is one of the two things the companion reacts to; credit it
-  // immediately in case this press is what pushed a habit to isComplete().
-  COMPANION.recordActivity();
   requestUpdate(true);
   // A press with the radio off moves the number on screen, which is as much a
   // change as a sync is.
+  updateSleepScreen();
+}
+
+void HabitsActivity::markSelectedHabitComplete() {
+  const int cacheIndex = cacheIndexForRow(selectedRow());
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= HABITIFY_HABITS.getHabits().size()) return;
+
+  {
+    // Same reasoning as performIncrement(): the render task reads the habit
+    // list, and completing one is as much a change to it as logging is.
+    RenderLock lock(*this);
+    organizerActions::completeHabit(static_cast<size_t>(cacheIndex));
+  }
+  requestUpdate(true);
   updateSleepScreen();
 }
 

@@ -26,6 +26,7 @@ void HabitifySettingsActivity::onEnter() {
   Activity::onEnter();
   HABITIFY_STORE.loadFromFile();
   selectedIndex = 0;
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
 }
 
@@ -82,7 +83,13 @@ void HabitifySettingsActivity::loop() {
     return;
   }
 
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      swallowConfirmRelease = false;
+      return;
+    }
     handleSelection();
     return;
   }

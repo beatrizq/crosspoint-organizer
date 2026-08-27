@@ -4,24 +4,20 @@ namespace companion {
 
 Mood evaluate(const MoodInput& in, const MoodThresholds& t) {
   const uint32_t points = static_cast<uint32_t>(in.tasksCompletedToday) + in.habitsCompletedToday;
-  if (points >= t.thrivingPoints) return Mood::Thriving;
+  if (points >= t.happyPoints) return Mood::Happy;
 
   // No clock: elapsed days are unknowable, so decay cannot be justified.
-  // Happy is the floor rather than punishing a user whose RTC was never set.
-  if (!in.clockValid) return Mood::Happy;
+  // Satisfied is the floor rather than punishing a user whose RTC was never set.
+  if (!in.clockValid) return Mood::Satisfied;
 
-  if (points >= t.happyPoints) return Mood::Happy;
-  // Zero here means today already qualified earlier, or the clock was just
-  // corrected backwards past the last qualifying day -- never a real "did
-  // enough yesterday" carry-over, since a day that actually qualified would
-  // have made the points check above true. Mood reflects only today's own
-  // effort: nothing done today starts the decay immediately, with no grace
-  // for what happened on a previous day. That grace only applies when there
-  // is history to grace at all -- a companion that has never once qualified
-  // has nothing earned to fall back on, so it starts the ladder at Peckish
-  // like any other day with zero activity.
-  if (in.everQualified && in.daysSinceLastActive == 0) return Mood::Happy;
-  if (in.daysSinceLastActive < t.neglectedDays) return Mood::Peckish;
+  if (points >= t.satisfiedPoints) return Mood::Satisfied;
+  // Below the bar with a valid clock: no grace, same day or otherwise. Below
+  // this point in the ladder, live points are what they are right now --
+  // whether that is because nothing has been done yet today, or because
+  // today did clear the bar earlier and something was since undone (synced
+  // back down from the Todoist/Habitify app) -- the mood reflects today's
+  // current effort, not a high-water mark from earlier in the day.
+  if (in.daysSinceLastActive < t.neglectedDays) return Mood::Cranky;
   return Mood::Neglected;
 }
 
@@ -53,26 +49,52 @@ int32_t localDayNumber(int32_t year, uint32_t month, uint32_t day, uint32_t hour
                            : -(((-localMinutes) + MINUTES_PER_DAY - 1) / MINUTES_PER_DAY);
 }
 
+uint16_t localMinuteOfDay(const uint32_t hour, const uint32_t minute, const int32_t utcOffsetQuarterHours) {
+  static constexpr int32_t MINUTES_PER_DAY = 1440;
+  const int32_t utcMinutes = static_cast<int32_t>(hour) * 60 + static_cast<int32_t>(minute);
+  int32_t local = (utcMinutes + utcOffsetQuarterHours * 15) % MINUTES_PER_DAY;
+  if (local < 0) local += MINUTES_PER_DAY;
+  return static_cast<uint16_t>(local);
+}
+
+bool withinSleepWindow(const uint16_t nowMinuteOfDay, const uint16_t startMinuteOfDay, const uint16_t endMinuteOfDay) {
+  if (startMinuteOfDay == endMinuteOfDay) return false;
+  if (startMinuteOfDay < endMinuteOfDay) return nowMinuteOfDay >= startMinuteOfDay && nowMinuteOfDay < endMinuteOfDay;
+  return nowMinuteOfDay >= startMinuteOfDay || nowMinuteOfDay < endMinuteOfDay;
+}
+
 bool creditQualifyingDay(DayLedger& ledger, const int32_t today, const uint16_t tasksCompletedToday,
                          const uint16_t habitsCompletedToday, const MoodThresholds& t) {
-  // Already recorded today: a second or third completion the same day must not
-  // extend the streak again.
-  if (ledger.lastQualifyingDay == today) return false;
+  bool changed = false;
 
   const uint32_t points = static_cast<uint32_t>(tasksCompletedToday) + habitsCompletedToday;
-  if (points < t.happyPoints) return false;
 
-  // This day just cleared the bar for the first time: extend the streak when it
-  // directly follows the previous qualifying day, otherwise start a new one.
-  const bool consecutive = ledger.lastQualifyingDay != DayLedger::NEVER && today == ledger.lastQualifyingDay + 1;
-  ledger.streakDays = consecutive && ledger.streakDays < UINT16_MAX ? ledger.streakDays + 1 : 1;
-  if (ledger.streakDays > ledger.bestStreakDays) ledger.bestStreakDays = ledger.streakDays;
-  ledger.lastQualifyingDay = today;
-  return true;
+  // First completion that clears the bar today: mark today as the last
+  // qualifying day, and shift whatever held that title down into
+  // previousQualifyingDay first -- the one level of fallback moodInputFor()
+  // uses if today's own credit is later undone. A later call the same day is
+  // a no-op here -- it is already today, so nothing to shift.
+  if (points >= t.satisfiedPoints && ledger.lastQualifyingDay != today) {
+    ledger.previousQualifyingDay = ledger.lastQualifyingDay;
+    ledger.lastQualifyingDay = today;
+    changed = true;
+  }
+
+  // Unlike lastQualifyingDay, this is re-checked every call: today's total
+  // only grows as more is completed, so a new all-time high can land on any
+  // completion, not just the day's first.
+  const uint16_t cappedPoints = static_cast<uint16_t>(points > UINT16_MAX ? UINT16_MAX : points);
+  if (cappedPoints > ledger.bestDayPoints) {
+    ledger.bestDayPoints = cappedPoints;
+    changed = true;
+  }
+
+  return changed;
 }
 
 MoodInput moodInputFor(const DayLedger& ledger, const int32_t today, const bool clockValid,
-                       const uint16_t tasksCompletedToday, const uint16_t habitsCompletedToday) {
+                       const uint16_t tasksCompletedToday, const uint16_t habitsCompletedToday,
+                       const MoodThresholds& t) {
   MoodInput in;
   in.clockValid = clockValid;
   in.tasksCompletedToday = tasksCompletedToday;
@@ -80,15 +102,25 @@ MoodInput moodInputFor(const DayLedger& ledger, const int32_t today, const bool 
 
   if (!clockValid) return in;
 
-  if (ledger.lastQualifyingDay == DayLedger::NEVER) {
-    // Never qualified: a brand new companion has nothing to have neglected
-    // yet, but also nothing earned to grace -- everQualified stays false.
+  // today is on record as the last qualifying day, but its own live points
+  // no longer clear the bar -- something completed earlier today was undone
+  // (in the Todoist/Habitify app, synced back down). today's credit no
+  // longer counts, so fall back to whichever day held the title before it.
+  const uint32_t points = static_cast<uint32_t>(tasksCompletedToday) + habitsCompletedToday;
+  const bool todayStillQualifies = points >= t.satisfiedPoints;
+  const int32_t effectiveLastQualifyingDay = (!todayStillQualifies && ledger.lastQualifyingDay == today)
+                                                 ? ledger.previousQualifyingDay
+                                                 : ledger.lastQualifyingDay;
+
+  if (effectiveLastQualifyingDay == DayLedger::NEVER) {
+    // Never qualified (or today's only credit was just undone with nothing
+    // genuine before it): a brand new companion has nothing to have
+    // neglected yet either.
     in.daysSinceLastActive = 0;
     return in;
   }
 
-  in.everQualified = true;
-  const int32_t elapsed = today - ledger.lastQualifyingDay;
+  const int32_t elapsed = today - effectiveLastQualifyingDay;
   // A clock corrected backwards yields a negative span; treat it as "today"
   // rather than letting a wild value read as neglect.
   in.daysSinceLastActive = elapsed <= 0 ? 0 : static_cast<uint16_t>(elapsed > UINT16_MAX ? UINT16_MAX : elapsed);

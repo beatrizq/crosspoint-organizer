@@ -28,13 +28,29 @@ struct HabitifyHabit {
   float current = 0.0f;    // Accumulated for the period, as the server last said
   float target = 0.0f;     // Goal for the period; 0 when the habit has no goal
   float pending = 0.0f;    // Added locally, awaiting push
+  // Habitify's own "status" == "completed" for the day, as of the last fetch.
+  // The only way to know a goal-less habit (no numeric target) is done - see
+  // isComplete() - and also true for a numeric habit marked done in Habitify
+  // itself in a way this app's current/target comparison would not catch.
+  bool completedByStatus = false;
+  // Complete tapped locally, awaiting push via Habitify's dedicated
+  // .../logs/complete endpoint - independent of `pending`, since completing is
+  // "mark done" rather than "add N" and works even for a goal-less habit
+  // (no unitSymbol) that `pending`/addLog() cannot touch at all.
+  bool pendingComplete = false;
 
   // What the row shows: the server's figure plus anything not yet pushed.
   float shownCurrent() const { return current + pending; }
   bool hasPending() const { return pending > 0.0f; }
-  // A habit with no goal has no "y" to show and cannot be judged complete.
+  // A habit with no goal has no "y" to show, so current/target alone cannot
+  // judge it - completedByStatus is what does instead.
   bool hasTarget() const { return target > 0.0f; }
-  bool isComplete() const { return hasTarget() && shownCurrent() >= target; }
+  // current/target is checked first (and includes pending) so a numeric
+  // habit's row goes bold the instant a press is logged, before the next sync
+  // confirms it via status; completedByStatus then covers everything
+  // current/target cannot: a goal-less habit, or a numeric one Habitify itself
+  // already considers done.
+  bool isComplete() const { return (hasTarget() && shownCurrent() >= target) || completedByStatus; }
 
   static constexpr size_t NAME_MAX_LEN = 64;
   // Longest unit in the API's enum is "fl oz" at five characters.

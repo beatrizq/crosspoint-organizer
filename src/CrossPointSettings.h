@@ -23,8 +23,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     QUICK_RESUME = 6,
     SLEEP_SCREEN_MODE_COUNT
   };
-  // Which organizer app, if any, paints the sleep screen from its first tab.
-  // Values are persisted, so append rather than renumber.
+  // What feeds the sleep screen: a user-picked file (SLEEP_APP_OFF, labelled
+  // "Custom" - the name is legacy, kept because it is persisted) or an
+  // organizer app's first tab. Values are persisted, so append rather than
+  // renumber -- and never reuse 5, retired along with the per-mood companion
+  // wallpapers feature; the generic ENUM clamp in fromJson() resets a stale
+  // persisted 5 to the struct default on load.
   enum ORGANIZER_SLEEP_APP {
     SLEEP_APP_OFF = 0,
     SLEEP_APP_TASKS = 1,
@@ -154,10 +158,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
-  // Which app repaints /sleep.bmp from its first tab whenever its contents
-  // change - a sync, or a change made on the device with the radio off. Off by
-  // default: this overwrites a file the user may have put there themselves, so it
-  // is never on until asked for. See util/OrganizerSleepScreen.h.
+  // What the sleep screen shows: a user-picked file (SLEEP_APP_OFF/"Custom",
+  // the default), an organizer app repainting /sleep.bmp from its first tab
+  // whenever its contents change, or the companion's per-mood wallpapers. See
+  // util/OrganizerSleepScreen.h.
   uint8_t organizerSleepApp = SLEEP_APP_OFF;
   // The sleep screen mode in force before an app's screenshot switched it to
   // CUSTOM, so switching the app off can put it back. NO_PREVIOUS_SLEEP_SCREEN
@@ -310,12 +314,33 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Index into companion::COMPANION_SPRITES (0 = the first companion).
   // Persisted numerically, so sprites/order.txt is append-only.
   uint8_t companionId = 0;
-  // Draw the companion on the home screen (0 = off, 1 = on).
-  uint8_t companionOnHome = 1;
   // Show the mood word and streak/progress line under the companion on Home
   // (0 = off, 1 = on). Off gives the sprite the freed space to draw a scale
   // step bigger.
   uint8_t companionShowMoodLabel = 1;
+  // Sleep window the companion shows the Sleeping mood during, local wall-clock
+  // time. Default 22:00-07:00. May wrap past midnight (start > end); start ==
+  // end means the window never applies (24 awake hours, not 24 asleep).
+  uint8_t companionSleepStartHour = 22;
+  uint8_t companionSleepStartMinute = 0;
+  uint8_t companionSleepEndHour = 7;
+  uint8_t companionSleepEndMinute = 0;
+  // Mood ladder tuning -- see MoodThresholds in lib/Companion/CompanionMood.h.
+  // Combined tasks+habits completed today needed for the top (Happy) tier.
+  // Must stay above companionSatisfiedPoints or Happy becomes unreachable --
+  // CompanionSettingsActivity clamps this on every edit, so these two only
+  // ever land here already valid; CompanionTracker clamps again on read as a
+  // backstop against a hand-edited settings.json.
+  uint8_t companionHappyPoints = 3;
+  // Combined tasks+habits completed today needed to count as "did something"
+  // (Satisfied) rather than starting the Cranky/Neglected decay. Must stay
+  // >= 1 -- 0 would mean every day, even an empty one, already qualifies,
+  // making the decay tiers unreachable.
+  uint8_t companionSatisfiedPoints = 1;
+  // Quiet days (no qualifying day) at or above which the mood bottoms out at
+  // Neglected rather than Cranky. Must stay >= 1, for the same reachability
+  // reason as companionSatisfiedPoints.
+  uint8_t companionNeglectedDays = 3;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
   // Dictionary folder name under /dictionaries (empty = no dictionary)

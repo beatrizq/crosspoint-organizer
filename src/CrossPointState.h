@@ -20,6 +20,41 @@ class CrossPointState : public PersistableStore<CrossPointState> {
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
   bool showBootScreen = true;
+  // Mirrors lastSleepFromReader for the companion's quick-pick reveal screen,
+  // so waking from sleep can put the same pick back up instead of dropping to
+  // Home. The pick's own content lives in the three fields below, kept in
+  // sync by QuickPickActivity itself (written on entry) rather than fished
+  // out reactively at sleep time -- there is no RTTI in this build to safely
+  // downcast the current Activity and read it that way.
+  bool lastSleepFromQuickPick = false;
+  std::string quickPickText;
+  // Todoist task id / Habitify habit id behind quickPickText, so resuming
+  // this screen after sleep can still jump straight to that row.
+  std::string quickPickItemId;
+  bool quickPickIsHabit = false;
+  bool quickPickPoolEmpty = false;
+
+  // A running focus session, mirrored on start (organizerActions::beginFocusSession)
+  // and cleared once consumed (FocusSessionActivity, once the countdown
+  // elapses or turns out to have nothing to time against) so a reboot mid-session
+  // resumes the lock instead of losing it -- the whole point of the lock is that
+  // it survives a reboot, not just a sleep/wake. Checked directly against the
+  // wall clock at boot rather than via a lastSleepFromX flag like the quick-pick
+  // fields above: a stale flag from a session that already finished needs telling
+  // apart from a live one, and the end time itself already does that.
+  bool focusSessionActive = false;
+  std::string focusSessionText;
+  std::string focusSessionItemId;
+  bool focusSessionIsHabit = false;
+  // Absolute end time as (UTC day number * 1440) + minute-of-day, comparable
+  // across a reboot without any calendar bookkeeping -- see
+  // companion::localDayNumber() and organizerActions::computeFocusSessionEnd().
+  int32_t focusSessionEndAbsMinutes = 0;
+  // The same end time as a UTC hour/minute, kept only for display -- formatted
+  // into the user's local time the way the status bar clock is (see
+  // HalClock::formatHourMinute()).
+  uint8_t focusSessionEndHour = 0;
+  uint8_t focusSessionEndMinute = 0;
 
   static const char* getFilePath() { return "/.crosspoint/state.json"; }
   void toJson(JsonDocument& doc) const;

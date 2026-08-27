@@ -34,6 +34,8 @@
 #include "YnabStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
+#include "activities/home/FocusSessionActivity.h"
+#include "activities/home/QuickPickActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "companion/CompanionState.h"
 #include "components/UITheme.h"
@@ -202,6 +204,10 @@ static bool loadSleepFrameBuffer() {
 void enterDeepSleep(bool fromTimeout = false) {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
+  // QuickPickActivity keeps quickPickText/isHabit/poolEmpty current on its own
+  // (see its onEnter()); this flag just says whether that content is what was
+  // actually up when sleep was entered.
+  APP_STATE.lastSleepFromQuickPick = activityManager.isQuickPickActivity();
 
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -442,9 +448,27 @@ void setup() {
     activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent) {
     // target == home (or reader with no open book): land on home — don't fall
-    // through to the sleep-wake "resume reader" logic, which fires on stale
-    // openEpubPath + lastSleepFromReader from a prior session.
+    // through to the sleep-wake "resume reader"/"resume quick-pick" logic
+    // below, which fires on stale flags from a prior session.
     activityManager.goHome();
+  } else if (APP_STATE.focusSessionActive) {
+    // No Back-held escape hatch here, unlike the branches below: a focus
+    // session is a deliberate commitment device (see FocusSessionActivity),
+    // and letting a reboot bypass it the same way the reader/quick-pick
+    // resumes do would make a reboot a free way around it. Whether the lock
+    // is actually still in effect (versus having quietly finished while the
+    // device was off) is resolved by FocusSessionActivity's own onEnter()
+    // against the wall clock, not here.
+    activityManager.replaceActivity(std::make_unique<FocusSessionActivity>(
+        renderer, mappedInputManager, APP_STATE.focusSessionText, APP_STATE.focusSessionItemId,
+        APP_STATE.focusSessionIsHabit, APP_STATE.focusSessionEndAbsMinutes, APP_STATE.focusSessionEndHour,
+        APP_STATE.focusSessionEndMinute));
+  } else if (APP_STATE.lastSleepFromQuickPick && !mappedInputManager.isPressed(MappedInputManager::Button::Back)) {
+    // Same escape hatch as the reader branch below: holding Back on wake skips
+    // straight to home instead of putting the old pick back up.
+    activityManager.replaceActivity(std::make_unique<QuickPickActivity>(
+        renderer, mappedInputManager, APP_STATE.quickPickText, APP_STATE.quickPickItemId, APP_STATE.quickPickIsHabit,
+        APP_STATE.quickPickPoolEmpty));
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
              mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
     // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity

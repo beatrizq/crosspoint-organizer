@@ -4,14 +4,16 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/settings/CompanionSleepTimeActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "activities/util/IntervalSelectionActivity.h"
 #include "companion/CompanionSprites.generated.h"
 #include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
@@ -20,59 +22,34 @@
 
 namespace {
 constexpr int ROW_ENABLED = 0;
-constexpr int ROW_CHARACTER = 1;
-constexpr int ROW_ON_HOME = 2;
-constexpr int ROW_SHOW_MOOD_LABEL = 3;
-constexpr int ROW_ACTIVE_FOR = 4;
+constexpr int ROW_SHOW_MOOD_LABEL = 1;
+constexpr int ROW_SLEEP_START = 2;
+constexpr int ROW_SLEEP_END = 3;
+constexpr int ROW_HAPPY_POINTS = 4;
+constexpr int ROW_SATISFIED_POINTS = 5;
+constexpr int ROW_NEGLECTED_DAYS = 6;
+constexpr int ROW_RESET = 7;
 
-// Name plus species, because a list of six bare proper nouns tells you nothing
-// about what you are choosing. The popup cannot show sprites: its FreeInkUI
-// DialogOption has no icon slot, and adding one would mean patching the SDK
-// submodule and losing it on the next update.
-std::vector<std::string> characterLabels() {
-  std::vector<std::string> labels;
-  labels.reserve(companion::COMPANION_COUNT);
-  for (int i = 0; i < companion::COMPANION_COUNT; i++) {
-    std::string label = companion::COMPANION_NAMES[i];
-    label += " (";
-    label += companion::COMPANION_KINDS[i];
-    label += ")";
-    labels.emplace_back(std::move(label));
-  }
-  return labels;
-}
-
-// "Active for" value: days while under a month old, then months, then years --
-// each rounded down, since a settings row has no room for a full breakdown.
-std::string formatAge(const int32_t activatedDay) {
-  if (activatedDay == companion::DayLedger::NEVER) return std::string(tr(STR_COMPANION_AGE_NOT_YET));
-
-  int32_t today = 0;
-  if (!CompanionTracker::resolveLocalDay(today)) return std::string(tr(STR_COMPANION_AGE_NOT_YET));
-
-  // A clock correction could put "today" before the stamped day; floor at 0
-  // rather than showing a negative age.
-  const int32_t elapsed = today > activatedDay ? today - activatedDay : 0;
-  char buf[32];
-  if (elapsed < 1) return std::string(tr(STR_COMPANION_AGE_TODAY));
-  if (elapsed < 30) {
-    snprintf(buf, sizeof(buf), elapsed == 1 ? tr(STR_COMPANION_AGE_DAY) : tr(STR_COMPANION_AGE_DAYS), elapsed);
-    return std::string(buf);
-  }
-  if (elapsed < 365) {
-    const int32_t months = elapsed / 30;
-    snprintf(buf, sizeof(buf), months == 1 ? tr(STR_COMPANION_AGE_MONTH) : tr(STR_COMPANION_AGE_MONTHS), months);
-    return std::string(buf);
-  }
-  const int32_t years = elapsed / 365;
-  snprintf(buf, sizeof(buf), years == 1 ? tr(STR_COMPANION_AGE_YEAR) : tr(STR_COMPANION_AGE_YEARS), years);
+// "HH:MM" for a Sleep start/end row's value column -- digits need no
+// translation.
+std::string sleepTimeValue(const uint8_t hour, const uint8_t minute) {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%02d:%02d", hour, minute);
   return std::string(buf);
 }
+
+// "N pts" / "N days" for a threshold row's value column, sharing the same
+// format strings IntervalSelectionActivity uses inside the picker itself.
+std::string thresholdValue(const StrId formatId, const uint8_t n) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), I18N.get(formatId), static_cast<unsigned>(n));
+  return std::string(buf);
+}
+
 }  // namespace
 
 void CompanionSettingsActivity::onEnter() {
   Activity::onEnter();
-  if (SETTINGS.companionId >= companion::COMPANION_COUNT) SETTINGS.companionId = 0;
   selectedIndex = 0;
   swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   stampActivationIfNeeded();
@@ -94,45 +71,147 @@ void CompanionSettingsActivity::handleSelection() {
   switch (selectedIndex) {
     case ROW_ENABLED: {
       const bool turningOn = SETTINGS.companionEnabled == 0;
+      startActivityForResult(std::make_unique<ConfirmationActivity>(
+                                 renderer, mappedInput,
+                                 turningOn ? tr(STR_COMPANION_ENABLE_CONFIRM) : tr(STR_COMPANION_DISABLE_CONFIRM), ""),
+                             [this](const ActivityResult& result) {
+                               // The popup answers on the button going down, so its release lands
+                               // back here once this screen is active again -- same reasoning as
+                               // swallowConfirmRelease in onEnter(), just armed from this result
+                               // instead.
+                               if (mappedInput.isPressed(MappedInputManager::Button::Confirm))
+                                 swallowConfirmRelease = true;
+                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                                 swallowBackRelease = true;
+                               }
+                               if (result.isCancelled) return;
+                               SETTINGS.companionEnabled = (SETTINGS.companionEnabled + 1) % 2;
+                               stampActivationIfNeeded();
+                               SETTINGS.saveToFile();
+                               requestUpdate();
+                             });
+      return;
+    }
+    case ROW_SHOW_MOOD_LABEL:
+      SETTINGS.companionShowMoodLabel = (SETTINGS.companionShowMoodLabel + 1) % 2;
+      break;
+    case ROW_SLEEP_START:
+    case ROW_SLEEP_END:
       startActivityForResult(
-          std::make_unique<ConfirmationActivity>(
-              renderer, mappedInput, turningOn ? tr(STR_COMPANION_ENABLE_CONFIRM) : tr(STR_COMPANION_DISABLE_CONFIRM),
-              ""),
+          std::make_unique<CompanionSleepTimeActivity>(renderer, mappedInput, selectedIndex == ROW_SLEEP_START),
+          [this](const ActivityResult&) {
+            // Same reasoning as ROW_ENABLED's popup above: this sub-screen
+            // answers Back/Confirm on the button going down in places, so a
+            // release can still land here.
+            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+              swallowConfirmRelease = true;
+            }
+            if (mappedInput.isPressed(MappedInputManager::Button::Back)) {
+              swallowBackRelease = true;
+            }
+            requestUpdate();
+          });
+      return;
+    case ROW_HAPPY_POINTS:
+    case ROW_SATISFIED_POINTS:
+    case ROW_NEGLECTED_DAYS:
+      offerThresholdPicker(selectedIndex);
+      return;
+    case ROW_RESET:
+      startActivityForResult(
+          std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPANION_RESET_CONFIRM), ""),
           [this](const ActivityResult& result) {
-            // The popup answers on the button going down, so its release lands
-            // back here once this screen is active again -- same reasoning as
-            // swallowConfirmRelease in onEnter(), just armed from this result
-            // instead.
-            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = true;
+            // Same reasoning as ROW_ENABLED's popup above.
+            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+              swallowConfirmRelease = true;
+            }
             if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
               swallowBackRelease = true;
             }
             if (result.isCancelled) return;
-            SETTINGS.companionEnabled = (SETTINGS.companionEnabled + 1) % 2;
+            COMPANION_STATE.reset();
+            // Immediately re-stamped rather than left at "Not yet": the
+            // companion is still enabled, so a reset should read as
+            // freshly active, not as if it had never been turned on.
             stampActivationIfNeeded();
-            SETTINGS.saveToFile();
+            COMPANION_STATE.saveToFile();
             requestUpdate();
           });
       return;
-    }
-    case ROW_CHARACTER:
-      optionPopup.show(StrId::STR_COMPANION_CHARACTER, characterLabels(), SETTINGS.companionId, [this](int idx) {
-        SETTINGS.companionId = static_cast<uint8_t>(idx);
-        SETTINGS.saveToFile();
-      });
-      requestUpdate();
-      return;
-    case ROW_ON_HOME:
-      SETTINGS.companionOnHome = (SETTINGS.companionOnHome + 1) % 2;
-      break;
-    case ROW_SHOW_MOOD_LABEL:
-      SETTINGS.companionShowMoodLabel = (SETTINGS.companionShowMoodLabel + 1) % 2;
-      break;
-    default:
-      // ROW_ACTIVE_FOR is a read-only info row.
-      return;
   }
   SETTINGS.saveToFile();
+}
+
+void CompanionSettingsActivity::offerThresholdPicker(const int row) {
+  StrId titleId = StrId::STR_NONE_OPT;
+  StrId formatId = StrId::STR_NONE_OPT;
+  int initialValue = 0;
+  int minValue = 1;
+  int maxValue = 1;
+
+  switch (row) {
+    case ROW_HAPPY_POINTS:
+      titleId = StrId::STR_COMPANION_HAPPY_AT;
+      formatId = StrId::STR_COMPANION_POINTS_FORMAT;
+      initialValue = SETTINGS.companionHappyPoints;
+      // Must stay above Satisfied's own bar, or the Happy tier is unreachable.
+      minValue = static_cast<int>(SETTINGS.companionSatisfiedPoints) + 1;
+      maxValue = 20;
+      break;
+    case ROW_SATISFIED_POINTS:
+      titleId = StrId::STR_COMPANION_SATISFIED_AT;
+      formatId = StrId::STR_COMPANION_POINTS_FORMAT;
+      initialValue = SETTINGS.companionSatisfiedPoints;
+      minValue = 1;
+      // Must stay below Happy's own bar, for the same reason in reverse.
+      maxValue = static_cast<int>(SETTINGS.companionHappyPoints) - 1;
+      break;
+    case ROW_NEGLECTED_DAYS:
+      titleId = StrId::STR_COMPANION_NEGLECTED_AFTER;
+      formatId = StrId::STR_COMPANION_DAYS_FORMAT;
+      initialValue = SETTINGS.companionNeglectedDays;
+      minValue = 1;
+      maxValue = 14;
+      break;
+    default:
+      return;
+  }
+
+  startActivityForResult(
+      std::make_unique<IntervalSelectionActivity>(renderer, mappedInput, "CompanionThreshold", titleId, initialValue,
+                                                  minValue, maxValue, /*smallStep=*/1, /*largeStep=*/1, formatId,
+                                                  /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true),
+      [this, row](const ActivityResult& result) {
+        // Same reasoning as ROW_ENABLED's popup above.
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        const int v = std::get<IntervalResult>(result.data).value;
+        // The picker's own min/max already enforced these bounds, so this is
+        // a defensive clamp rather than the primary guard -- kept in case the
+        // paired field's value changed some other way while this was open.
+        switch (row) {
+          case ROW_HAPPY_POINTS:
+            SETTINGS.companionHappyPoints =
+                static_cast<uint8_t>(std::max(v, static_cast<int>(SETTINGS.companionSatisfiedPoints) + 1));
+            break;
+          case ROW_SATISFIED_POINTS:
+            SETTINGS.companionSatisfiedPoints =
+                static_cast<uint8_t>(std::min(v, static_cast<int>(SETTINGS.companionHappyPoints) - 1));
+            break;
+          case ROW_NEGLECTED_DAYS:
+            SETTINGS.companionNeglectedDays = static_cast<uint8_t>(std::max(v, 1));
+            break;
+          default:
+            break;
+        }
+        SETTINGS.saveToFile();
+        requestUpdate();
+      });
 }
 
 void CompanionSettingsActivity::loop() {
@@ -201,43 +280,51 @@ void CompanionSettingsActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
 
-  const uint8_t characterIdx = SETTINGS.companionId < companion::COMPANION_COUNT ? SETTINGS.companionId : 0;
-  const std::string characterValue =
-      std::string(companion::COMPANION_NAMES[characterIdx]) + " (" + companion::COMPANION_KINDS[characterIdx] + ")";
-  const std::string ageValue = formatAge(COMPANION_STATE.activatedDay);
-
   GUI.drawList(
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
         switch (index) {
           case ROW_ENABLED:
             return std::string(tr(STR_COMPANION_ENABLED));
-          case ROW_CHARACTER:
-            return std::string(tr(STR_COMPANION_CHARACTER));
-          case ROW_ON_HOME:
-            return std::string(tr(STR_COMPANION_ON_HOME));
           case ROW_SHOW_MOOD_LABEL:
             return std::string(tr(STR_COMPANION_SHOW_MOOD_LABEL));
+          case ROW_SLEEP_START:
+            return std::string(tr(STR_COMPANION_SLEEP_START));
+          case ROW_SLEEP_END:
+            return std::string(tr(STR_COMPANION_SLEEP_END));
+          case ROW_HAPPY_POINTS:
+            return std::string(tr(STR_COMPANION_HAPPY_AT));
+          case ROW_SATISFIED_POINTS:
+            return std::string(tr(STR_COMPANION_SATISFIED_AT));
+          case ROW_NEGLECTED_DAYS:
+            return std::string(tr(STR_COMPANION_NEGLECTED_AFTER));
           default:
-            return std::string(tr(STR_COMPANION_ACTIVE_FOR));
+            return std::string(tr(STR_COMPANION_RESET));
         }
       },
       nullptr, nullptr,
-      [&characterValue, &ageValue](int index) -> std::string {
+      [](int index) -> std::string {
         switch (index) {
           case ROW_ENABLED:
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-          case ROW_CHARACTER:
-            return characterValue;
-          case ROW_ON_HOME:
-            return SETTINGS.companionOnHome ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_SHOW_MOOD_LABEL:
             return SETTINGS.companionShowMoodLabel ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+          case ROW_SLEEP_START:
+            return sleepTimeValue(SETTINGS.companionSleepStartHour, SETTINGS.companionSleepStartMinute);
+          case ROW_SLEEP_END:
+            return sleepTimeValue(SETTINGS.companionSleepEndHour, SETTINGS.companionSleepEndMinute);
+          case ROW_HAPPY_POINTS:
+            return thresholdValue(StrId::STR_COMPANION_POINTS_FORMAT, SETTINGS.companionHappyPoints);
+          case ROW_SATISFIED_POINTS:
+            return thresholdValue(StrId::STR_COMPANION_POINTS_FORMAT, SETTINGS.companionSatisfiedPoints);
+          case ROW_NEGLECTED_DAYS:
+            return thresholdValue(StrId::STR_COMPANION_DAYS_FORMAT, SETTINGS.companionNeglectedDays);
           default:
-            return ageValue;
+            // ROW_RESET is an action row with nothing to show in this column.
+            return std::string();
         }
       },
-      true, [](int index) -> bool { return index == ROW_ACTIVE_FOR; });
+      true);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

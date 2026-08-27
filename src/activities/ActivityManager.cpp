@@ -204,13 +204,16 @@ void ActivityManager::goToRecentBooks() {
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
 }
 
-void ActivityManager::goToTasks(const uint8_t initialTab) {
-  replaceActivity(std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<int>(initialTab)));
+void ActivityManager::goToTasks(const uint8_t initialTab, std::string selectTaskId) {
+  replaceActivity(std::make_unique<TasksActivity>(renderer, mappedInput, static_cast<int>(initialTab),
+                                                  std::move(selectTaskId)));
 }
 
 void ActivityManager::goToCalendar() { replaceActivity(std::make_unique<CalendarActivity>(renderer, mappedInput)); }
 
-void ActivityManager::goToHabits() { replaceActivity(std::make_unique<HabitsActivity>(renderer, mappedInput)); }
+void ActivityManager::goToHabits(std::string selectHabitId) {
+  replaceActivity(std::make_unique<HabitsActivity>(renderer, mappedInput, std::move(selectHabitId)));
+}
 
 void ActivityManager::goToSyncAll() { replaceActivity(std::make_unique<SyncAllActivity>(renderer, mappedInput)); }
 
@@ -289,6 +292,12 @@ bool ActivityManager::isReaderActivity() const {
   return std::any_of(stackActivities.begin(), stackActivities.end(),
                      [](const auto& activity) { return activity->isReaderActivity(); }) ||
          (currentActivity && currentActivity->isReaderActivity());
+}
+
+bool ActivityManager::isQuickPickActivity() const {
+  return std::any_of(stackActivities.begin(), stackActivities.end(),
+                     [](const auto& activity) { return activity->isQuickPickActivity(); }) ||
+         (currentActivity && currentActivity->isQuickPickActivity());
 }
 
 bool ActivityManager::handleForcedRefresh() { return currentActivity && currentActivity->handleForcedRefresh(); }

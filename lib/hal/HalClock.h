@@ -52,6 +52,15 @@ class HalClock {
   // Returns false if RTC is not available.
   bool formatTime(char* buf, size_t bufSize, uint8_t utcOffsetQuarterHoursBiased = 48, bool use12Hour = false) const;
 
+  // Same formatting/offset math as formatTime(), for an arbitrary UTC
+  // hour/minute rather than the current reading -- for a caller displaying a
+  // computed time (a countdown's end time) rather than "now". Same buffer
+  // sizing and offset convention as formatTime(); does not touch the RTC, so
+  // it needs no instance. Returns false (buf untouched) only if bufSize is
+  // too small.
+  static bool formatHourMinute(char* buf, size_t bufSize, uint8_t hour, uint8_t minute,
+                               uint8_t utcOffsetQuarterHoursBiased = 48, bool use12Hour = false);
+
   // Sync the RTC from an NTP server. Requires WiFi to be connected.
   // Blocks for up to ~5s while waiting for SNTP response.
   // Returns true if the RTC was successfully updated.
