@@ -241,15 +241,20 @@ TodoistClient::Error TodoistClient::closeTask(const std::string& taskId) {
 TodoistClient::Error TodoistClient::rescheduleTask(const std::string& taskId, const std::string& isoDueDate) {
   lastHttpCode = 0;
   if (!TODOIST_STORE.hasToken()) return NO_TOKEN;
-  if (taskId.empty() || isoDueDate.empty()) return SERVER_ERROR;
+  if (taskId.empty()) return SERVER_ERROR;
   if (insufficientHeap()) return LOW_MEMORY;
 
   const std::string url = std::string(API_BASE) + "/tasks/" + taskId;
 
   // Built by hand rather than through ArduinoJson: one field is not worth a
-  // document.
+  // document. An empty isoDueDate means "clear the due date" - see this
+  // method's own header comment for why due_string is what does that.
   char body[48];
-  snprintf(body, sizeof(body), "{\"due_date\":\"%s\"}", isoDueDate.c_str());
+  if (isoDueDate.empty()) {
+    snprintf(body, sizeof(body), "{\"due_string\":\"no date\"}");
+  } else {
+    snprintf(body, sizeof(body), "{\"due_date\":\"%s\"}", isoDueDate.c_str());
+  }
 
   freeink::SecureHttpClient http;
   http.setInsecure();
@@ -263,7 +268,8 @@ TodoistClient::Error TodoistClient::rescheduleTask(const std::string& taskId, co
   const int httpCode = http.POST(body);
   http.end();
   lastHttpCode = httpCode;
-  LOG_DBG("TDA", "Reschedule %s -> %s: %d", taskId.c_str(), isoDueDate.c_str(), httpCode);
+  LOG_DBG("TDA", "Reschedule %s -> %s: %d", taskId.c_str(), isoDueDate.empty() ? "no date" : isoDueDate.c_str(),
+          httpCode);
 
   // Unlike closeTask(), a 404 here means the task cannot be rescheduled at
   // all - there is no equally-good "already done" reading of it - so it

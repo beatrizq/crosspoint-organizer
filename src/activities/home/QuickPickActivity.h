@@ -60,9 +60,14 @@ class QuickPickActivity final : public Activity {
   // then organizerActions::beginFocusSession() for the suggested item.
   void offerFocusSession();
   // The Options menu's "Reschedule" entry opens this (task suggestions only -
-  // a habit has no due date). Warns first if the task is recurring (see
-  // TodoistTask::isRecurring), then the date picker.
+  // a habit has no due date): a sub-choice between picking a new date and
+  // clearing the due date entirely.
   void offerReschedule();
+  // "Pick a date" from offerReschedule()'s sub-menu: the date picker itself.
+  void offerRescheduleDatePicker();
+  // "No date" from offerReschedule()'s sub-menu: clears the due date directly,
+  // no further confirmation - same immediacy as Complete.
+  void clearTaskDueDate();
 
   // Whether the current pick is still a valid quickpick candidate: present in
   // its cache and, for a habit, still short of its target. Checked once an

@@ -101,9 +101,14 @@ class TasksActivity final : public OrganizerScreenActivity {
   // The Options menu's "Focus session" entry opens this: a duration picker,
   // then organizerActions::beginFocusSession() for the same task.
   void offerFocusSession(int cacheIndex);
-  // The Options menu's "Reschedule" entry opens this: a warning first if the
-  // task is recurring (see TodoistTask::isRecurring), then the date picker.
+  // The Options menu's "Reschedule" entry opens this: a sub-choice between
+  // picking a new date and clearing the due date entirely.
   void offerReschedule(int cacheIndex);
+  // "Pick a date" from offerReschedule()'s sub-menu: the date picker itself.
+  void offerRescheduleDatePicker(int cacheIndex);
+  // "No date" from offerReschedule()'s sub-menu: clears the due date
+  // directly, no further confirmation - same immediacy as Complete.
+  void clearTaskDueDate(int cacheIndex);
 
   // Tabs currently on screen, in display order. Always leads with ALL.
   std::vector<TabKind> visibleTabs{TabKind::ALL};

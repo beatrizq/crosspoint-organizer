@@ -310,6 +310,30 @@ void TasksActivity::offerFocusSession(const int cacheIndex) {
 }
 
 void TasksActivity::offerReschedule(const int cacheIndex) {
+  std::vector<std::string> options;
+  options.push_back(tr(STR_PICK_DATE));
+  options.push_back(tr(STR_TASKS_TAB_NO_DATE));
+
+  startActivityForResult(
+      std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_RESCHEDULE_TASK, std::move(options)),
+      [this, cacheIndex](const ActivityResult& result) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        const int idx = std::get<OptionPickResult>(result.data).index;
+        if (idx == 0) {
+          offerRescheduleDatePicker(cacheIndex);
+        } else if (idx == 1) {
+          clearTaskDueDate(cacheIndex);
+        }
+      });
+}
+
+void TasksActivity::offerRescheduleDatePicker(const int cacheIndex) {
   // Only ever reached for a non-recurring task -- showRowOptions() leaves
   // Reschedule off the menu entirely for a recurring one.
   if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
@@ -341,6 +365,20 @@ void TasksActivity::offerReschedule(const int cacheIndex) {
                            }
                            updateSleepScreen();
                          });
+}
+
+void TasksActivity::clearTaskDueDate(const int cacheIndex) {
+  if (cacheIndex < 0 || static_cast<size_t>(cacheIndex) >= TODOIST_TASKS.getTasks().size()) return;
+
+  {
+    // Same reasoning as performTaskCompletion(): the render task reads the
+    // list, and clearing a due date can move the task between tabs just as
+    // completing one removes it from all of them.
+    RenderLock lock(*this);
+    organizerActions::rescheduleTask(static_cast<size_t>(cacheIndex), todoist::DUE_NONE);
+    rebuildTabs();
+  }
+  updateSleepScreen();
 }
 
 void TasksActivity::completeSelectedTask() {

@@ -70,10 +70,15 @@ class TodoistClient {
   static Error closeTask(const std::string& taskId);
 
   /**
-   * Reschedule a task to `isoDueDate` ("YYYY-MM-DD"). Unlike closeTask(), a 404
-   * here is reported as NOT_FOUND, not OK: a task that no longer exists cannot
-   * usefully be rescheduled the way it can usefully be "already complete", so
-   * the caller should drop the attempt rather than treat it as done.
+   * Reschedule a task to `isoDueDate` ("YYYY-MM-DD"), or clear its due date
+   * entirely when `isoDueDate` is empty (sent as due_string: "no date" -
+   * Todoist's REST API has no dedicated "clear the due date" field, but its
+   * due_string goes through the same natural-language parser quick-add uses,
+   * where that phrase is what clears a date there too). Unlike closeTask(), a
+   * 404 here is reported as NOT_FOUND, not OK: a task that no longer exists
+   * cannot usefully be rescheduled the way it can usefully be "already
+   * complete", so the caller should drop the attempt rather than treat it as
+   * done.
    *
    * Todoist has no way to reschedule a single occurrence of a recurring task
    * without replacing its recurrence entirely - this call does exactly that

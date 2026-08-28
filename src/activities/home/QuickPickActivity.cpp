@@ -253,6 +253,30 @@ void QuickPickActivity::completeSuggestedTask() {
 }
 
 void QuickPickActivity::offerReschedule() {
+  std::vector<std::string> options;
+  options.push_back(tr(STR_PICK_DATE));
+  options.push_back(tr(STR_TASKS_TAB_NO_DATE));
+
+  startActivityForResult(
+      std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_RESCHEDULE_TASK, std::move(options)),
+      [this](const ActivityResult& result) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+          swallowConfirmRelease = true;
+        }
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+          swallowBackRelease = true;
+        }
+        if (result.isCancelled) return;
+        const int idx = std::get<OptionPickResult>(result.data).index;
+        if (idx == 0) {
+          offerRescheduleDatePicker();
+        } else if (idx == 1) {
+          clearTaskDueDate();
+        }
+      });
+}
+
+void QuickPickActivity::offerRescheduleDatePicker() {
   // Only ever reached for a non-recurring task -- showOptions() leaves
   // Reschedule off the menu entirely for a recurring one.
   const auto& tasks = TODOIST_TASKS.getTasks();
@@ -295,6 +319,24 @@ void QuickPickActivity::offerReschedule() {
                            }
                            if (!currentPickStillEligible()) reroll();
                          });
+}
+
+void QuickPickActivity::clearTaskDueDate() {
+  const auto& tasks = TODOIST_TASKS.getTasks();
+  size_t cacheIndex = tasks.size();
+  for (size_t i = 0; i < tasks.size(); i++) {
+    if (tasks[i].id == itemId) {
+      cacheIndex = i;
+      break;
+    }
+  }
+  if (cacheIndex >= tasks.size()) return;  // gone already
+
+  {
+    RenderLock lock(*this);
+    organizerActions::rescheduleTask(cacheIndex, todoist::DUE_NONE);
+  }
+  if (!currentPickStillEligible()) reroll();
 }
 
 void QuickPickActivity::logSuggestedHabit() {
