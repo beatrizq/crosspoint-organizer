@@ -74,9 +74,12 @@ bool TodoistTaskCache::fromJson(JsonVariantConst doc) {
     if (pendingReschedules.size() >= MAX_PENDING) break;
     const char* id = obj["id"] | "";
     if (id[0] == '\0') continue;
-    const uint16_t due = todoist::dueDaysFromIso(obj["due"] | "");
-    if (due == todoist::DUE_NONE) continue;
-    pendingReschedules.push_back({id, due});
+    // DUE_NONE is a real, intentional value here -- a pending "clear the due
+    // date" reschedule -- not just what a malformed "due" parses to, so it is
+    // not skipped the way an empty id is. Dropping it silently would mean a
+    // reboot loses that pending sync entirely, the same class of bug a habit
+    // completion's own pending flag once had.
+    pendingReschedules.push_back({id, todoist::dueDaysFromIso(obj["due"] | "")});
   }
 
   LOG_DBG("TDC", "Loaded %zu tasks, %zu pending completions, %zu pending reschedules", tasks.size(), pendingIds.size(),
