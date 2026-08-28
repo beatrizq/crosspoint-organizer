@@ -41,7 +41,10 @@ struct HabitifyHabit {
 
   // What the row shows: the server's figure plus anything not yet pushed.
   float shownCurrent() const { return current + pending; }
-  bool hasPending() const { return pending > 0.0f; }
+  // Either kind of unpushed change counts: a logged amount (`pending`) and a
+  // tapped Complete (`pendingComplete`) are independent, and either alone
+  // means this habit has something the next sync still needs to push.
+  bool hasPending() const { return pending > 0.0f || pendingComplete; }
   // A habit with no goal has no "y" to show, so current/target alone cannot
   // judge it - completedByStatus is what does instead.
   bool hasTarget() const { return target > 0.0f; }
