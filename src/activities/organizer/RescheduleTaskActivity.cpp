@@ -1,6 +1,7 @@
 #include "RescheduleTaskActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalGPIO.h>
 #include <I18n.h>
 
 #include <cstdio>
@@ -10,6 +11,11 @@
 #include "fontIds.h"
 
 namespace {
+// Side buttons step the active field by this much per press (front buttons
+// still step by 1); see IntervalSelectionActivity's own front/side split for
+// the same convention elsewhere.
+constexpr int LARGE_STEP = 5;
+
 uint32_t daysInMonth(const int32_t year, const uint32_t month) {
   static constexpr uint8_t DAYS[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
   const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -36,6 +42,12 @@ void RescheduleTaskActivity::loadInitialDate() {
 uint16_t RescheduleTaskActivity::packedDate() const { return civil::packDate(year, month, static_cast<uint32_t>(day)); }
 
 uint32_t RescheduleTaskActivity::daysInActiveMonth() const { return daysInMonth(year, month); }
+
+void RescheduleTaskActivity::drawStepHintLine(const int y, const StrId labelId, const int step) const {
+  char line[32];
+  snprintf(line, sizeof(line), "%s %d", I18N.get(labelId), step);
+  renderer.drawCenteredText(SMALL_FONT_ID, y, line, true);
+}
 
 void RescheduleTaskActivity::adjustActiveField(const int delta) {
   switch (activeField) {
@@ -139,20 +151,28 @@ void RescheduleTaskActivity::loop() {
     }
   }
 
-  buttonNavigator.onNextRelease([this] {
-    adjustActiveField(+1);
-    requestUpdate();
-  });
-  buttonNavigator.onPreviousRelease([this] {
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] {
     adjustActiveField(-1);
     requestUpdate();
   });
-  buttonNavigator.onNextContinuous([this] {
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] {
     adjustActiveField(+1);
     requestUpdate();
   });
-  buttonNavigator.onPreviousContinuous([this] {
-    adjustActiveField(-1);
+
+  // On X3 the side buttons sit on the left/right edges of the screen rather
+  // than as a vertical up/down rocker (X4), so BTN_UP is physically the left
+  // button and BTN_DOWN the right one. Flip the large-step direction there so
+  // the left button decreases and the right button increases, matching the
+  // layout -- same reasoning as IntervalSelectionActivity's own split.
+  const int upDelta = gpio.deviceIsX3() ? -LARGE_STEP : LARGE_STEP;
+  const int downDelta = gpio.deviceIsX3() ? LARGE_STEP : -LARGE_STEP;
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this, upDelta] {
+    adjustActiveField(upDelta);
+    requestUpdate();
+  });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this, downDelta] {
+    adjustActiveField(downDelta);
     requestUpdate();
   });
 }
@@ -210,6 +230,13 @@ void RescheduleTaskActivity::render(RenderLock&&) {
   x += dashWidth + dashGap;
 
   drawField(yearStr, x, yearBoxW, FIELD_YEAR);
+
+  // Two-line step hint: front buttons do the small step, side buttons the
+  // large one -- same legend and wording IntervalSelectionActivity uses.
+  const int hintLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const int hint1Y = centreY + fieldHeight + 20;
+  drawStepHintLine(hint1Y, StrId::STR_STEP_HINT_FRONT, 1);
+  drawStepHintLine(hint1Y + hintLineHeight + 6, StrId::STR_STEP_HINT_SIDE, LARGE_STEP);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_NEXT_FIELD), "-", "+");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

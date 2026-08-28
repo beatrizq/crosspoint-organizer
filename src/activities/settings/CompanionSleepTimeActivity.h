@@ -1,6 +1,7 @@
 #pragma once
 
 #include <GfxRenderer.h>
+#include <I18n.h>
 
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
@@ -43,4 +44,7 @@ class CompanionSleepTimeActivity final : public Activity {
   void adjustActiveField(int delta);
   bool fieldFromPoint(int x, int y, Field& field) const;
   void getTouchControlRects(Rect& minusRect, Rect& plusRect) const;
+  // "Front buttons: 1" / "Side buttons: 5" -- same legend and wording
+  // IntervalSelectionActivity uses for its own front/side step split.
+  void drawStepHintLine(int y, StrId labelId, int step) const;
 };

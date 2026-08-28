@@ -179,7 +179,7 @@ void CompanionSettingsActivity::offerThresholdPicker(const int row) {
 
   startActivityForResult(
       std::make_unique<IntervalSelectionActivity>(renderer, mappedInput, "CompanionThreshold", titleId, initialValue,
-                                                  minValue, maxValue, /*smallStep=*/1, /*largeStep=*/1, formatId,
+                                                  minValue, maxValue, /*smallStep=*/1, /*largeStep=*/5, formatId,
                                                   /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true),
       [this, row](const ActivityResult& result) {
         // Same reasoning as ROW_ENABLED's popup above.
