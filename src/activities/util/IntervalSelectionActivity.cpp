@@ -75,14 +75,14 @@ void IntervalSelectionActivity::loop() {
   const int barWidth = std::min(360, std::max(0, screenWidth - 40));
   constexpr int barHeight = 16;
   const int barX = std::max(0, (screenWidth - barWidth) / 2);
-  const int barY = this->barY();
+  const int barTop = barY();
 
   // Live drag on the slider: once a touch lands on the bar, the value follows the
   // finger until release. Runs before the Back/Confirm handlers because the release
   // of a drag can also register as a swipe (e.g. the left-edge rightward back
   // gesture) — the drag must consume it so it can't cancel or confirm the dialog.
   if (mappedInput.isScreenTouchHeld(tx, ty)) {
-    if (draggingBar || (ty >= barY - 20 && ty < barY + barHeight + 20 && tx >= barX && tx < barX + barWidth)) {
+    if (draggingBar || (ty >= barTop - 20 && ty < barTop + barHeight + 20 && tx >= barX && tx < barX + barWidth)) {
       draggingBar = true;
       const int range = std::max(1, maxValue - minValue);
       const int dragged =
@@ -114,7 +114,7 @@ void IntervalSelectionActivity::loop() {
   }
 
   if (mappedInput.wasScreenTapped(tx, ty)) {
-    if (ty >= barY - 20 && ty < barY + barHeight + 20 && tx >= barX && tx < barX + barWidth) {
+    if (ty >= barTop - 20 && ty < barTop + barHeight + 20 && tx >= barX && tx < barX + barWidth) {
       const int range = std::max(1, maxValue - minValue);
       value = clampedValue(minValue + (tx - barX) * range / std::max(1, barWidth - 1));
       requestUpdate();
@@ -150,9 +150,9 @@ void IntervalSelectionActivity::loop() {
 void IntervalSelectionActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
-  const int barY = this->barY();
-  const int titleY = barY - BAR_OFFSET;
-  const int valueY = barY - BAR_OFFSET + VALUE_OFFSET;
+  const int barTop = barY();
+  const int titleY = barTop - BAR_OFFSET;
+  const int valueY = barTop - BAR_OFFSET + VALUE_OFFSET;
 
   if (customTitle.empty()) {
     renderer.drawCenteredText(UI_12_FONT_ID, titleY, I18N.get(titleId), true, EpdFontFamily::BOLD);
@@ -179,22 +179,22 @@ void IntervalSelectionActivity::render(RenderLock&&) {
   constexpr int barHeight = 16;
   const int barX = std::max(0, (screenWidth - barWidth) / 2);
 
-  renderer.drawRect(barX, barY, barWidth, barHeight);
+  renderer.drawRect(barX, barTop, barWidth, barHeight);
 
   const int range = std::max(1, maxValue - minValue);
   const int fillWidth = (barWidth - 4) * (value - minValue) / range;
   if (fillWidth > 0) {
-    renderer.fillRect(barX + 2, barY + 2, fillWidth, barHeight - 4);
+    renderer.fillRect(barX + 2, barTop + 2, fillWidth, barHeight - 4);
   }
 
   const int knobX = std::max(barX + 2, barX + 2 + fillWidth - 2);
-  renderer.fillRect(knobX, barY - 4, 4, barHeight + 8, true);
+  renderer.fillRect(knobX, barTop - 4, 4, barHeight + 8, true);
 
   // Two-line step hint: front buttons do the small step, side buttons the large step. Built from
   // separate label + value strings (rather than splitting one localized sentence) so the layout
   // doesn't depend on translators preserving a hidden separator.
-  drawStepHintLine(barY + HINT_LINE_1_GAP, StrId::STR_STEP_HINT_FRONT, smallStep);
-  drawStepHintLine(barY + HINT_LINE_2_GAP, StrId::STR_STEP_HINT_SIDE, largeStep);
+  drawStepHintLine(barTop + HINT_LINE_1_GAP, StrId::STR_STEP_HINT_FRONT, smallStep);
+  drawStepHintLine(barTop + HINT_LINE_2_GAP, StrId::STR_STEP_HINT_SIDE, largeStep);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "-", "+");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
