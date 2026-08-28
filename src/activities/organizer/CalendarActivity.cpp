@@ -59,7 +59,7 @@ void CalendarActivity::formatStatus(char* out, const size_t outSize) const {
   }
   char date[16];
   organizer::formatDayLabel(GCAL_EVENTS.getSyncDate(), date, sizeof(date));
-  snprintf(out, outSize, "%s  ·  %s: %zu", date, tr(STR_TODAY), GCAL_EVENTS.getTodayCount());
+  snprintf(out, outSize, "%s", date);
 }
 
 const char* CalendarActivity::emptyMessage() const {

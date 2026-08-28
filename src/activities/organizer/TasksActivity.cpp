@@ -217,16 +217,14 @@ void TasksActivity::drawRow(const RowLayout& layout) const {
 void TasksActivity::formatStatus(char* out, const size_t outSize) const {
   char date[16];
   organizer::formatDayLabel(civil::dateFromIso(TODOIST_TASKS.getSyncDate().c_str()), date, sizeof(date));
-  char count[32];
-  snprintf(count, sizeof(count), tr(STR_TODOIST_DONE_TODAY), static_cast<int>(TODOIST_TASKS.getCompletedToday()));
   if (TODOIST_TASKS.hasPending()) {
     char waiting[32];
     snprintf(waiting, sizeof(waiting), tr(STR_TODOIST_PENDING_COMPLETIONS),
              static_cast<int>(TODOIST_TASKS.pendingSyncCount()));
-    snprintf(out, outSize, "%s %s | %s", date, waiting, count);
+    snprintf(out, outSize, "%s  ·  %s", date, waiting);
     return;
   }
-  snprintf(out, outSize, "%s  ·  %s", date, count);
+  snprintf(out, outSize, "%s", date);
 }
 
 const char* TasksActivity::emptyMessage() const {

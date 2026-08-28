@@ -115,7 +115,7 @@ void BudgetActivity::formatStatus(char* out, const size_t outSize) const {
     // a whole, and a day would imply they moved today.
     char month[16];
     organizer::formatMonthLabel(YNAB_CATEGORIES.getSyncMonth(), month, sizeof(month));
-    snprintf(out, outSize, "%s  ·  %s: %zu", month, tr(STR_YNAB_CATEGORIES), YNAB_CATEGORIES.getCategories().size());
+    snprintf(out, outSize, "%s", month);
     return;
   }
 

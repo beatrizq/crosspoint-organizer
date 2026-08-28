@@ -7,7 +7,6 @@
 #include <I18n.h>
 #include <Logging.h>
 
-#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <utility>
@@ -174,19 +173,13 @@ void HabitsActivity::formatStatus(char* out, const size_t outSize) const {
   char date[16];
   organizer::formatDayLabel(HABITIFY_HABITS.getSyncDate(), date, sizeof(date));
 
-  // How many habits have met their goal, which is the one number worth carrying
-  // in the header.
-  const auto& habits = HABITIFY_HABITS.getHabits();
-  const int done = static_cast<int>(
-      std::count_if(habits.begin(), habits.end(), [](const HabitifyHabit& h) { return h.isComplete(); }));
-
   if (HABITIFY_HABITS.hasPending()) {
     char waiting[32];
     snprintf(waiting, sizeof(waiting), tr(STR_HABITIFY_PENDING_LOGS), static_cast<int>(HABITIFY_HABITS.pendingCount()));
-    snprintf(out, outSize, "%s %s | %d/%d", date, waiting, done, static_cast<int>(habits.size()));
+    snprintf(out, outSize, "%s  ·  %s", date, waiting);
     return;
   }
-  snprintf(out, outSize, "%s  ·  %d/%d", date, done, static_cast<int>(habits.size()));
+  snprintf(out, outSize, "%s", date);
 }
 
 const char* HabitsActivity::emptyMessage() const {
