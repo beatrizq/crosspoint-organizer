@@ -11,8 +11,28 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+namespace {
+// Vertical gaps between the title, value, bar, and step-hint lines, kept as
+// offsets from the block's own top rather than absolute screen positions so
+// the whole block can be centred instead of pinned near the top.
+constexpr int VALUE_OFFSET = 75;
+constexpr int BAR_OFFSET = 125;
+constexpr int HINT_LINE_1_GAP = 30;
+constexpr int HINT_LINE_2_GAP = 52;
+}  // namespace
+
 int IntervalSelectionActivity::clampedValue(const int candidate) const {
   return std::clamp(candidate, minValue, maxValue);
+}
+
+int IntervalSelectionActivity::barY() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int contentTop = metrics.topPadding;
+  const int contentBottom = renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  const int hintLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const int blockHeight = BAR_OFFSET + HINT_LINE_2_GAP + hintLineHeight;
+  const int blockTop = contentTop + std::max(0, (contentBottom - contentTop - blockHeight) / 2);
+  return blockTop + BAR_OFFSET;
 }
 
 void IntervalSelectionActivity::onEnter() {
@@ -55,7 +75,7 @@ void IntervalSelectionActivity::loop() {
   const int barWidth = std::min(360, std::max(0, screenWidth - 40));
   constexpr int barHeight = 16;
   const int barX = std::max(0, (screenWidth - barWidth) / 2);
-  const int barY = 140;
+  const int barY = this->barY();
 
   // Live drag on the slider: once a touch lands on the bar, the value follows the
   // finger until release. Runs before the Back/Confirm handlers because the release
@@ -130,12 +150,16 @@ void IntervalSelectionActivity::loop() {
 void IntervalSelectionActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
+  const int barY = this->barY();
+  const int titleY = barY - BAR_OFFSET;
+  const int valueY = barY - BAR_OFFSET + VALUE_OFFSET;
+
   if (customTitle.empty()) {
-    renderer.drawCenteredText(UI_12_FONT_ID, 15, I18N.get(titleId), true, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_12_FONT_ID, titleY, I18N.get(titleId), true, EpdFontFamily::BOLD);
   } else {
     const auto truncatedTitle =
         renderer.truncatedText(UI_12_FONT_ID, customTitle.c_str(), renderer.getScreenWidth() - 40, EpdFontFamily::BOLD);
-    renderer.drawCenteredText(UI_12_FONT_ID, 15, truncatedTitle.c_str(), true, EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_12_FONT_ID, titleY, truncatedTitle.c_str(), true, EpdFontFamily::BOLD);
   }
 
   char formattedValue[32];
@@ -148,13 +172,12 @@ void IntervalSelectionActivity::render(RenderLock&&) {
   } else {
     snprintf(formattedValue, sizeof(formattedValue), "%d", value);
   }
-  renderer.drawCenteredText(UI_12_FONT_ID, 90, formattedValue, true, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(UI_12_FONT_ID, valueY, formattedValue, true, EpdFontFamily::BOLD);
 
   const int screenWidth = renderer.getScreenWidth();
   const int barWidth = std::min(360, std::max(0, screenWidth - 40));
   constexpr int barHeight = 16;
   const int barX = std::max(0, (screenWidth - barWidth) / 2);
-  const int barY = 140;
 
   renderer.drawRect(barX, barY, barWidth, barHeight);
 
@@ -170,8 +193,8 @@ void IntervalSelectionActivity::render(RenderLock&&) {
   // Two-line step hint: front buttons do the small step, side buttons the large step. Built from
   // separate label + value strings (rather than splitting one localized sentence) so the layout
   // doesn't depend on translators preserving a hidden separator.
-  drawStepHintLine(barY + 30, StrId::STR_STEP_HINT_FRONT, smallStep);
-  drawStepHintLine(barY + 52, StrId::STR_STEP_HINT_SIDE, largeStep);
+  drawStepHintLine(barY + HINT_LINE_1_GAP, StrId::STR_STEP_HINT_FRONT, smallStep);
+  drawStepHintLine(barY + HINT_LINE_2_GAP, StrId::STR_STEP_HINT_SIDE, largeStep);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "-", "+");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

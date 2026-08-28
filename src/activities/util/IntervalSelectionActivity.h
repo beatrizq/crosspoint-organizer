@@ -61,4 +61,9 @@ class IntervalSelectionActivity final : public Activity {
   void adjustValue(int delta);
   int clampedValue(int candidate) const;
   void drawStepHintLine(int y, StrId labelId, int step);
+  // The Y the slider bar sits at, centring the whole title/value/bar/hint
+  // block within the screen rather than pinning it near the top. Shared by
+  // loop() (touch/drag hit-testing) and render() so they can never disagree
+  // on where the bar actually is.
+  int barY() const;
 };
