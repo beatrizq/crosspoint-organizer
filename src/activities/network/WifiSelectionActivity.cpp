@@ -5,6 +5,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 
 #include <algorithm>
 
@@ -355,10 +356,20 @@ void WifiSelectionActivity::attemptConnection() {
   WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
   delay(100);
 
-  // Scan all channels so networks with multiple APs use the strongest matching
-  // BSSID instead of the first match found by the framework's default fast scan.
-  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
-  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+  // Deliberately NOT calling WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN) /
+  // setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL) here (as a previous version of
+  // this code did, to pick the strongest BSSID when multiple APs share one
+  // SSID): WIFI_ALL_CHANNEL_SCAN scans every channel to completion and
+  // retains a wifi_ap_record_t for every match found, rather than stopping at
+  // the first one -- a real, reproduced crash traced free heap collapsing
+  // from ~56KB to under 3KB within ~5 seconds of a connection attempt
+  // starting, well before any success/failure/timeout outcome was even
+  // reached (esp_wifi_clear_ap_list() after the fact, added elsewhere in this
+  // file, can't help with a collapse that happens mid-scan). Falling back to
+  // the library default (WIFI_FAST_SCAN, which stops at the first SSID
+  // match) avoids that accumulation entirely. Trade-off: with multiple APs
+  // broadcasting the same SSID (a mesh network or WiFi extenders), this may
+  // connect to whichever is found first rather than the strongest one.
 
   // Set hostname so routers show "CrossPoint-Reader-AABBCCDDEEFF" instead of "esp32-XXXXXXXXXXXX"
   String mac = WiFi.macAddress();
@@ -380,7 +391,23 @@ void WifiSelectionActivity::checkConnectionStatus() {
 
   const wl_status_t status = WiFi.status();
 
+  // WIFI_ALL_CHANNEL_SCAN (set in attemptConnection()) makes WiFi.begin()
+  // perform a full-channel scan internally to find the target AP. Per
+  // esp_wifi.h's own documentation (esp_wifi_scan_start()), that scan's AP/BSS
+  // records are held in WiFi-driver-allocated memory until explicitly freed --
+  // this codebase never reads them out, so without this call they leak on
+  // every attempt. Matches a documented ESP-IDF issue (espressif/esp-idf#11381,
+  // "won't fix": freeing scan records is the caller's responsibility) with the
+  // same trigger (WIFI_ALL_CHANNEL_SCAN + a failed connection); reproduced here
+  // as a real crash -- one failed attempt measured a ~55KB free-heap collapse
+  // moments before Arduino-ESP32's own WiFi event handling hit an OOM abort().
+  // Called for every resolved outcome below (connected, failed, or timed out),
+  // not just failure, since the doc comment says to free it "once the scan is
+  // done" with no success/failure distinction -- never while still connecting,
+  // since that's not a resolved outcome yet.
+
   if (status == WL_CONNECTED) {
+    esp_wifi_clear_ap_list();
     // Successfully connected
     IPAddress ip = WiFi.localIP();
     char ipStr[16];
@@ -432,6 +459,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   }
 
   if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+    esp_wifi_clear_ap_list();
     connectionError = tr(STR_ERROR_GENERAL_FAILURE);
     if (status == WL_NO_SSID_AVAIL) {
       connectionError = tr(STR_ERROR_NETWORK_NOT_FOUND);
@@ -448,6 +476,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   // Check for timeout
   const unsigned long timeoutMs = autoConnecting ? AUTO_CONNECTION_TIMEOUT_MS : CONNECTION_TIMEOUT_MS;
   if (millis() - connectionStartTime > timeoutMs) {
+    esp_wifi_clear_ap_list();
     WiFi.disconnect();
     connectionError = tr(STR_ERROR_CONNECTION_TIMEOUT);
     if (autoConnecting) {

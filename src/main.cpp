@@ -41,6 +41,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
+#include "network/BleNotifyRelay.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 
@@ -503,6 +504,10 @@ void setup() {
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
   allowSleepAt = millis() + 2000;
+
+  // Spike only (see BleNotifyRelay's own comment) -- last, so any BLE bring-up
+  // issue can never affect the boot path above it.
+  BleNotifyRelay::begin();
 }
 
 void loop() {
@@ -513,6 +518,7 @@ void loop() {
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   gpio.update();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+  BleNotifyRelay::poll();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 

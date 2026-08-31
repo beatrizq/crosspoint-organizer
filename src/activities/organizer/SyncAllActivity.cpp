@@ -14,6 +14,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 
 void SyncAllActivity::onEnter() {
   Activity::onEnter();
@@ -37,6 +38,16 @@ void SyncAllActivity::onEnter() {
 
   // Past this point every path uses WiFi, so onExit() owes a teardown.
   wifiActivated = true;
+
+  // Free NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their
+  // own headroom. No matching resume() call: onExit() below always reboots
+  // once wifiActivated is set (see its own comment), and BleNotifyRelay::begin()
+  // re-advertises fresh on the next boot -- deliberately not exercising
+  // NimBLEDevice::init()'s deinit()-then-reinit path here (see
+  // BleNotifyRelay::resume()'s own doc comment for the vendored library bug
+  // that path hits).
+  BleNotifyRelay::pause();
+
   if (WiFi.status() == WL_CONNECTED) {
     runAll();
     return;
@@ -121,7 +132,14 @@ void SyncAllActivity::runAll() {
     RenderLock lock;
     finished = true;
   }
-  requestUpdate(true);
+  // Waited for, not fired and forgotten (see the same reasoning above line 97):
+  // Habits is always the last service in organizerSync's fixed order, so its
+  // terminal Done/Failed state has no later iteration to force a confirmed
+  // repaint the way Tasks/Calendar/Budget get for free. An unconfirmed
+  // requestUpdate(true) here left the screen stuck on Habits' last confirmed
+  // frame ("Syncing") once the idle timer downclocked the CPU right after this
+  // blocking call returned.
+  requestUpdateAndWait();
 }
 
 void SyncAllActivity::loop() {

@@ -20,9 +20,8 @@ class HalPowerManager {
   mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
 
-  enum LockMode { None, NormalSpeed };
-  LockMode currentLockMode = None;
-  SemaphoreHandle_t modeMutex = nullptr;  // Protect access to currentLockMode
+  int lockCount = 0;                      // Outstanding Locks; CPU stays at normal frequency while > 0
+  SemaphoreHandle_t modeMutex = nullptr;  // Protect access to lockCount
 
  public:
 #if BOARD_HAS_PSRAM
@@ -48,10 +47,10 @@ class HalPowerManager {
   // RAII helper class to manage power saving locks
   // Usage: create an instance of Lock in a scope to disable power saving, for example when running a task that needs
   // full performance. When the Lock instance is destroyed (goes out of scope), power saving will be re-enabled.
+  // Refcounted: multiple Locks can be held concurrently (e.g. a render task's
+  // Lock and a long-lived BLE connection's Lock overlapping) -- CPU stays at
+  // normal frequency until every outstanding Lock has been destroyed.
   class Lock {
-    friend class HalPowerManager;
-    bool valid = false;
-
    public:
     explicit Lock();
     ~Lock();
