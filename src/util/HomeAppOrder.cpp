@@ -15,6 +15,7 @@ constexpr AppInfo APPS[APP_COUNT] = {
     {AppId::Calendar, StrId::STR_GOOGLE_CALENDAR, UIIcon::Calendar},
     {AppId::Budget, StrId::STR_YNAB, UIIcon::Budget},
     {AppId::Habits, StrId::STR_HABITIFY, UIIcon::Habits},
+    {AppId::Notifications, StrId::STR_BLE_NOTIFICATIONS, UIIcon::Bell},
 };
 
 }  // namespace
@@ -41,6 +42,9 @@ char* nicknameField(const AppId id, size_t& outSize) {
     case AppId::Read:
       // Read is not an integration - it has no account, no settings screen of its
       // own, and so nothing to rename it from.
+      break;
+    case AppId::Notifications:
+      // Same reasoning as Read: not an account, nothing to nickname.
       break;
   }
   outSize = 0;

@@ -42,6 +42,9 @@
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
 #include "network/BleNotifyRelay.h"
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+#include "network/BleNotificationQueue.h"
+#endif
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 
@@ -344,6 +347,12 @@ void setup() {
   // making the mood look reset even though nothing was actually lost.
   TODOIST_TASKS.loadFromFile();
   HABITIFY_HABITS.loadFromFile();
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+  // Same reasoning as the caches above: SyncAllActivity reboots on exit
+  // whenever WiFi was activated, so this must be loaded at boot rather than
+  // relying on whatever was in RAM before the reboot.
+  BLE_NOTIFICATIONS.loadFromFile();
+#endif
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 

@@ -36,9 +36,15 @@ enum class AppId : uint8_t {
   Calendar = 2,
   Budget = 3,
   Habits = 4,
+  // Only ever a real, selectable tile in builds with ENABLE_BLE_NOTIFY_SPIKE
+  // defined (see BleNotifyRelay's own doc comment) -- HomeActivity skips it
+  // from the grid otherwise. Kept as a real id in every build regardless, not
+  // just the spike one, so this table and the persisted order format stay
+  // identical across build flavors.
+  Notifications = 5,
 };
 
-constexpr int APP_COUNT = 5;
+constexpr int APP_COUNT = 6;
 
 struct AppInfo {
   AppId id;

@@ -31,7 +31,13 @@ enum class HomeMenuItem {
   HABITS,
   OPDS_BROWSER,
   FILE_TRANSFER,
-  SETTINGS_MENU
+  SETTINGS_MENU,
+  // Named NOTIFICATIONS, not BLE_NOTIFICATIONS: the latter collides with the
+  // BLE_NOTIFICATIONS macro (BleNotificationQueue.h's
+  // #define BLE_NOTIFICATIONS BleNotificationQueue::getInstance()) -- the
+  // preprocessor rewrites it even after "HomeMenuItem::", which does not fail
+  // quietly (it errors on the resulting bogus qualified name).
+  NOTIFICATIONS
 };
 
 /**
@@ -114,6 +120,10 @@ class ActivityManager {
   void goToCalendar();
   void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
   void goToHabits(std::string selectHabitId = "");
+  // Only reachable when ENABLE_BLE_NOTIFY_SPIKE is defined -- see
+  // BleNotifyRelay's own doc comment. HomeActivity never offers this tile
+  // otherwise, so no caller outside that build should ever invoke it.
+  void goToBleNotifications();
   // Syncs every configured integration over one Wi-Fi association.
   void goToSyncAll();
   void goToReadMenu();

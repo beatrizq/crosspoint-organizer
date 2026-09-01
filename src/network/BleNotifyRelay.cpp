@@ -3,10 +3,18 @@
 #ifdef ENABLE_BLE_NOTIFY_SPIKE
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include <HalClock.h>
 #include <HalPowerManager.h>
+#include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <NimBLEDevice.h>
+
+#include <cstdlib>
+#include <cstring>
+
+#include "BleNotificationQueue.h"
 
 namespace {
 
@@ -56,6 +64,138 @@ int32_t bleInitHeapCost = 0;
 // own doing.
 bool pausing = false;
 
+// Reassembly buffer for one GB({...}) command. Gadgetbridge chunks a command
+// across multiple ~20-byte BLE writes with no per-chunk framing (BangleJS
+// DeviceSupport.java's uartTx()) and terminates it with a single '\n' -- the
+// device is expected to buffer until that terminator, not treat each write as
+// a complete message.
+//
+// Sized for the realistic common case, not the pathological worst case:
+// Gadgetbridge caps title/subject/sender/body at 80/80/40/400 original
+// characters (cropToLength calls in onNotification()), each individually
+// hex-escaped as "\xHH" per UTF-8 byte for anything outside plain ASCII (see
+// jsonToStringInternal) -- a message that is entirely 2-byte-UTF-8 accented
+// text expands to roughly (80+80+40+400)*2 bytes*4 chars/escape =~ 4.8KB
+// including JSON overhead. A message saturated with 3-4 byte UTF-8 (dense
+// CJK/emoji) could in theory run past that; such a message is simply dropped
+// (see the overflow check in onWrite() below) rather than sized for -- a
+// permanently-reserved worst-case buffer for a rare edge case is a poor
+// trade on this board's RAM budget, and a dropped notification is a graceful
+// degradation CLAUDE.md's error-handling philosophy already favors over
+// crashing or truncating into invalid JSON.
+constexpr size_t CMD_BUFFER_SIZE = 4096;
+char cmdBuffer[CMD_BUFFER_SIZE];
+size_t cmdLen = 0;
+bool cmdOverflowed = false;
+
+// Converts Gadgetbridge's JS-literal string escapes -- "\xHH" (hex byte, used
+// for UTF-8 continuation/lead bytes and other bytes standard JSON can't
+// express directly), "\v" (vertical tab, not a JSON escape at all), and its
+// octal-style forms for other control bytes (e.g. "\20" for byte 16, DLE) --
+// into plain bytes ArduinoJson's deserializeJson() can parse. Standard JSON
+// escapes ("\" \\ \/ \b \f \n \r \t \uXXXX") are left untouched for
+// deserializeJson() itself to handle. Every conversion replaces a longer
+// escape sequence with the single byte it represents, so this always shrinks
+// or preserves length and can run in place. Returns the new length.
+size_t unescapeGadgetbridgeEscapes(char* buf, const size_t len) {
+  size_t readIdx = 0;
+  size_t writeIdx = 0;
+  while (readIdx < len) {
+    const char c = buf[readIdx];
+    if (c != '\\' || readIdx + 1 >= len) {
+      buf[writeIdx++] = c;
+      readIdx++;
+      continue;
+    }
+    const char next = buf[readIdx + 1];
+    if (next == 'x' && readIdx + 3 < len) {
+      const char hex[3] = {buf[readIdx + 2], buf[readIdx + 3], '\0'};
+      buf[writeIdx++] = static_cast<char>(strtol(hex, nullptr, 16));
+      readIdx += 4;
+    } else if (next == 'v') {
+      // Not a JSON escape and not meaningful to render -- drop it.
+      readIdx += 2;
+    } else if (next >= '0' && next <= '7') {
+      // Gadgetbridge's octal form, e.g. "\20" for byte 16 (DLE). Consume up
+      // to 2 octal digits, matching the longest form it ever emits.
+      int value = next - '0';
+      size_t digits = 1;
+      if (readIdx + 2 < len && buf[readIdx + 2] >= '0' && buf[readIdx + 2] <= '7') {
+        value = value * 8 + (buf[readIdx + 2] - '0');
+        digits = 2;
+      }
+      buf[writeIdx++] = static_cast<char>(value);
+      readIdx += 1 + digits;
+    } else {
+      // A standard JSON escape ('"' '\\' '/' 'b' 'f' 'n' 'r' 't') or the start
+      // of \uHHHH -- leave both characters for deserializeJson() to handle.
+      buf[writeIdx++] = c;
+      buf[writeIdx++] = next;
+      readIdx += 2;
+    }
+  }
+  return writeIdx;
+}
+
+// Handles one fully-reassembled, unescaped command. Anything other than a
+// GB({...}) JSON call is some other Espruino snippet Gadgetbridge also sends
+// (setTime(...), storage writes, ...) -- nothing here to parse, and nothing
+// that needs a reply either way.
+void processCommand(char* buf, size_t len) {
+  if (len < 4 || buf[0] != 'G' || buf[1] != 'B' || buf[2] != '(' || buf[len - 1] != ')') {
+    LOG_DBG("BLE", "Command (not GB JSON): %.*s", static_cast<int>(len), buf);
+    return;
+  }
+
+  char* json = buf + 3;
+  const size_t rawJsonLen = len - 4;  // strip leading "GB(" and trailing ")"
+  const size_t jsonLen = unescapeGadgetbridgeEscapes(json, rawJsonLen);
+
+  JsonDocument doc;
+  const DeserializationError err = deserializeJson(doc, json, jsonLen);
+  if (err) {
+    LOG_DBG("BLE", "GB() JSON parse failed: %s", err.c_str());
+    return;
+  }
+
+  const char* type = doc["t"] | "";
+  uint8_t hour = 0;
+  uint8_t minute = 0;
+
+  if (strcmp(type, "notify") == 0) {
+    const char* src = doc["src"] | "";
+    const char* title = doc["title"] | "";
+    const char* body = doc["body"] | "";
+    const uint32_t id = doc["id"] | static_cast<uint32_t>(0);
+    halClock.getTime(hour, minute);
+    BLE_NOTIFICATIONS.push(id, false, src, title, body, hour, minute);
+    BLE_NOTIFICATIONS.saveToFile();
+    LOG_INF("BLE", "Notification from %s: %s: %s", src, title, body);
+  } else if (strcmp(type, "call") == 0) {
+    const char* cmd = doc["cmd"] | "";
+    if (strcmp(cmd, "incoming") == 0) {
+      const char* name = doc["name"] | "";
+      const char* number = doc["number"] | "";
+      const bool hasName = name[0] != '\0';
+      halClock.getTime(hour, minute);
+      // The number rides in `content` only when a name is already shown as the
+      // title -- otherwise the number IS the title, and repeating it in
+      // content would just duplicate the line.
+      BLE_NOTIFICATIONS.push(0, true, tr(STR_BLE_INCOMING_CALL), hasName ? name : number, hasName ? number : "", hour,
+                             minute);
+      BLE_NOTIFICATIONS.saveToFile();
+      LOG_INF("BLE", "Incoming call: %s / %s", name, number);
+    }
+    // Other cmd values (accept/reject/outgoing/start/end, ...) aren't shown --
+    // this queue is "who tried to reach me", not a full call-state mirror.
+  }
+  // "notify-" (remote dismiss) and every other "t" (weather, musicinfo,
+  // actfetch, is_gps_active, ...): see BleNotificationQueue's own doc comment
+  // for why dismiss isn't tracked. No reply required for any of these either
+  // way -- confirmed against Gadgetbridge's own BangleJSDeviceSupport.java,
+  // which just logs "packet type '...' not understood" and moves on.
+}
+
 class ServerCallbacks final : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* /*server*/, NimBLEConnInfo& connInfo) override {
     LOG_INF("BLE", "Connected: %s", connInfo.getAddress().toString().c_str());
@@ -81,8 +221,37 @@ class ServerCallbacks final : public NimBLEServerCallbacks {
 class WriteCallbacks final : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* chr, NimBLEConnInfo& /*connInfo*/) override {
     const auto& value = chr->getValue();
-    LOG_INF("BLE", "Write (%u bytes): %.*s", static_cast<unsigned>(value.length()), static_cast<int>(value.length()),
-            value.c_str());
+    const char* data = value.c_str();
+    const size_t len = value.length();
+
+    for (size_t i = 0; i < len; i++) {
+      const char b = data[i];
+      // DLE (0x10): Espruino console convention for "discard whatever is
+      // currently buffered" -- Gadgetbridge itself prefixes every command
+      // with this byte (uartTxJSON's "GB(...)" framing), so treating it
+      // as a hard reset here also makes us robust to a prior command that
+      // never reached its '\n' (e.g. a dropped BLE packet).
+      if (b == '\x10') {
+        cmdLen = 0;
+        cmdOverflowed = false;
+        continue;
+      }
+      if (b == '\n') {
+        if (cmdOverflowed) {
+          LOG_ERR("BLE", "Command exceeded %u-byte buffer, discarded", static_cast<unsigned>(CMD_BUFFER_SIZE));
+        } else if (cmdLen > 0) {
+          processCommand(cmdBuffer, cmdLen);
+        }
+        cmdLen = 0;
+        cmdOverflowed = false;
+        continue;
+      }
+      if (cmdLen >= CMD_BUFFER_SIZE) {
+        cmdOverflowed = true;  // Logged once, on the '\n' above, not per byte.
+        continue;
+      }
+      cmdBuffer[cmdLen++] = b;
+    }
   }
 
   void onSubscribe(NimBLECharacteristic* /*chr*/, NimBLEConnInfo& /*connInfo*/, const uint16_t subValue) override {

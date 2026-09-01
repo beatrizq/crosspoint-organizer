@@ -15,6 +15,9 @@
 #include "home/ReadMenuActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+#include "network/BleNotificationsActivity.h"
+#endif
 #include "organizer/BudgetActivity.h"
 #include "organizer/CalendarActivity.h"
 #include "organizer/HabitsActivity.h"
@@ -217,6 +220,12 @@ void ActivityManager::goToHabits(std::string selectHabitId) {
 }
 
 void ActivityManager::goToSyncAll() { replaceActivity(std::make_unique<SyncAllActivity>(renderer, mappedInput)); }
+
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+void ActivityManager::goToBleNotifications() {
+  replaceActivity(std::make_unique<BleNotificationsActivity>(renderer, mappedInput));
+}
+#endif
 
 void ActivityManager::goToBudget(const uint8_t initialTab) {
   replaceActivity(std::make_unique<BudgetActivity>(renderer, mappedInput, static_cast<int>(initialTab)));

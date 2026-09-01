@@ -31,6 +31,9 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+#include "network/BleNotificationQueue.h"
+#endif
 
 namespace {
 // The home entry each app opens. Kept here rather than in the app table so
@@ -47,6 +50,8 @@ HomeMenuItem homeMenuItemFor(const homeAppOrder::AppId id) {
       return HomeMenuItem::BUDGET;
     case homeAppOrder::AppId::Habits:
       return HomeMenuItem::HABITS;
+    case homeAppOrder::AppId::Notifications:
+      return HomeMenuItem::NOTIFICATIONS;
   }
   return HomeMenuItem::NONE;
 }
@@ -128,6 +133,13 @@ void HomeActivity::buildEntries() {
     // Skipped only when the resume entry above already speaks for reading;
     // adding it again would draw it twice.
     if (resumeLeads && app.id == homeAppOrder::AppId::Read) continue;
+#ifndef ENABLE_BLE_NOTIFY_SPIKE
+    // Only a real, working tile in builds with the BLE spike compiled in (see
+    // BleNotifyRelay's own doc comment) -- kept in homeAppOrder's table
+    // regardless so the app-id numbering and persisted order format stay
+    // identical across build flavors, but never rendered as a tile here.
+    if (app.id == homeAppOrder::AppId::Notifications) continue;
+#endif
     entries.push_back({homeAppOrder::displayName(app.id), app.icon, homeMenuItemFor(app.id), -1});
   }
 }
@@ -484,6 +496,11 @@ void HomeActivity::loop() {
       case HomeMenuItem::HABITS:
         activityManager.goToHabits();
         break;
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+      case HomeMenuItem::NOTIFICATIONS:
+        activityManager.goToBleNotifications();
+        break;
+#endif
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -716,6 +733,10 @@ void HomeActivity::render(RenderLock&&) {
             return static_cast<int>(GCAL_EVENTS.getTodayCount());
           case HomeMenuItem::BUDGET:
             return static_cast<int>(YNAB_ACCOUNTS.getTodayTransactionCount());
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+          case HomeMenuItem::NOTIFICATIONS:
+            return static_cast<int>(BLE_NOTIFICATIONS.getUnreadCount());
+#endif
           default:
             return 0;
         }
