@@ -38,6 +38,9 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // everywhere else, so the completion counter follows the same convention
   // rather than introducing a second notion of today.
   uint16_t completedDay = todoist::DUE_NONE;
+  // Titles behind completedToday, for the Companion's Logs screen. See
+  // getCompletedTodayTitles()'s own comment for how it relates to the count.
+  std::vector<std::string> completedTodayTitles;
 
   TodoistTaskCache() = default;
   ~TodoistTaskCache() = default;
@@ -105,13 +108,24 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // figure in this class already tolerates between syncs.
   uint16_t getCompletedToday() const { return completedToday; }
 
-  // Sets today's completed count directly, from a fetch that already reflects
-  // the whole day: this device's own presses once pushed, and anything
-  // finished in the Todoist app or on the web. Replaces rather than adds -
-  // the fetch is authoritative for the day, not incremental - and marks
-  // completedDay resolved so a completion pressed on-device later the same
-  // day still adds on top of this baseline instead of rolling over first.
-  void setCompletedToday(uint16_t count, const std::string& date);
+  // Titles behind getCompletedToday(), for the Companion's Logs screen. Not
+  // necessarily one-to-one with the count: a local completion appends
+  // immediately (see completeTaskAt) for instant feedback, but the fetch
+  // that lands in setCompletedToday() is authoritative and replaces both
+  // together, so titles can briefly outrun/undershoot the count between a
+  // local press and the next sync the same way completedToday itself can be
+  // stale (see its own comment). Capped at MAX_COMPLETED_TODAY_TITLES.
+  const std::vector<std::string>& getCompletedTodayTitles() const { return completedTodayTitles; }
+  static constexpr size_t MAX_COMPLETED_TODAY_TITLES = 20;
+
+  // Sets today's completed count and titles directly, from a fetch that
+  // already reflects the whole day: this device's own presses once pushed,
+  // and anything finished in the Todoist app or on the web. Replaces rather
+  // than adds - the fetch is authoritative for the day, not incremental - and
+  // marks completedDay resolved so a completion pressed on-device later the
+  // same day still adds on top of this baseline instead of rolling over
+  // first. titles is moved from and truncated to MAX_COMPLETED_TODAY_TITLES.
+  void setCompletedToday(uint16_t count, const std::string& date, std::vector<std::string>&& titles);
 
  private:
   // Recomputes every task's overdue flag against syncDate. The flag is derived

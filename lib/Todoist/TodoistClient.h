@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 
+#include "TodoistCompletedCountParser.h"
 #include "TodoistTask.h"
 
 /**
@@ -105,8 +106,13 @@ class TodoistClient {
    * the user's own timezone can land on the wrong side of it.
    *
    * @param outCount Output: 0 on any error.
+   * @param titleSink Optional: invoked once per completed item (with its
+   * title) as the response streams in, for a caller that wants the actual
+   * list rather than just outCount. See TodoistCompletedCountParser::TitleSink.
    */
-  static Error fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount);
+  static Error fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount,
+                                         TodoistCompletedCountParser::TitleSink titleSink = nullptr,
+                                         void* titleSinkCtx = nullptr);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */
   static const char* errorString(Error error);

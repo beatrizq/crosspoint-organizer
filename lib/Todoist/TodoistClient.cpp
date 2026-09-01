@@ -277,7 +277,9 @@ TodoistClient::Error TodoistClient::rescheduleTask(const std::string& taskId, co
   return errorForStatus(httpCode);
 }
 
-TodoistClient::Error TodoistClient::fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount) {
+TodoistClient::Error TodoistClient::fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount,
+                                                              const TodoistCompletedCountParser::TitleSink titleSink,
+                                                              void* titleSinkCtx) {
   lastHttpCode = 0;
   outCount = 0;
   if (!TODOIST_STORE.hasToken()) {
@@ -290,7 +292,7 @@ TodoistClient::Error TodoistClient::fetchCompletedCountForDay(const std::string&
                           "T23:59:59Z&limit=" + std::to_string(COMPLETED_PAGE_LIMIT) +
                           "&filter_query=" + urlEncode(TODOIST_STORE.getFilter());
 
-  TodoistCompletedCountParser parser;
+  TodoistCompletedCountParser parser(titleSink, titleSinkCtx);
 
   freeink::SecureHttpClient http;
   http.setInsecure();

@@ -42,6 +42,15 @@ constexpr int NTP_POLL_ATTEMPTS = 50;
 // ISO dates order correctly as plain strings, and "" loses to any real date.
 const std::string& laterDate(const std::string& a, const std::string& b) { return b > a ? b : a; }
 
+// TodoistCompletedCountParser::TitleSink for the completed-count fetch below:
+// collects titles as the response streams in, capped the same way the cache
+// itself caps them so a busy day never grows this past what setCompletedToday
+// would keep anyway.
+void collectCompletedTitle(void* ctx, const char* content) {
+  auto* titles = static_cast<std::vector<std::string>*>(ctx);
+  if (titles->size() < TodoistTaskCache::MAX_COMPLETED_TODAY_TITLES) titles->emplace_back(content);
+}
+
 /**
  * Today from NTP, in the device's configured timezone.
  *
@@ -245,11 +254,14 @@ const char* runTasks() {
   if (error == TodoistClient::OK && !today.empty()) {
     resetTaskWatchdogIfSubscribed();
     uint16_t completedCount = 0;
-    const TodoistClient::Error countError = TodoistClient::fetchCompletedCountForDay(today, completedCount);
+    std::vector<std::string> completedTitles;
+    completedTitles.reserve(TodoistTaskCache::MAX_COMPLETED_TODAY_TITLES);
+    const TodoistClient::Error countError =
+        TodoistClient::fetchCompletedCountForDay(today, completedCount, collectCompletedTitle, &completedTitles);
     resetTaskWatchdogIfSubscribed();
     if (countError == TodoistClient::OK) {
       RenderLock lock;
-      TODOIST_TASKS.setCompletedToday(completedCount, today);
+      TODOIST_TASKS.setCompletedToday(completedCount, today, std::move(completedTitles));
       // Gated on success: a failed fetch means nothing here actually changed,
       // so there is nothing new to credit.
       COMPANION.recordActivity();

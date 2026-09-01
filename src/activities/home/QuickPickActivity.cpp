@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "CrossPointState.h"
+#include "LogsActivity.h"
 #include "MappedInputManager.h"
 #include "activities/organizer/RescheduleTaskActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -426,6 +427,11 @@ void QuickPickActivity::loop() {
     return;
   }
 
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    startActivityForResult(std::make_unique<LogsActivity>(renderer, mappedInput), [](const ActivityResult&) {});
+    return;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (swallowConfirmRelease) {
       // The tail of the press that answered a popup pushed from this screen.
@@ -582,7 +588,7 @@ void QuickPickActivity::render(RenderLock&&) {
   drawLabelledRow(row2Y, ageBold, ageRegular);
   drawLabelledRow(row3Y, highscoreBold, highscoreRegular);
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), "",
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), tr(STR_LOGS),
                                             poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
