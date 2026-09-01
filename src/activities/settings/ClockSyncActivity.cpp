@@ -14,18 +14,27 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 
 void ClockSyncActivity::onEnter() {
   Activity::onEnter();
   state = SYNCING;
   syncedTime[0] = '\0';
 
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Same
+  // reasoning as SyncAllActivity's own pause() call: free NimBLE's ~55KB
+  // init-time heap reservation before WiFi/TLS need their own headroom. No
+  // matching resume(): onExit() below always reboots once
+  // shouldTearDownWifiOnExit is set, and BleNotifyRelay::begin()
+  // re-advertises fresh on the next boot.
+  shouldTearDownWifiOnExit = true;
+  BleNotifyRelay::pause();
+
   if (WiFi.status() == WL_CONNECTED) {
     requestUpdate();
     return;
   }
 
-  shouldTearDownWifiOnExit = true;
   launchWifiSelection();
 }
 

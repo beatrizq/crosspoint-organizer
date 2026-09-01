@@ -16,6 +16,7 @@
 #include "components/UITheme.h"
 #include "components/icons/search24.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "network/HttpDownloader.h"
 #include "util/BookCacheUtils.h"
 #include "util/OpdsFilename.h"
@@ -463,6 +464,13 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
 }
 
 void OpdsBookBrowserActivity::checkAndConnectWifi() {
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below always reboots once
+  // WiFi's mode is non-null, and BleNotifyRelay::begin() re-advertises fresh
+  // on the next boot.
+  BleNotifyRelay::pause();
+
   if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
     state = BrowserState::LOADING;
     statusMessage = tr(STR_LOADING);

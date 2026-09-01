@@ -15,6 +15,7 @@
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -147,7 +148,15 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   }
 
   if (mode == NetworkMode::JOIN_NETWORK) {
-    // STA mode - launch WiFi selection
+    // STA mode - launch WiFi selection. Past this point every path uses
+    // WiFi, so onExit() owes a teardown. Free NimBLE's ~55KB init-time heap
+    // reservation before WiFi/TLS need their own headroom -- no matching
+    // resume(): onExit() below always reboots once WiFi's mode is non-null,
+    // and BleNotifyRelay::begin() re-advertises fresh on the next boot.
+    // (CONNECT_CALIBRE above delegates to CalibreConnectActivity, which
+    // pauses on its own; CREATE_HOTSPOT below is SoftAP-only, no station-mode
+    // WiFi driver or outbound TLS, so it is left out of this.)
+    BleNotifyRelay::pause();
     LOG_DBG("WEBACT", "Turning on WiFi (STA mode)...");
     WiFi.mode(WIFI_STA);
 

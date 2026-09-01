@@ -17,6 +17,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "util/OrganizerSleepScreen.h"
 
 namespace {
@@ -168,6 +169,13 @@ void OrganizerScreenActivity::runSync(std::function<void()> work) {
 
   // Past this point every path uses WiFi, so onExit() owes a teardown.
   wifiActivated = true;
+
+  // Same reasoning as SyncAllActivity's own pause() call: free NimBLE's
+  // ~55KB init-time heap reservation before WiFi/TLS need their own headroom.
+  // No matching resume(): onExit() below always reboots once wifiActivated is
+  // set, and BleNotifyRelay::begin() re-advertises fresh on the next boot.
+  BleNotifyRelay::pause();
+
   if (WiFi.status() == WL_CONNECTED) {
     work();
     return;

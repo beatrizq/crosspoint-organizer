@@ -9,6 +9,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "network/OtaUpdater.h"
 
 namespace {
@@ -70,6 +71,13 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
+
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below always reboots once
+  // WiFi's mode is non-null, and BleNotifyRelay::begin() re-advertises fresh
+  // on the next boot.
+  BleNotifyRelay::pause();
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");

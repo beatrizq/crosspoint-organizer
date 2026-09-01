@@ -52,4 +52,5 @@ class YnabAccountsActivity final : public Activity {
   const char* statusMessage = nullptr;
   std::vector<YnabAccount> accounts;
   bool dirty = false;  // A label changed and needs persisting on exit
+  bool wifiActivated = false;
 };

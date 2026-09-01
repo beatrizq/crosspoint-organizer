@@ -15,6 +15,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "network/HttpDownloader.h"
 
 FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -24,6 +25,12 @@ FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputMan
 
 void FontDownloadActivity::onEnter() {
   Activity::onEnter();
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below always reboots once
+  // WiFi's mode is non-null, and BleNotifyRelay::begin() re-advertises fresh
+  // on the next boot.
+  BleNotifyRelay::pause();
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });

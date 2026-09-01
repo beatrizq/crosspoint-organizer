@@ -175,6 +175,9 @@ class SettingsActivity final : public Activity {
 
   bool preserveQuickResumeTimeoutOn = false;
   bool quickResumeTimeoutAutoEnabled = false;
+  // Set only by SettingAction::Network -- every other row here opens its own
+  // activity, which owns its own WiFi/reboot lifecycle if it needs one.
+  bool wifiActivated = false;
 
   OptionPopup optionPopup;
 

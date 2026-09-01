@@ -3,6 +3,7 @@
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <WiFi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -26,6 +27,7 @@
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
+#include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "TodoistSettingsActivity.h"
@@ -35,6 +37,7 @@
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "util/OrganizerSleepScreen.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
@@ -172,6 +175,14 @@ void SettingsActivity::onExit() {
   Activity::onExit();
 
   UITheme::getInstance().reload();  // Re-apply theme in case it was changed
+
+  // Reclaim WiFi/TLS heap fragmentation the same way every other WiFi-using
+  // screen does, now that Network (like the rest of them) pauses BLE first.
+  if (wifiActivated && WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
 }
 
 void SettingsActivity::loop() {
@@ -456,6 +467,15 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Network:
+        // Past this point WiFi has been used, so onExit() owes a teardown.
+        // Free NimBLE's ~55KB init-time heap reservation before WiFi/TLS need
+        // their own headroom -- no matching resume(): onExit() below now
+        // reboots once wifiActivated is set, and BleNotifyRelay::begin()
+        // re-advertises fresh on the next boot. This screen previously never
+        // rebooted after using WiFi at all (a pre-existing gap independent of
+        // BLE -- WiFi/TLS heap fragmentation went unreclaimed here too).
+        wifiActivated = true;
+        BleNotifyRelay::pause();
         startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
         break;
       case SettingAction::ClearCache:

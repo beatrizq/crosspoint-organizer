@@ -11,11 +11,13 @@
 #include <memory>
 #include <string>
 
+#include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/GCalCalendarPickerActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "util/HomeAppOrder.h"
 
 namespace {
@@ -35,7 +37,17 @@ void GCalSettingsActivity::onEnter() {
   requestUpdate();
 }
 
-void GCalSettingsActivity::onExit() { Activity::onExit(); }
+void GCalSettingsActivity::onExit() {
+  Activity::onExit();
+
+  // Reclaim WiFi/TLS heap fragmentation the same way every other WiFi-using
+  // screen does, now that beginLinking() pauses BLE first.
+  if (wifiActivated && WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
+}
 
 void GCalSettingsActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -178,7 +190,15 @@ void GCalSettingsActivity::beginLinking() {
     return;
   }
 
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below reboots once
+  // wifiActivated is set, and BleNotifyRelay::begin() re-advertises fresh on
+  // the next boot. wifiActivated itself was already declared here but never
+  // actually checked anywhere -- onExit() never rebooted after WiFi use at
+  // all, a pre-existing gap independent of BLE.
   wifiActivated = true;
+  BleNotifyRelay::pause();
   if (WiFi.status() == WL_CONNECTED) {
     requestPairingCode();
     return;

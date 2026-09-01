@@ -23,6 +23,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 
 namespace {
 std::string calculateDocumentHashForMethod(const std::string& path, const DocumentMatchMethod method) {
@@ -377,6 +378,12 @@ void KOReaderSyncActivity::onEnter() {
 
   // Past this point every path uses WiFi.
   wifiActivated = true;
+
+  // Free NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their
+  // own headroom -- no matching resume(): onExit() below always reboots once
+  // wifiActivated is set, and BleNotifyRelay::begin() re-advertises fresh on
+  // the next boot.
+  BleNotifyRelay::pause();
 
   // Check if already connected (e.g. from settings page auth)
   if (WiFi.status() == WL_CONNECTED) {
