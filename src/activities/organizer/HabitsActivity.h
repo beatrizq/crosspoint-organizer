@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "OrganizerScreenActivity.h"
 
@@ -23,26 +24,28 @@
  * request per habit however many separate amounts were logged in between,
  * before the journal is re-fetched.
  *
- * Today is the only tab. It stays as a tab so the screen reads as a sibling of
- * Tasks, Calendar and Budget rather than as a bare list, and because progress is
- * per-day: naming the tab Today is what says the counts reset.
+ * Tabs are one per Habitify Area that has a habit in it, plus a leading All --
+ * the same "built from what is actually there" shape TasksActivity's tabs
+ * have, but keyed by an open-ended area id rather than a fixed enum: areas are
+ * the user's own data, not a set this app defines. An area's habits do not
+ * move between tabs by completing or logging them (unlike a task's due date),
+ * so unlike TasksActivity, completion/logging never has to rebuild the tab
+ * bar -- only loading the cache and finishing a sync do, since those are the
+ * only two things that can change which areas exist.
  */
 class HabitsActivity final : public OrganizerScreenActivity {
  public:
-  enum class Tab : uint8_t { TODAY = 0 };
-  static constexpr int TAB_COUNT = 1;
-
   // selectHabitId, when non-empty, selects that habit's row on first paint
   // instead of row 0. One-shot -- cleared once applied.
   explicit HabitsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string selectHabitId = "")
-      : OrganizerScreenActivity("Habits", renderer, mappedInput, static_cast<int>(Tab::TODAY)),
+      : OrganizerScreenActivity("Habits", renderer, mappedInput, /*initialTab=*/0),
         selectHabitId(std::move(selectHabitId)) {}
 
   void onEnter() override;
 
  protected:
   const char* screenTitle() const override;
-  int tabCount() const override { return TAB_COUNT; }
+  int tabCount() const override { return static_cast<int>(visibleAreaIds.size()); }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;
   int rowCount() const override;
@@ -58,13 +61,36 @@ class HabitsActivity final : public OrganizerScreenActivity {
   homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Habits; }
 
  private:
-  // The cache index behind a visible row, or -1. Only the "hide completed"
-  // setting makes these differ, so the scan is over at most HABITIFY_MAX_HABITS.
+  // The area id at `index`, or "" (All) when out of range.
+  const std::string& areaIdAt(int index) const;
+  // The area id the active tab holds.
+  const std::string& currentAreaId() const { return areaIdAt(tab()); }
+
+  // Whether cacheIndex's habit belongs to `areaId` -- "" (All) matches every
+  // habit; anything else matches only that area's own id.
+  bool matchesArea(const std::string& areaId, size_t cacheIndex) const;
+  // Habits in `areaId`, ignoring the hide-completed setting: whether a tab
+  // exists should not flicker as habits are completed under it, the same
+  // reason emptyMessage() below treats "everything hidden" as distinct from
+  // "genuinely nothing here".
+  int countForArea(const std::string& areaId) const;
+
+  // Recomputes which area tabs have habits, keeping the active area selected
+  // where it survives and falling back to All where it does not (e.g. an area
+  // deleted in Habitify itself since the last sync).
+  void rebuildTabs();
+
+  // The cache index behind a visible row, or -1. The "hide completed" setting
+  // and the active tab both make these differ from a straight scan, so it is
+  // over at most HABITIFY_MAX_HABITS.
   int cacheIndexForRow(int row) const;
   bool isVisible(size_t cacheIndex) const;
 
   // See the constructor comment. Consumed and cleared in onEnter().
   std::string selectHabitId;
+
+  // Tabs currently on screen, in display order. Always leads with "" (All).
+  std::vector<std::string> visibleAreaIds{""};
 
   // Select opens this first, rather than completeSelectedHabit() directly --
   // see rowConfirmLabel()/onRowConfirm().

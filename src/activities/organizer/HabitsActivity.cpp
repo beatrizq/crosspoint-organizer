@@ -35,6 +35,7 @@ constexpr int HABIT_LOG_LARGE_STEP = 5;
 void HabitsActivity::loadCaches() {
   HABITIFY_HABITS.loadFromFile();
   HABITIFY_STORE.loadFromFile();
+  rebuildTabs();
 }
 
 void HabitsActivity::onEnter() {
@@ -56,6 +57,18 @@ void HabitsActivity::onEnter() {
   // onEnter()'s default selection (row 0) rather than landing on nothing.
   if (targetCacheIndex < 0 || !isVisible(static_cast<size_t>(targetCacheIndex))) return;
 
+  // All (always visibleAreaIds[0]) matches everything, so it is only used as
+  // the fallback -- a more specific tab, when the habit's area still has one,
+  // is where it actually belongs.
+  int targetTab = 0;
+  for (size_t t = 1; t < visibleAreaIds.size(); t++) {
+    if (matchesArea(visibleAreaIds[t], static_cast<size_t>(targetCacheIndex))) {
+      targetTab = static_cast<int>(t);
+      break;
+    }
+  }
+  setTab(targetTab);
+
   const int rows = rowCount();
   for (int row = 0; row < rows; row++) {
     if (cacheIndexForRow(row) == targetCacheIndex) {
@@ -67,12 +80,49 @@ void HabitsActivity::onEnter() {
 
 const char* HabitsActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Habits); }
 
+const std::string& HabitsActivity::areaIdAt(const int index) const {
+  static const std::string kAll;
+  if (index < 0 || static_cast<size_t>(index) >= visibleAreaIds.size()) return kAll;
+  return visibleAreaIds[static_cast<size_t>(index)];
+}
+
 const char* HabitsActivity::tabLabel(const int index) const {
-  switch (static_cast<Tab>(index)) {
-    case Tab::TODAY:
-      return tr(STR_TODAY);
+  const std::string& areaId = areaIdAt(index);
+  if (areaId.empty()) return tr(STR_HABITS_TAB_ALL);
+  return HABITIFY_HABITS.getAreaName(areaId);
+}
+
+void HabitsActivity::rebuildTabs() {
+  // The area selected now, so the same tab stays under the user across a
+  // rebuild even though its index may move when a tab ahead of it appears or
+  // goes (an area renamed or deleted in Habitify itself, say).
+  const std::string wanted = currentAreaId();
+
+  visibleAreaIds.clear();
+  visibleAreaIds.reserve(HABITIFY_HABITS.getAreas().size() + 1);
+  // All always shows: it is every habit regardless of area, and the one tab a
+  // successful sync cannot leave empty. The rest earn their place by having a
+  // habit, same as TasksActivity's own date tabs.
+  visibleAreaIds.push_back("");
+  for (const auto& area : HABITIFY_HABITS.getAreas()) {
+    if (countForArea(area.id) > 0) visibleAreaIds.push_back(area.id);
   }
-  return "";
+
+  int restored = 0;
+  for (size_t i = 0; i < visibleAreaIds.size(); i++) {
+    if (visibleAreaIds[i] == wanted) {
+      restored = static_cast<int>(i);
+      break;
+    }
+  }
+  // Falls back to All when the selected area just emptied or was removed.
+  setTab(restored);
+
+  // The new tab's list can be shorter than the old one, so the row selection
+  // has to be pulled back inside it. Index 0 is the tab bar, always valid.
+  const int rows = rowCount();
+  if (selectedRow() >= rows) selectedIndex = rows;
+  if (selectedIndex < 0) selectedIndex = 0;
 }
 
 // -- rows -------------------------------------------------------------------
@@ -86,11 +136,28 @@ bool HabitsActivity::isVisible(const size_t cacheIndex) const {
   return true;
 }
 
-int HabitsActivity::rowCount() const {
+bool HabitsActivity::matchesArea(const std::string& areaId, const size_t cacheIndex) const {
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  if (cacheIndex >= habits.size()) return false;
+  if (areaId.empty()) return true;  // All
+  return habits[cacheIndex].areaId == areaId;
+}
+
+int HabitsActivity::countForArea(const std::string& areaId) const {
   const auto& habits = HABITIFY_HABITS.getHabits();
   int count = 0;
   for (size_t i = 0; i < habits.size(); i++) {
-    if (isVisible(i)) count++;
+    if (matchesArea(areaId, i)) count++;
+  }
+  return count;
+}
+
+int HabitsActivity::rowCount() const {
+  const auto& habits = HABITIFY_HABITS.getHabits();
+  const std::string& areaId = currentAreaId();
+  int count = 0;
+  for (size_t i = 0; i < habits.size(); i++) {
+    if (isVisible(i) && matchesArea(areaId, i)) count++;
   }
   return count;
 }
@@ -98,9 +165,10 @@ int HabitsActivity::rowCount() const {
 int HabitsActivity::cacheIndexForRow(const int row) const {
   if (row < 0) return -1;
   const auto& habits = HABITIFY_HABITS.getHabits();
+  const std::string& areaId = currentAreaId();
   int seen = 0;
   for (size_t i = 0; i < habits.size(); i++) {
-    if (!isVisible(i)) continue;
+    if (!isVisible(i) || !matchesArea(areaId, i)) continue;
     if (seen == row) return static_cast<int>(i);
     seen++;
   }
@@ -357,6 +425,13 @@ void HabitsActivity::performSync() {
   // Drop the radio before repainting; the full teardown happens on the silent
   // reboot in onExit().
   tearDownRadio();
+
+  if (failure == nullptr) {
+    // A new result set means new area membership, so which tabs exist changes
+    // with it -- same reasoning as TasksActivity's own post-sync rebuild.
+    RenderLock lock(*this);
+    rebuildTabs();
+  }
   finishSync(failure);
   if (failure == nullptr) updateSleepScreen();
 }

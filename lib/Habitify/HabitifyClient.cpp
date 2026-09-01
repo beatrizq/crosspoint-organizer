@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <utility>
 
+#include "HabitifyAreasParser.h"
 #include "HabitifyJournalParser.h"
 #include "HabitifyStore.h"
 
@@ -92,6 +93,19 @@ void collectHabit(void* ctx, const HabitifyParsedHabit& parsed) {
   collector->out->push_back(std::move(habit));
 }
 
+// Sink for HabitifyAreasParser: appends one assignment per habit that has an
+// area, until the cache cap is reached.
+struct AreaCollector {
+  std::vector<HabitifyHabitAreaAssignment>* out;
+};
+
+void collectHabitArea(void* ctx, const char* habitId, const char* areaId, const char* areaName) {
+  auto* collector = static_cast<AreaCollector*>(ctx);
+  if (areaId[0] == '\0') return;  // no area assigned -- nothing to record
+  if (collector->out->size() >= HABITIFY_MAX_HABITS) return;
+  collector->out->push_back(HabitifyHabitAreaAssignment{habitId, areaId, areaName});
+}
+
 }  // namespace
 
 HabitifyClient::Error HabitifyClient::fetchJournal(std::vector<HabitifyHabit>& outHabits, uint16_t& outDate) {
@@ -155,6 +169,58 @@ HabitifyClient::Error HabitifyClient::fetchJournal(std::vector<HabitifyHabit>& o
   if (!dateHeader.empty()) {
     const uint16_t date = civil::dateFromHttpHeader(dateHeader.c_str());
     if (date != civil::NO_DATE) outDate = date;
+  }
+  return OK;
+}
+
+HabitifyClient::Error HabitifyClient::fetchHabitAreas(std::vector<HabitifyHabitAreaAssignment>& outAssignments) {
+  lastHttpCode = 0;
+  outAssignments.clear();
+  if (!HABITIFY_STORE.hasApiKey()) {
+    LOG_DBG("HBC", "No API key configured");
+    return NO_KEY;
+  }
+  if (insufficientHeap()) return LOW_MEMORY;
+
+  outAssignments.reserve(HABITIFY_MAX_HABITS);
+  AreaCollector collector{&outAssignments};
+
+  // On the heap, not the stack: same reasoning as fetchJournal()'s own parser.
+  auto parser = makeUniqueNoThrow<HabitifyAreasParser>(collectHabitArea, &collector);
+  if (!parser) {
+    LOG_ERR("HBC", "OOM: HabitifyAreasParser");
+    return LOW_MEMORY;
+  }
+
+  // No areaId filter: this fetches every habit's own areas array in one call,
+  // rather than one call per area (see this method's own doc comment).
+  const std::string url = std::string(API_BASE) + "/habits";
+
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  if (!http.begin(url)) {
+    LOG_ERR("HBC", "Bad habits URL");
+    return NETWORK_ERROR;
+  }
+  applyAuthHeaders(http);
+
+  const int httpCode = http.GET([&parser](const uint8_t* data, const size_t len) {
+    parser->feed(reinterpret_cast<const char*>(data), len);
+    return true;
+  });
+  http.end();
+  lastHttpCode = httpCode;
+  LOG_DBG("HBC", "areas: %d (%zu habits, %zu with an area)", httpCode, parser->habitCount(), outAssignments.size());
+
+  const Error status = errorForStatus(httpCode);
+  if (status != OK) {
+    outAssignments.clear();
+    return status;
+  }
+  if (parser->hasError()) {
+    LOG_ERR("HBC", "Malformed habits JSON");
+    outAssignments.clear();
+    return PARSE_ERROR;
   }
   return OK;
 }

@@ -26,6 +26,7 @@ void HabitifyHabitCache::toJson(JsonDocument& doc) const {
     obj["id"] = habit.id;
     obj["name"] = habit.name;
     obj["unit"] = habit.unitSymbol;
+    obj["areaId"] = habit.areaId;
     obj["current"] = habit.current;
     obj["target"] = habit.target;
     // Written even when zero: a press made with the radio off has to survive a
@@ -33,6 +34,13 @@ void HabitifyHabitCache::toJson(JsonDocument& doc) const {
     obj["pending"] = habit.pending;
     obj["completedByStatus"] = habit.completedByStatus;
     obj["pendingComplete"] = habit.pendingComplete;
+  }
+
+  JsonArray areaArr = doc["areas"].to<JsonArray>();
+  for (const auto& area : areas) {
+    JsonObject obj = areaArr.add<JsonObject>();
+    obj["id"] = area.id;
+    obj["name"] = area.name;
   }
 }
 
@@ -52,6 +60,7 @@ bool HabitifyHabitCache::fromJson(JsonVariantConst doc) {
     if (habit.id.empty()) continue;
     habit.name = obj["name"] | "";
     habit.unitSymbol = obj["unit"] | "";
+    habit.areaId = obj["areaId"] | "";
     habit.current = obj["current"] | 0.0f;
     habit.target = obj["target"] | 0.0f;
     habit.pending = obj["pending"] | 0.0f;
@@ -63,29 +72,50 @@ bool HabitifyHabitCache::fromJson(JsonVariantConst doc) {
   // A cache saved before A-Z ordering existed may not be sorted yet.
   std::sort(habits.begin(), habits.end(), byNameCaseInsensitive);
 
-  LOG_DBG("HHC", "Loaded %zu habits, %zu with unpushed progress", habits.size(), pendingCount());
+  areas.clear();
+  JsonArrayConst areaArr = doc["areas"].as<JsonArrayConst>();
+  areas.reserve(std::min(areaArr.size(), HABITIFY_MAX_AREAS));
+  for (JsonObjectConst obj : areaArr) {
+    if (areas.size() >= HABITIFY_MAX_AREAS) break;
+    HabitifyArea area;
+    area.id = obj["id"] | "";
+    if (area.id.empty()) continue;
+    area.name = obj["name"] | "";
+    areas.push_back(std::move(area));
+  }
+
+  LOG_DBG("HHC", "Loaded %zu habits, %zu with unpushed progress, %zu areas", habits.size(), pendingCount(),
+          areas.size());
   return true;
 }
 
-void HabitifyHabitCache::setHabits(std::vector<HabitifyHabit>&& fetched, const uint16_t date) {
+void HabitifyHabitCache::setHabits(std::vector<HabitifyHabit>&& fetched, const uint16_t date, const bool areasFresh,
+                                   std::vector<HabitifyArea>&& fetchedAreas) {
   if (fetched.size() > MAX_HABITS) fetched.resize(MAX_HABITS);
 
   // Pending progress and pending completes are both carried across by id. The
   // fetch knows nothing about either - it reports what the server holds - so
   // taking its result wholesale would drop a press made between the push and
-  // the re-fetch.
+  // the re-fetch. areaId is carried across the same way, but only when this
+  // sync's areas fetch failed -- see setHabits()'s own doc comment.
   for (auto& habit : fetched) {
     const auto previous =
         std::find_if(habits.begin(), habits.end(), [&habit](const HabitifyHabit& held) { return held.id == habit.id; });
     if (previous != habits.end()) {
       habit.pending = previous->pending;
       habit.pendingComplete = previous->pendingComplete;
+      if (!areasFresh) habit.areaId = previous->areaId;
     }
   }
 
   std::sort(fetched.begin(), fetched.end(), byNameCaseInsensitive);
   habits = std::move(fetched);
   if (date != civil::NO_DATE) syncDate = date;
+
+  if (areasFresh) {
+    if (fetchedAreas.size() > HABITIFY_MAX_AREAS) fetchedAreas.resize(HABITIFY_MAX_AREAS);
+    areas = std::move(fetchedAreas);
+  }
 }
 
 void HabitifyHabitCache::addPending(const size_t index, const float amount) {
@@ -130,5 +160,6 @@ void HabitifyHabitCache::clearPendingComplete(const std::string& habitId) {
 
 void HabitifyHabitCache::clear() {
   habits.clear();
+  areas.clear();
   syncDate = civil::NO_DATE;
 }

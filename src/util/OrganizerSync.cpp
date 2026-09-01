@@ -21,6 +21,7 @@
 #include <esp_sntp.h>
 #include <time.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -469,11 +470,51 @@ const char* runHabits() {
     resetTaskWatchdogIfSubscribed();
   }
 
+  // Areas: a second, best-effort fetch for the Habits screen's per-area tabs
+  // -- see HabitifyClient::fetchHabitAreas()'s own doc comment for why this
+  // cannot just be folded into the journal fetch above. Its own failure never
+  // fails the habit sync itself, the same way Todoist's completed-count fetch
+  // treats its own second call: it just leaves the tab set stale until the
+  // next attempt.
+  bool areasFresh = false;
+  std::vector<HabitifyHabitAreaAssignment> areaAssignments;
+  if (error == HabitifyClient::OK) {
+    resetTaskWatchdogIfSubscribed();
+    const HabitifyClient::Error areasError = HabitifyClient::fetchHabitAreas(areaAssignments);
+    resetTaskWatchdogIfSubscribed();
+    if (areasError == HabitifyClient::OK) {
+      areasFresh = true;
+    } else {
+      LOG_ERR("OSYNC", "Habit areas fetch failed: %s", HabitifyClient::errorString(areasError));
+    }
+  }
+
   if (error == HabitifyClient::OK) {
     RenderLock lock;
+    std::vector<HabitifyArea> areasList;
+    if (areasFresh) {
+      // Join by id: each habit gets its first area (see
+      // HabitifyHabitAreaAssignment's own "first area only" comment), and the
+      // deduped set of areas becomes the tab list.
+      for (auto& fetchedHabit : fetched) {
+        for (const auto& assignment : areaAssignments) {
+          if (assignment.habitId == fetchedHabit.id) {
+            fetchedHabit.areaId = assignment.areaId;
+            break;
+          }
+        }
+      }
+      areasList.reserve(areaAssignments.size());
+      for (const auto& assignment : areaAssignments) {
+        const bool alreadyKnown = std::any_of(areasList.begin(), areasList.end(), [&assignment](const HabitifyArea& a) {
+          return a.id == assignment.areaId;
+        });
+        if (!alreadyKnown) areasList.push_back(HabitifyArea{assignment.areaId, assignment.areaName});
+      }
+    }
     // Carries over anything still owed - a press that landed between the push
     // above and this fetch.
-    HABITIFY_HABITS.setHabits(std::move(fetched), date);
+    HABITIFY_HABITS.setHabits(std::move(fetched), date, areasFresh, std::move(areasList));
     // Catches a habit completed elsewhere (the Habitify app itself, say) that
     // this device never saw a local press for. Gated on success: a failed
     // fetch means the cache did not change, so there is nothing new to credit,

@@ -26,6 +26,11 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
  private:
   std::vector<HabitifyHabit> habits;
   uint16_t syncDate = civil::NO_DATE;
+  // Areas with at least one habit in them, as of the last successful areas
+  // fetch (see setHabits()'s areasFresh parameter) -- the Habits screen's
+  // per-area tabs are built from this, not by scanning habits for distinct
+  // areaId values, so an area's name is stored once rather than repeated.
+  std::vector<HabitifyArea> areas;
 
   HabitifyHabitCache() = default;
   ~HabitifyHabitCache() = default;
@@ -43,6 +48,18 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   uint16_t getSyncDate() const { return syncDate; }
   bool hasSynced() const { return syncDate != civil::NO_DATE; }
 
+  // Areas with at least one habit, in the order the last successful areas
+  // fetch returned them. Empty until that fetch has ever succeeded once.
+  const std::vector<HabitifyArea>& getAreas() const { return areas; }
+  // "" (no match) rather than nullptr: every call site formats this straight
+  // into a row/tab label, and an empty C string is always safe there.
+  const char* getAreaName(const std::string& areaId) const {
+    for (const auto& area : areas) {
+      if (area.id == areaId) return area.name.c_str();
+    }
+    return "";
+  }
+
   /**
    * Replaces the list after a successful fetch, sorted A-Z by name (case-
    * insensitive) to match the order Habitify's own app shows - the API's own
@@ -56,8 +73,19 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
    *
    * `date` is the day the journal was fetched for. NO_DATE leaves the stored date
    * alone, so a sync whose response carried no date keeps the last one that did.
+   *
+   * `areasFresh`/`fetchedAreas` cover HabitifyClient::fetchHabitAreas(), a
+   * second, best-effort fetch (see organizerSync::runHabits()): when it
+   * succeeded this sync, `areasFresh` is true and each habit in `fetched`
+   * already carries its authoritative (possibly newly-empty) areaId, and
+   * `fetchedAreas` replaces the stored area list outright. When it failed,
+   * `areasFresh` is false and every habit's previous areaId is carried
+   * forward by id match instead (`fetchedAreas` is ignored) -- the same
+   * carry-forward treatment `pending`/`pendingComplete` already get, so a
+   * transient areas-fetch failure does not wipe the tab bar.
    */
-  void setHabits(std::vector<HabitifyHabit>&& fetched, uint16_t date);
+  void setHabits(std::vector<HabitifyHabit>&& fetched, uint16_t date, bool areasFresh,
+                 std::vector<HabitifyArea>&& fetchedAreas);
 
   // Adds to a habit's unpushed progress. No-op for an unknown index.
   void addPending(size_t index, float amount);

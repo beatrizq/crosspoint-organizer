@@ -5,6 +5,13 @@
 
 #include "HabitifyHabit.h"
 
+// One habit's area membership, as returned by HabitifyClient::fetchHabitAreas().
+struct HabitifyHabitAreaAssignment {
+  std::string habitId;
+  std::string areaId;
+  std::string areaName;
+};
+
 /**
  * HTTPS client for the Habitify API v2.
  *
@@ -54,6 +61,29 @@ class HabitifyClient {
    *                  answered for - which matters on boards with no RTC.
    */
   static Error fetchJournal(std::vector<HabitifyHabit>& outHabits, uint16_t& outDate);
+
+  /**
+   * Fetches every habit's Area membership: GET /habits (not /habits/journal
+   * -- per Habitify's own API reference, the journal endpoint fetchJournal()
+   * uses does not return area info at all; only the plain habit list and
+   * single-habit endpoints do). Used to drive the Habits screen's per-area
+   * tabs; joined onto fetchJournal()'s result by habit id, since this
+   * endpoint carries no progress data of its own.
+   *
+   * A habit assigned to no area is simply absent from `outAssignments`
+   * (areaId "" would mean nothing to a tab lookup anyway); one assigned to
+   * several areas in Habitify itself contributes only its first, since this
+   * screen shows one tab per habit rather than repeating it across several.
+   *
+   * Best-effort by design (see organizerSync::runHabits()): a failure here
+   * does not fail the habit sync itself, it just leaves the tab set stale
+   * until the next attempt, the same way Todoist's completed-count fetch
+   * treats its own second call.
+   *
+   * @param outAssignments Output: one entry per habit that has an area,
+   *                       capped at HABITIFY_MAX_HABITS.
+   */
+  static Error fetchHabitAreas(std::vector<HabitifyHabitAreaAssignment>& outAssignments);
 
   /**
    * Adds progress to a habit: POST /habits/{id}/logs with {unitSymbol, value}.
