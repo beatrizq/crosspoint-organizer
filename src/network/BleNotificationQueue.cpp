@@ -7,6 +7,20 @@
 
 void BleNotificationQueue::push(const uint32_t id, const bool isCall, const char* sender, const char* title,
                                 const char* content, const uint8_t hour, const uint8_t minute) {
+  // A BLE reconnect can resend every notification still active on the phone,
+  // not just what arrived since the last connection (Gadgetbridge itself has
+  // no "already sent to this device" tracking) -- skip one already held
+  // rather than showing the same phone notification twice. id 0 is calls'
+  // own sentinel (see BleNotificationEntry's own field comment), never a
+  // real dedup key, and only entries still in the visible window (fill, not
+  // the full ring) count: one that already aged out is shown again as new.
+  if (!isCall && id != 0) {
+    for (size_t i = 0; i < fill; i++) {
+      const BleNotificationEntry& existing = getEntry(i);
+      if (!existing.isCall && existing.id == id) return;
+    }
+  }
+
   BleNotificationEntry& e = entries[pos];
   e.id = id;
   e.isCall = isCall;

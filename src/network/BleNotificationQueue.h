@@ -12,7 +12,7 @@
 // its own line, sender as a subordinate (dimmed) line under it, sourced from
 // Gadgetbridge's own src/title/body fields for a notification.
 struct BleNotificationEntry {
-  uint32_t id = 0;       // Gadgetbridge's own notification id, for a later notify- dismiss. 0 for calls (none sent).
+  uint32_t id = 0;       // Gadgetbridge's own notification id, for de-duplicating a resend on reconnect. 0 for calls.
   bool isCall = false;   // true: an incoming call (sender/title/content below hold call fields). false: a notification.
   char sender[40] = {};  // Notification: src (app name, e.g. "WhatsApp"). Call: tr(STR_BLE_INCOMING_CALL).
   char title[64] = {};   // Notification: title. Call: caller name, or the number if no name was sent.
@@ -51,7 +51,11 @@ class BleNotificationQueue : public PersistableStore<BleNotificationQueue> {
 
   // Adds one entry, overwriting the oldest once CAPACITY is reached, and
   // counts it unread. sender/title/content are copied (truncated to the field
-  // sizes above), so the caller's buffers need not outlive the call.
+  // sizes above), so the caller's buffers need not outlive the call. A no-op
+  // if id already matches an entry still held (see id's own field comment):
+  // a Bangle.js-protocol reconnect can resend everything still active on the
+  // phone, not just what arrived since the last connection, and this is the
+  // only guard against the same phone notification showing twice.
   void push(uint32_t id, bool isCall, const char* sender, const char* title, const char* content, uint8_t hour,
             uint8_t minute);
 
