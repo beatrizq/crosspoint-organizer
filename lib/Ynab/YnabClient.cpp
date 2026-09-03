@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <CivilTime.h>
+#include <HalClock.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <SecureHttpClient.h>
@@ -432,6 +433,20 @@ YnabClient::Error YnabClient::fetchTransactions(const std::string& accountId,
   // this stays a strict superset of what the cache keeps --
   // YnabAccountCache::setTransactions()'s replace-then-sort-then-cap logic
   // doesn't need to change, just what it's handed.
+  //
+  // isoDateDaysAgo() needs a real "today," which needs the clock actually
+  // synced. Sync All syncs it once up front for all four services
+  // (SyncAllActivity::runAll()), but BudgetActivity's own per-tab sync has no
+  // equivalent step -- without this, a per-tab sync on a freshly booted
+  // device (clock still unset) would find isoDateDaysAgo() underflow to an
+  // empty string and silently fall back to the exact unbounded fetch this
+  // bound exists to avoid. WiFi is already up by this point either way (see
+  // organizerSync::run()'s own contract), so the sync is safe to attempt here.
+  uint16_t syncedYear;
+  uint8_t syncedMonth, syncedDay, syncedHour, syncedMinute;
+  if (!halClock.getUtcDateTime(syncedYear, syncedMonth, syncedDay, syncedHour, syncedMinute)) {
+    halClock.syncFromNTP();
+  }
   const std::string sinceDate = isoDateDaysAgo(90);
   if (!sinceDate.empty()) path += "?since_date=" + sinceDate;
   const Error error = requestRecords(path, "transactions", TRANSACTION_FIELDS,
