@@ -1,4 +1,6 @@
 #pragma once
+#include <CompanionMood.h>
+
 #include <functional>
 #include <vector>
 
@@ -87,6 +89,16 @@ class HomeActivity final : public Activity {
   // to be painted anyway - a timer would keep the panel refreshing, block the
   // low-power idle and accumulate e-ink ghosting.
   uint32_t companionFrame = 0;
+  // Re-checks the companion's sleep-window mood on an idle timer (see loop())
+  // rather than only on screen entry -- otherwise sitting on Home past the
+  // configured sleep time never shows it as asleep until you leave and come
+  // back. Unlike companionFrame above, this does NOT force a repaint on every
+  // tick -- COMPANION_REFRESH_INTERVAL_MS only re-reads the clock (one cheap
+  // I2C transaction) and compares moods, calling requestUpdate() solely when
+  // the result actually changed, so it doesn't fight the e-ink/idle-power
+  // reasoning companionFrame's own comment lays out.
+  unsigned long lastCompanionRefreshMs = 0;
+  companion::Mood lastCompanionMood = companion::Mood::Happy;
 
   // Draws the companion, its speech bubble and its status into the column the
   // theme set aside inside the cover card. No-op when disabled, or when the

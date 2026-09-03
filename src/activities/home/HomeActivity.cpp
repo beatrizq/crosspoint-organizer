@@ -389,6 +389,10 @@ void HomeActivity::onEnter() {
   // One I2C read to resolve the calendar day, so currentMood() is cheap from the
   // render path. Here rather than in render() for exactly that reason.
   COMPANION.refreshForDisplay();
+  // Idle-tick baseline for loop()'s own re-check -- seeded here (not left at 0)
+  // so the first idle tick doesn't immediately redo what onEnter() just did.
+  lastCompanionRefreshMs = millis();
+  lastCompanionMood = COMPANION.currentMood();
   // A different suggestion each visit, stable while the cursor moves around
   // the menu -- see homeSuggestionText's own comment.
   const auto rolled = quickpick::roll();
@@ -456,6 +460,22 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  // Re-checks the companion's mood (in particular, whether it's now inside its
+  // sleep window) on an idle timer -- see lastCompanionRefreshMs's own comment
+  // in the header for why this doesn't unconditionally repaint. Only costs a
+  // repaint on the tick where the mood actually changes; every other tick is
+  // one I2C read plus an enum compare.
+  constexpr unsigned long COMPANION_REFRESH_INTERVAL_MS = 60000;
+  if (millis() - lastCompanionRefreshMs >= COMPANION_REFRESH_INTERVAL_MS) {
+    lastCompanionRefreshMs = millis();
+    COMPANION.refreshForDisplay();
+    const auto mood = COMPANION.currentMood();
+    if (mood != lastCompanionMood) {
+      lastCompanionMood = mood;
+      requestUpdate();
+    }
+  }
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
 
