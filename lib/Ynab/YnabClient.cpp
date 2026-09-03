@@ -7,6 +7,7 @@
 #include <SecureHttpClient.h>
 
 #include <cstdio>
+#include <ctime>
 #include <utility>
 
 #include "YnabMonthParser.h"
@@ -289,6 +290,21 @@ void collectTransaction(void* ctx, const YnabParsedRecord& record) {
   out.push_back(std::move(transaction));
 }
 
+// ISO "YYYY-MM-DD" for `daysAgo` days before today (UTC; a date-bound query
+// param has no need for the local-timezone precision the display side cares
+// about). Empty if the arithmetic underflows -- unreachable on any real
+// device clock, but civil::packDate/isoFromDate both already treat an
+// out-of-range day as "no date," so this just follows that convention rather
+// than asserting.
+std::string isoDateDaysAgo(const int daysAgo) {
+  const int32_t daysSince1970 = static_cast<int32_t>(time(nullptr) / 86400);
+  const int32_t packedSince = daysSince1970 - civil::DAYS_1970_TO_2000 - daysAgo;
+  if (packedSince < 0 || packedSince >= static_cast<int32_t>(civil::NO_DATE)) return std::string();
+  char buf[11];
+  civil::isoFromDate(static_cast<uint16_t>(packedSince), buf, sizeof(buf));
+  return std::string(buf);
+}
+
 /**
  * Runs a plan-scoped GET, feeding the body through a record parser as it arrives.
  *
@@ -405,7 +421,19 @@ YnabClient::Error YnabClient::fetchTransactions(const std::string& accountId,
   if (accountId.empty()) return NOT_FOUND;
   outTransactions.reserve(YNAB_MAX_TRANSACTIONS * 2);
   TransactionCollector collector{&outTransactions};
-  const std::string path = "/accounts/" + urlEncode(accountId) + "/transactions";
+  std::string path = "/accounts/" + urlEncode(accountId) + "/transactions";
+  // Bounded to recent history: an unbounded fetch (YNAB's own default when
+  // since_date is omitted) can run to years of transactions for an active
+  // account -- large enough to risk a timeout or an OOM read failure on this
+  // device before the body completes, which requestRecords() now correctly
+  // treats as a failure rather than silently accepting a truncated result
+  // (see its own comment on responseComplete()). 90 days is comfortably more
+  // than YNAB_MAX_TRANSACTIONS (25) worth of history for typical usage, so
+  // this stays a strict superset of what the cache keeps --
+  // YnabAccountCache::setTransactions()'s replace-then-sort-then-cap logic
+  // doesn't need to change, just what it's handed.
+  const std::string sinceDate = isoDateDaysAgo(90);
+  if (!sinceDate.empty()) path += "?since_date=" + sinceDate;
   const Error error = requestRecords(path, "transactions", TRANSACTION_FIELDS,
                                      sizeof(TRANSACTION_FIELDS) / sizeof(TRANSACTION_FIELDS[0]), collectTransaction,
                                      &collector, &outDate);
