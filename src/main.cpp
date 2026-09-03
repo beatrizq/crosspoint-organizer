@@ -31,6 +31,7 @@
 #include "SdCardFontSystem.h"
 #include "TodoistStore.h"
 #include "TodoistTaskCache.h"
+#include "YnabAccountCache.h"
 #include "YnabStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -332,6 +333,16 @@ void setup() {
   TODOIST_STORE.loadFromFile();
   GCAL_STORE.loadFromFile();
   YNAB_STORE.loadFromFile();
+  // Sync All's Budget step (OrganizerSync.cpp's runBudget()) refreshes every
+  // *already-known* account's transactions without re-fetching the account
+  // list itself -- it reads YNAB_ACCOUNTS.getAccounts() to know which ids to
+  // ask for. Same reasoning as the caches below: SyncAllActivity reboots on
+  // exit whenever WiFi was activated, so relying on whatever was in RAM before
+  // that reboot means a Sync All triggered before ever opening the Budget
+  // screen this session sees an empty account list and silently skips every
+  // transaction refresh -- the account tab then just shows whatever was
+  // already cached, unchanged, with no error surfaced anywhere.
+  YNAB_ACCOUNTS.loadFromFile();
   HABITIFY_STORE.loadFromFile();
   // Loaded unconditionally, not just when the companion is enabled: a wake from
   // deep sleep re-runs setup(), so gating on the setting means turning the

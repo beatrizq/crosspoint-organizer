@@ -344,6 +344,20 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
 
   const YnabClient::Error status = errorForStatus(httpCode);
   if (status != YnabClient::OK) return status;
+  // A dropped/timed-out connection mid-body still reports the 200 status line
+  // read earlier, and a stream that just stops (rather than emitting invalid
+  // syntax) never trips parser->hasError() either -- so both checks above can
+  // pass on a truncated response. This matters more here than for the other
+  // API clients: fetchTransactions() below has no since_date/server_knowledge
+  // (unbounded full-history fetch, see its own doc comment) and
+  // YnabAccountCache::setTransactions() unconditionally replaces the cache
+  // with whatever comes back, so an undetected truncation can silently
+  // overwrite a complete, correct cache with a partial, older-looking one.
+  // Same completeness check HttpDownloader::download() already relies on.
+  if (!http.responseComplete()) {
+    LOG_ERR("YNC", "Incomplete %s response (%zu records before drop)", arrayKey, parser->recordCount());
+    return YnabClient::NETWORK_ERROR;
+  }
   if (parser->hasError()) {
     LOG_ERR("YNC", "Malformed %s JSON", arrayKey);
     return YnabClient::PARSE_ERROR;
