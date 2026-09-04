@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
 #include <WiFi.h>
 #include <YnabStore.h>
 
@@ -68,7 +69,9 @@ void YnabCategoryPickerActivity::onExit() {
 }
 
 void YnabCategoryPickerActivity::fetchCategories() {
-  const YnabClient::Error error = YnabClient::fetchCategoryList(categories);
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  const YnabClient::Error error = YnabClient::fetchCategoryList(http, categories);
   RenderLock lock(*this);
   if (error != YnabClient::OK) {
     LOG_ERR("YCP", "Category list failed: %s", YnabClient::errorString(error));

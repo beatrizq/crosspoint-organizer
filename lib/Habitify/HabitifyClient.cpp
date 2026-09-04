@@ -108,7 +108,8 @@ void collectHabitArea(void* ctx, const char* habitId, const char* areaId, const 
 
 }  // namespace
 
-HabitifyClient::Error HabitifyClient::fetchJournal(std::vector<HabitifyHabit>& outHabits, uint16_t& outDate) {
+HabitifyClient::Error HabitifyClient::fetchJournal(freeink::SecureHttpClient& http,
+                                                   std::vector<HabitifyHabit>& outHabits, uint16_t& outDate) {
   lastHttpCode = 0;
   outHabits.clear();
   if (!HABITIFY_STORE.hasApiKey()) {
@@ -134,8 +135,6 @@ HabitifyClient::Error HabitifyClient::fetchJournal(std::vector<HabitifyHabit>& o
   // boards have no RTC.
   const std::string url = std::string(API_BASE) + "/habits/journal";
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("HBC", "Bad journal URL");
     return NETWORK_ERROR;
@@ -149,9 +148,9 @@ HabitifyClient::Error HabitifyClient::fetchJournal(std::vector<HabitifyHabit>& o
     return true;
   });
 
-  // Read before end(): the parsed headers belong to this connection.
+  // Read before the caller's next begin(): a reused connection's headers get
+  // overwritten by the next request, and this function does not call end().
   const std::string dateHeader = http.getHeader("date");
-  http.end();
   lastHttpCode = httpCode;
   LOG_DBG("HBC", "journal: %d (%zu habits)", httpCode, parser->habitCount());
 
@@ -173,7 +172,8 @@ HabitifyClient::Error HabitifyClient::fetchJournal(std::vector<HabitifyHabit>& o
   return OK;
 }
 
-HabitifyClient::Error HabitifyClient::fetchHabitAreas(std::vector<HabitifyHabitAreaAssignment>& outAssignments) {
+HabitifyClient::Error HabitifyClient::fetchHabitAreas(freeink::SecureHttpClient& http,
+                                                      std::vector<HabitifyHabitAreaAssignment>& outAssignments) {
   lastHttpCode = 0;
   outAssignments.clear();
   if (!HABITIFY_STORE.hasApiKey()) {
@@ -196,8 +196,6 @@ HabitifyClient::Error HabitifyClient::fetchHabitAreas(std::vector<HabitifyHabitA
   // rather than one call per area (see this method's own doc comment).
   const std::string url = std::string(API_BASE) + "/habits";
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("HBC", "Bad habits URL");
     return NETWORK_ERROR;
@@ -208,7 +206,6 @@ HabitifyClient::Error HabitifyClient::fetchHabitAreas(std::vector<HabitifyHabitA
     parser->feed(reinterpret_cast<const char*>(data), len);
     return true;
   });
-  http.end();
   lastHttpCode = httpCode;
   LOG_DBG("HBC", "areas: %d (%zu habits, %zu with an area)", httpCode, parser->habitCount(), outAssignments.size());
 
@@ -225,8 +222,8 @@ HabitifyClient::Error HabitifyClient::fetchHabitAreas(std::vector<HabitifyHabitA
   return OK;
 }
 
-HabitifyClient::Error HabitifyClient::addLog(const std::string& habitId, const std::string& unitSymbol,
-                                             const float value) {
+HabitifyClient::Error HabitifyClient::addLog(freeink::SecureHttpClient& http, const std::string& habitId,
+                                             const std::string& unitSymbol, const float value) {
   lastHttpCode = 0;
   if (!HABITIFY_STORE.hasApiKey()) return NO_KEY;
   if (habitId.empty() || unitSymbol.empty() || value <= 0.0f) return NOT_FOUND;
@@ -240,8 +237,6 @@ HabitifyClient::Error HabitifyClient::addLog(const std::string& habitId, const s
   char body[96];
   snprintf(body, sizeof(body), "{\"unitSymbol\":\"%s\",\"value\":%g}", unitSymbol.c_str(), static_cast<double>(value));
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("HBC", "Bad log URL for habit %s", habitId.c_str());
     return NETWORK_ERROR;
@@ -250,13 +245,12 @@ HabitifyClient::Error HabitifyClient::addLog(const std::string& habitId, const s
   http.addHeader("Content-Type", "application/json");
 
   const int httpCode = http.POST(body);
-  http.end();
   lastHttpCode = httpCode;
   LOG_DBG("HBC", "log %s += %g: %d", habitId.c_str(), static_cast<double>(value), httpCode);
   return errorForStatus(httpCode);
 }
 
-HabitifyClient::Error HabitifyClient::completeHabit(const std::string& habitId) {
+HabitifyClient::Error HabitifyClient::completeHabit(freeink::SecureHttpClient& http, const std::string& habitId) {
   lastHttpCode = 0;
   if (!HABITIFY_STORE.hasApiKey()) return NO_KEY;
   if (habitId.empty()) return NOT_FOUND;
@@ -264,8 +258,6 @@ HabitifyClient::Error HabitifyClient::completeHabit(const std::string& habitId) 
 
   const std::string url = std::string(API_BASE) + "/habits/" + urlEncode(habitId) + "/logs/complete";
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("HBC", "Bad complete URL for habit %s", habitId.c_str());
     return NETWORK_ERROR;
@@ -277,7 +269,6 @@ HabitifyClient::Error HabitifyClient::completeHabit(const std::string& habitId) 
   http.addHeader("Content-Length", "0");
 
   const int httpCode = http.sendRequest("POST", nullptr, 0);
-  http.end();
   lastHttpCode = httpCode;
   LOG_DBG("HBC", "complete %s: %d", habitId.c_str(), httpCode);
   return errorForStatus(httpCode);

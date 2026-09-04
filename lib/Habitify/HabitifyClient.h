@@ -5,6 +5,10 @@
 
 #include "HabitifyHabit.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 // One habit's area membership, as returned by HabitifyClient::fetchHabitAreas().
 struct HabitifyHabitAreaAssignment {
   std::string habitId;
@@ -59,8 +63,12 @@ class HabitifyClient {
    *                  header was missing. The request asks for the account's own
    *                  today rather than naming a date, so this is what the server
    *                  answered for - which matters on boards with no RTC.
+   * @param http      Caller-owned connection, shared across a sync's calls to
+   *                  this same host so SecureHttpClient's own keep-alive can
+   *                  actually take effect (see organizerSync::runHabits()) -
+   *                  this function neither constructs nor ends it.
    */
-  static Error fetchJournal(std::vector<HabitifyHabit>& outHabits, uint16_t& outDate);
+  static Error fetchJournal(freeink::SecureHttpClient& http, std::vector<HabitifyHabit>& outHabits, uint16_t& outDate);
 
   /**
    * Fetches every habit's Area membership: GET /habits (not /habits/journal
@@ -82,8 +90,11 @@ class HabitifyClient {
    *
    * @param outAssignments Output: one entry per habit that has an area,
    *                       capped at HABITIFY_MAX_HABITS.
+   * @param http           Caller-owned connection -- see fetchJournal()'s own
+   *                       parameter doc.
    */
-  static Error fetchHabitAreas(std::vector<HabitifyHabitAreaAssignment>& outAssignments);
+  static Error fetchHabitAreas(freeink::SecureHttpClient& http,
+                               std::vector<HabitifyHabitAreaAssignment>& outAssignments);
 
   /**
    * Adds progress to a habit: POST /habits/{id}/logs with {unitSymbol, value}.
@@ -95,8 +106,11 @@ class HabitifyClient {
    * `unitSymbol` must be one of the API's units; it comes from the habit's own
    * progress.unit. A habit with no goal reports no unit, and cannot be logged
    * against - the caller checks that before getting here.
+   *
+   * `http`: caller-owned connection -- see fetchJournal()'s own parameter doc.
    */
-  static Error addLog(const std::string& habitId, const std::string& unitSymbol, float value);
+  static Error addLog(freeink::SecureHttpClient& http, const std::string& habitId, const std::string& unitSymbol,
+                      float value);
 
   /**
    * Marks a habit complete for today directly: POST /habits/{id}/logs/complete,
@@ -104,8 +118,10 @@ class HabitifyClient {
    * goal-less habit too - the one case addLog() can never touch at all. No date
    * is sent; the endpoint defaults to today, the same "let the server decide"
    * convention fetchJournal() already uses.
+   *
+   * `http`: caller-owned connection -- see fetchJournal()'s own parameter doc.
    */
-  static Error completeHabit(const std::string& habitId);
+  static Error completeHabit(freeink::SecureHttpClient& http, const std::string& habitId);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */
   static const char* errorString(Error error);

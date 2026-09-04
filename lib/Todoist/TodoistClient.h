@@ -5,6 +5,10 @@
 #include "TodoistCompletedCountParser.h"
 #include "TodoistTask.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 /**
  * HTTPS client for the Todoist unified API (v1).
  *
@@ -61,14 +65,21 @@ class TodoistClient {
    *                 more reliable clock on boards with no RTC. It is GMT, so a
    *                 caller with a working NTP result and a configured UTC offset
    *                 should prefer that and keep this as the fallback.
+   *
+   * `http`: caller-owned connection, shared across a sync's calls to this same
+   * host so SecureHttpClient's own keep-alive can actually take effect (see
+   * organizerSync::runTasks()) - this function neither constructs nor ends it.
    */
-  static Error fetchTasks(std::vector<TodoistTask>& outTasks, std::string& outServerDate);
+  static Error fetchTasks(freeink::SecureHttpClient& http, std::vector<TodoistTask>& outTasks,
+                          std::string& outServerDate);
 
   /**
    * Complete a task. A 404 is reported as OK: the task is already gone from the
    * server (completed elsewhere), which is the state the caller wants.
+   *
+   * `http`: caller-owned connection -- see fetchTasks()'s own parameter doc.
    */
-  static Error closeTask(const std::string& taskId);
+  static Error closeTask(freeink::SecureHttpClient& http, const std::string& taskId);
 
   /**
    * Reschedule a task to `isoDueDate` ("YYYY-MM-DD"), or clear its due date
@@ -85,8 +96,11 @@ class TodoistClient {
    * without replacing its recurrence entirely - this call does exactly that
    * for any task, recurring or not. The caller is responsible for warning
    * before rescheduling a recurring one; see TodoistTask::isRecurring.
+   *
+   * `http`: caller-owned connection -- see fetchTasks()'s own parameter doc.
    */
-  static Error rescheduleTask(const std::string& taskId, const std::string& isoDueDate);
+  static Error rescheduleTask(freeink::SecureHttpClient& http, const std::string& taskId,
+                              const std::string& isoDueDate);
 
   /**
    * Counts tasks matching the Filter setting that Todoist recorded as completed
@@ -109,9 +123,11 @@ class TodoistClient {
    * @param titleSink Optional: invoked once per completed item (with its
    * title) as the response streams in, for a caller that wants the actual
    * list rather than just outCount. See TodoistCompletedCountParser::TitleSink.
+   *
+   * `http`: caller-owned connection -- see fetchTasks()'s own parameter doc.
    */
-  static Error fetchCompletedCountForDay(const std::string& isoDate, uint16_t& outCount,
-                                         TodoistCompletedCountParser::TitleSink titleSink = nullptr,
+  static Error fetchCompletedCountForDay(freeink::SecureHttpClient& http, const std::string& isoDate,
+                                         uint16_t& outCount, TodoistCompletedCountParser::TitleSink titleSink = nullptr,
                                          void* titleSinkCtx = nullptr);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */

@@ -11,6 +11,7 @@
 #include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
 #include <TodoistClient.h>
 #include <TodoistStore.h>
 #include <TodoistTaskCache.h>
@@ -175,6 +176,13 @@ const char* runTasks() {
   std::string ntpDate;
   if (!resolveTodayDate(ntpDate)) ntpDate.clear();
 
+  // Shared across every Todoist call below (all the same host,
+  // api.todoist.com) so SecureHttpClient's own keep-alive can actually take
+  // effect instead of a fresh TLS handshake per call -- see TodoistClient.h's
+  // own parameter doc on why this matters for heap fragmentation.
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+
   // Push queued completions before fetching, so the fetched list already
   // reflects them. A copy: clearPending() mutates the queue as we go.
   const std::vector<std::string> pending = TODOIST_TASKS.getPendingIds();
@@ -182,7 +190,7 @@ const char* runTasks() {
   for (const auto& id : pending) {
     // Each push is a full TLS request; the sync runs on the main task.
     resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::closeTask(id);
+    error = TodoistClient::closeTask(http, id);
     if (error != TodoistClient::OK) {
       LOG_ERR("OSYNC", "Task push failed for %s: %s", id.c_str(), TodoistClient::errorString(error));
       break;  // keep the rest queued for the next attempt
@@ -200,7 +208,7 @@ const char* runTasks() {
       resetTaskWatchdogIfSubscribed();
       char isoDate[11];
       todoist::isoFromDueDays(reschedule.dueDays, isoDate, sizeof(isoDate));
-      error = TodoistClient::rescheduleTask(reschedule.taskId, isoDate);
+      error = TodoistClient::rescheduleTask(http, reschedule.taskId, isoDate);
       resetTaskWatchdogIfSubscribed();
       if (error == TodoistClient::NOT_FOUND) {
         // Gone (deleted, or already completed elsewhere) - nowhere left to
@@ -225,7 +233,7 @@ const char* runTasks() {
   std::string serverDate;
   if (error == TodoistClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::fetchTasks(fetched, serverDate);
+    error = TodoistClient::fetchTasks(http, fetched, serverDate);
     resetTaskWatchdogIfSubscribed();
   }
 
@@ -258,7 +266,7 @@ const char* runTasks() {
     std::vector<std::string> completedTitles;
     completedTitles.reserve(TodoistTaskCache::MAX_COMPLETED_TODAY_TITLES);
     const TodoistClient::Error countError =
-        TodoistClient::fetchCompletedCountForDay(today, completedCount, collectCompletedTitle, &completedTitles);
+        TodoistClient::fetchCompletedCountForDay(http, today, completedCount, collectCompletedTitle, &completedTitles);
     resetTaskWatchdogIfSubscribed();
     if (countError == TodoistClient::OK) {
       RenderLock lock;
@@ -300,9 +308,14 @@ const char* runCalendar() {
   } else {
     const uint16_t lastDay = static_cast<uint16_t>(today + GCAL_WINDOW_DAYS - 1);
     fetched.reserve(GCAL_MAX_EVENTS);
+    // Shared across every calendar's fetch below (all the same host,
+    // www.googleapis.com) so SecureHttpClient's own keep-alive can actually
+    // take effect -- see GCalClient.h's own parameter doc.
+    freeink::SecureHttpClient http;
+    http.setInsecure();
     for (const auto& calendarId : GCAL_STORE.getSelectedCalendars()) {
       resetTaskWatchdogIfSubscribed();
-      error = GCalClient::fetchEvents(accessToken, calendarId, today, lastDay, fetched);
+      error = GCalClient::fetchEvents(http, accessToken, calendarId, today, lastDay, fetched);
       resetTaskWatchdogIfSubscribed();
       if (error != GCalClient::OK) {
         LOG_ERR("OSYNC", "Event fetch failed for %s: %s", calendarId.c_str(), GCalClient::errorString(error));
@@ -336,7 +349,12 @@ const char* runBudget() {
   std::vector<YnabCategory> fetched;
   uint16_t month = civil::NO_DATE;
   resetTaskWatchdogIfSubscribed();
-  const YnabClient::Error error = YnabClient::fetchSelectedCategories(fetched, month);
+  // Shared across every YNAB call below (all the same host, api.ynab.com) so
+  // SecureHttpClient's own keep-alive can actually take effect -- see
+  // YnabClient.h's own parameter doc.
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  const YnabClient::Error error = YnabClient::fetchSelectedCategories(http, fetched, month);
   resetTaskWatchdogIfSubscribed();
   if (error != YnabClient::OK) {
     LOG_ERR("OSYNC", "Plan fetch failed: %s", YnabClient::errorString(error));
@@ -368,7 +386,7 @@ const char* runBudget() {
   for (const auto& accountId : accountIds) {
     resetTaskWatchdogIfSubscribed();
     uint16_t date = civil::NO_DATE;
-    const YnabClient::Error txError = YnabClient::fetchTransactions(accountId, transactionsFetched, date);
+    const YnabClient::Error txError = YnabClient::fetchTransactions(http, accountId, transactionsFetched, date);
     resetTaskWatchdogIfSubscribed();
     if (txError == YnabClient::RATE_LIMITED) {
       LOG_ERR("OSYNC", "Account transaction fetch rate-limited; skipping the rest");
@@ -407,10 +425,16 @@ const char* runHabits() {
     }
   }
 
+  // Shared across every Habitify call below (all the same host,
+  // api.habitify.me) so SecureHttpClient's own keep-alive can actually take
+  // effect -- see HabitifyClient.h's own parameter doc.
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+
   HabitifyClient::Error error = HabitifyClient::OK;
   for (const auto& entry : owed) {
     resetTaskWatchdogIfSubscribed();
-    const HabitifyClient::Error pushError = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
+    const HabitifyClient::Error pushError = HabitifyClient::addLog(http, entry.id, entry.unit, entry.amount);
     if (pushError == HabitifyClient::NOT_FOUND) {
       // The habit no longer exists server-side - deleted, or replaced with a new
       // one in the app. There is nowhere left to push this progress, and unlike
@@ -442,7 +466,7 @@ const char* runHabits() {
     }
     for (const auto& habitId : completions) {
       resetTaskWatchdogIfSubscribed();
-      const HabitifyClient::Error completeError = HabitifyClient::completeHabit(habitId);
+      const HabitifyClient::Error completeError = HabitifyClient::completeHabit(http, habitId);
       if (completeError == HabitifyClient::NOT_FOUND) {
         // Same reasoning as the progress queue's own NOT_FOUND handling above:
         // a gone habit can never accept a complete, so holding it queued
@@ -466,7 +490,7 @@ const char* runHabits() {
   uint16_t date = civil::NO_DATE;
   if (error == HabitifyClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    error = HabitifyClient::fetchJournal(fetched, date);
+    error = HabitifyClient::fetchJournal(http, fetched, date);
     resetTaskWatchdogIfSubscribed();
   }
 
@@ -480,7 +504,7 @@ const char* runHabits() {
   std::vector<HabitifyHabitAreaAssignment> areaAssignments;
   if (error == HabitifyClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    const HabitifyClient::Error areasError = HabitifyClient::fetchHabitAreas(areaAssignments);
+    const HabitifyClient::Error areasError = HabitifyClient::fetchHabitAreas(http, areaAssignments);
     resetTaskWatchdogIfSubscribed();
     if (areasError == HabitifyClient::OK) {
       areasFresh = true;

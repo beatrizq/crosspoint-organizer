@@ -6,6 +6,10 @@
 #include "YnabAccount.h"
 #include "YnabCategory.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 /**
  * HTTPS client for the YNAB API v1.
  *
@@ -52,8 +56,15 @@ class YnabClient {
   // reader, and the cap bounds the fetch.
   static constexpr size_t MAX_CATEGORIES_LISTED = 64;
 
-  /** Lists the plan's visible categories, for the selection screen. */
-  static Error fetchCategoryList(std::vector<CategoryInfo>& outCategories);
+  /**
+   * Lists the plan's visible categories, for the selection screen.
+   *
+   * `http`: caller-owned connection (a throwaway local instance is fine here -
+   * this is a one-off Settings action, not called alongside another same-host
+   * request the way the sync path's methods are). See fetchTransactions()'s
+   * own parameter doc for the sync-path reasoning.
+   */
+  static Error fetchCategoryList(freeink::SecureHttpClient& http, std::vector<CategoryInfo>& outCategories);
 
   /**
    * Fetches the balances of the selected categories, for the Budget Plan tab.
@@ -61,8 +72,11 @@ class YnabClient {
    * Categories arrive in the plan's own order and are kept that way. outMonth
    * receives the month the amounts belong to as a packed civil date (the 1st of
    * that month), or civil::NO_DATE when the response carried no month.
+   *
+   * `http`: caller-owned connection -- see fetchTransactions()'s own parameter doc.
    */
-  static Error fetchSelectedCategories(std::vector<YnabCategory>& outCategories, uint16_t& outMonth);
+  static Error fetchSelectedCategories(freeink::SecureHttpClient& http, std::vector<YnabCategory>& outCategories,
+                                       uint16_t& outMonth);
 
   /**
    * Lists the plan's open, on-budget accounts, for the accounts screen and the
@@ -73,8 +87,11 @@ class YnabClient {
    * you check. Accounts arrive in the plan's own order, capped at
    * YNAB_MAX_ACCOUNTS. The transactions vector on each is left empty; that is a
    * second request, made per tab.
+   *
+   * `http`: caller-owned connection (a throwaway local instance is fine here -
+   * see fetchCategoryList()'s own parameter doc).
    */
-  static Error fetchAccounts(std::vector<YnabAccount>& outAccounts);
+  static Error fetchAccounts(freeink::SecureHttpClient& http, std::vector<YnabAccount>& outAccounts);
 
   /**
    * Fetches one account's most recent transactions, for its Budget tab.
@@ -83,9 +100,13 @@ class YnabClient {
    * header, or civil::NO_DATE when the header was missing. Transactions arrive in
    * the API's own order - oldest first - and are left that way; the cache sorts
    * them newest-first and applies YNAB_MAX_TRANSACTIONS.
+   *
+   * `http`: caller-owned connection, shared across a sync's calls to this same
+   * host so SecureHttpClient's own keep-alive can actually take effect (see
+   * organizerSync::runBudget()) - this function neither constructs nor ends it.
    */
-  static Error fetchTransactions(const std::string& accountId, std::vector<YnabTransaction>& outTransactions,
-                                 uint16_t& outDate);
+  static Error fetchTransactions(freeink::SecureHttpClient& http, const std::string& accountId,
+                                 std::vector<YnabTransaction>& outTransactions, uint16_t& outDate);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */
   static const char* errorString(Error error);

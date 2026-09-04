@@ -147,7 +147,8 @@ void collectSelected(void* ctx, const YnabParsedCategory& category) {
  *
  * outMonth is left untouched unless the response carried a month.
  */
-YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, void* sinkCtx, uint16_t* outMonth) {
+YnabClient::Error requestCurrentMonth(freeink::SecureHttpClient& http, const YnabMonthParser::CategorySink sink,
+                                      void* sinkCtx, uint16_t* outMonth) {
   YnabClient::lastHttpCode = 0;
   if (!YNAB_STORE.hasToken()) {
     LOG_DBG("YNC", "No access token configured");
@@ -172,8 +173,6 @@ YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, 
   url += urlEncode(YNAB_STORE.getBudgetId());
   url += "/months/current";
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("YNC", "Bad month URL");
     return YnabClient::NETWORK_ERROR;
@@ -187,7 +186,6 @@ YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, 
     parser->feed(reinterpret_cast<const char*>(data), len);
     return true;
   });
-  http.end();
   YnabClient::lastHttpCode = httpCode;
   LOG_DBG("YNC", "months/current: %d (%zu categories, month %s)", httpCode, parser->categoryCount(),
           parser->month()[0] != '\0' ? parser->month() : "?");
@@ -311,9 +309,9 @@ std::string isoDateDaysAgo(const int daysAgo) {
  *
  * `path` is appended to /plans/{plan_id}, already encoded.
  */
-YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, const YnabFieldSpec* fields,
-                                 const size_t fieldCount, YnabRecordParser::RecordSink sink, void* sinkCtx,
-                                 uint16_t* outDate) {
+YnabClient::Error requestRecords(freeink::SecureHttpClient& http, const std::string& path, const char* arrayKey,
+                                 const YnabFieldSpec* fields, const size_t fieldCount,
+                                 YnabRecordParser::RecordSink sink, void* sinkCtx, uint16_t* outDate) {
   YnabClient::lastHttpCode = 0;
   if (!YNAB_STORE.hasToken()) {
     LOG_DBG("YNC", "No access token configured");
@@ -339,8 +337,6 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
   url += urlEncode(YNAB_STORE.getBudgetId());
   url += path;
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("YNC", "Bad %s URL", arrayKey);
     return YnabClient::NETWORK_ERROR;
@@ -353,9 +349,9 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
     return true;
   });
 
-  // Read before end(): the parsed headers belong to this connection.
+  // Read before the caller's next begin(): a reused connection's headers get
+  // overwritten by the next request, and this function does not call end().
   const std::string dateHeader = outDate != nullptr ? http.getHeader("date") : std::string();
-  http.end();
   YnabClient::lastHttpCode = httpCode;
   LOG_DBG("YNC", "%s: %d (%zu records)", arrayKey, httpCode, parser->recordCount());
 
@@ -388,35 +384,37 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
 
 }  // namespace
 
-YnabClient::Error YnabClient::fetchCategoryList(std::vector<CategoryInfo>& outCategories) {
+YnabClient::Error YnabClient::fetchCategoryList(freeink::SecureHttpClient& http,
+                                                std::vector<CategoryInfo>& outCategories) {
   outCategories.clear();
   ListCollector collector{&outCategories};
-  const Error error = requestCurrentMonth(collectForList, &collector, nullptr);
+  const Error error = requestCurrentMonth(http, collectForList, &collector, nullptr);
   if (error != OK) outCategories.clear();
   return error;
 }
 
-YnabClient::Error YnabClient::fetchSelectedCategories(std::vector<YnabCategory>& outCategories, uint16_t& outMonth) {
+YnabClient::Error YnabClient::fetchSelectedCategories(freeink::SecureHttpClient& http,
+                                                      std::vector<YnabCategory>& outCategories, uint16_t& outMonth) {
   outCategories.clear();
   outCategories.reserve(YNAB_STORE.getSelectedCategories().size());
   BalanceCollector collector{&outCategories};
-  const Error error = requestCurrentMonth(collectSelected, &collector, &outMonth);
+  const Error error = requestCurrentMonth(http, collectSelected, &collector, &outMonth);
   if (error != OK) outCategories.clear();
   return error;
 }
 
-YnabClient::Error YnabClient::fetchAccounts(std::vector<YnabAccount>& outAccounts) {
+YnabClient::Error YnabClient::fetchAccounts(freeink::SecureHttpClient& http, std::vector<YnabAccount>& outAccounts) {
   outAccounts.clear();
   outAccounts.reserve(YNAB_MAX_ACCOUNTS);
   AccountCollector collector{&outAccounts};
   const Error error =
-      requestRecords("/accounts", "accounts", ACCOUNT_FIELDS, sizeof(ACCOUNT_FIELDS) / sizeof(ACCOUNT_FIELDS[0]),
+      requestRecords(http, "/accounts", "accounts", ACCOUNT_FIELDS, sizeof(ACCOUNT_FIELDS) / sizeof(ACCOUNT_FIELDS[0]),
                      collectAccount, &collector, nullptr);
   if (error != OK) outAccounts.clear();
   return error;
 }
 
-YnabClient::Error YnabClient::fetchTransactions(const std::string& accountId,
+YnabClient::Error YnabClient::fetchTransactions(freeink::SecureHttpClient& http, const std::string& accountId,
                                                 std::vector<YnabTransaction>& outTransactions, uint16_t& outDate) {
   outTransactions.clear();
   if (accountId.empty()) return NOT_FOUND;
@@ -449,7 +447,7 @@ YnabClient::Error YnabClient::fetchTransactions(const std::string& accountId,
   }
   const std::string sinceDate = isoDateDaysAgo(90);
   if (!sinceDate.empty()) path += "?since_date=" + sinceDate;
-  const Error error = requestRecords(path, "transactions", TRANSACTION_FIELDS,
+  const Error error = requestRecords(http, path, "transactions", TRANSACTION_FIELDS,
                                      sizeof(TRANSACTION_FIELDS) / sizeof(TRANSACTION_FIELDS[0]), collectTransaction,
                                      &collector, &outDate);
   if (error != OK) outTransactions.clear();

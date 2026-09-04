@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
 #include <WiFi.h>
 #include <YnabAccountCache.h>
 #include <YnabAccountLabel.h>
@@ -72,7 +73,9 @@ void YnabAccountsActivity::onExit() {
 }
 
 void YnabAccountsActivity::fetchAccounts() {
-  const YnabClient::Error error = YnabClient::fetchAccounts(accounts);
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  const YnabClient::Error error = YnabClient::fetchAccounts(http, accounts);
   if (error != YnabClient::OK) {
     LOG_ERR("YAA", "Account list failed: %s", YnabClient::errorString(error));
     RenderLock lock(*this);

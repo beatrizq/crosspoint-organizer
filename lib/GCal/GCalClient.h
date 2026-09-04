@@ -5,6 +5,10 @@
 
 #include "GCalEvent.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 /**
  * HTTPS client for the Google Calendar API v3.
  *
@@ -55,9 +59,15 @@ class GCalClient {
    *
    * Appends to outEvents rather than clearing it, so several calendars can be
    * merged into one list; stops at GCAL_MAX_EVENTS.
+   *
+   * `http`: caller-owned connection, shared across a sync's per-calendar calls
+   * so SecureHttpClient's own keep-alive can actually take effect (see
+   * organizerSync::runCalendar()) - this function neither constructs nor ends
+   * it.
    */
-  static Error fetchEvents(const std::string& accessToken, const std::string& calendarId, uint16_t fromDate,
-                           uint16_t toDate, std::vector<GCalEvent>& outEvents);
+  static Error fetchEvents(freeink::SecureHttpClient& http, const std::string& accessToken,
+                           const std::string& calendarId, uint16_t fromDate, uint16_t toDate,
+                           std::vector<GCalEvent>& outEvents);
 
   /** Diagnostic message for logs. User-facing text is translated by the caller. */
   static const char* errorString(Error error);

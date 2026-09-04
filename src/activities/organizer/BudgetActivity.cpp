@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
 #include <YnabAccountCache.h>
 #include <YnabAccountLabel.h>
 #include <YnabCategoryCache.h>
@@ -202,7 +203,9 @@ void BudgetActivity::performTransactionSync(const std::string& accountId) {
   std::vector<YnabTransaction> fetched;
   uint16_t date = civil::NO_DATE;
   resetTaskWatchdogIfSubscribed();
-  const YnabClient::Error error = YnabClient::fetchTransactions(accountId, fetched, date);
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  const YnabClient::Error error = YnabClient::fetchTransactions(http, accountId, fetched, date);
   resetTaskWatchdogIfSubscribed();
   if (error != YnabClient::OK) {
     LOG_ERR("BUDGET", "Transaction fetch failed: %s", YnabClient::errorString(error));
