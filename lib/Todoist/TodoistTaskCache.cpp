@@ -202,3 +202,10 @@ void TodoistTaskCache::rolloverCompletedIfNeeded() {
   completedToday = 0;
   completedTodayTitles.clear();
 }
+
+void TodoistTaskCache::clearCompletedIfStale(const uint16_t today) {
+  if (today == todoist::DUE_NONE || completedDay == todoist::DUE_NONE || completedDay == today) return;
+  completedDay = today;
+  completedToday = 0;
+  completedTodayTitles.clear();
+}

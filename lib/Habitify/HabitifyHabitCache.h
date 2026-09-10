@@ -105,6 +105,16 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   void clearPendingComplete(const std::string& habitId);
 
   void clear();
+
+  // Clears every habit's today-scoped completion state (current,
+  // completedByStatus) and advances syncDate to `today` when today has moved
+  // past this cache's own syncDate. Never touches pending/pendingComplete
+  // (unsynced local actions still owed to the server) or the habit list
+  // itself -- only what feeds isComplete() for a day that has since passed.
+  // `today` is UTC-packed, matching syncDate's own existing convention (see
+  // setHabits()'s doc comment above). Returns whether anything changed, so a
+  // caller outside a sync (main.cpp's boot path) knows whether to save.
+  bool rolloverIfStale(uint16_t today);
 };
 
 #define HABITIFY_HABITS HabitifyHabitCache::getInstance()

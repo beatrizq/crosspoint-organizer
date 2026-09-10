@@ -163,3 +163,13 @@ void HabitifyHabitCache::clear() {
   areas.clear();
   syncDate = civil::NO_DATE;
 }
+
+bool HabitifyHabitCache::rolloverIfStale(const uint16_t today) {
+  if (today == civil::NO_DATE || syncDate == civil::NO_DATE || syncDate == today) return false;
+  syncDate = today;
+  for (auto& habit : habits) {
+    habit.current = 0.0f;
+    habit.completedByStatus = false;
+  }
+  return true;
+}

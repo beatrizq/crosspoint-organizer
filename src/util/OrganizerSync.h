@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 /**
  * The network half of each organizer screen's sync, callable on its own.
@@ -55,5 +56,15 @@ bool isConfigured(Service service);
  * its framebuffer to snapshot.
  */
 const char* run(Service service);
+
+/**
+ * Local "YYYY-MM-DD" for an already-known UTC y/m/d/h/m reading, using the
+ * same offset math resolveTodayDate() applies to a fresh NTP result -- but
+ * without doing any NTP call of its own. Used at boot, before any network
+ * activity, to decide whether a cache's stale daily completion log should be
+ * cleared without forcing a sync. Returns "" if the offset produces an
+ * out-of-range date (matching daylessness elsewhere in this file).
+ */
+std::string localIsoDateFromUtc(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute);
 
 }  // namespace organizerSync

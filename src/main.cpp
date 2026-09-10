@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <BoardConfig.h>
+#include <CivilTime.h>
 #include <Epub.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
@@ -47,6 +48,7 @@
 #include "network/BleNotificationQueue.h"
 #endif
 #include "util/ButtonNavigator.h"
+#include "util/OrganizerSync.h"
 #include "util/ScreenshotUtil.h"
 
 GfxRenderer renderer(display);
@@ -358,6 +360,24 @@ void setup() {
   // making the mood look reset even though nothing was actually lost.
   TODOIST_TASKS.loadFromFile();
   HABITIFY_HABITS.loadFromFile();
+  // Retires a day-old completion log before the companion ever reads it this
+  // boot, using whatever the clock already knows -- no WiFi/NTP forced here,
+  // since boot must not block on the network. This is what catches the
+  // common case (the device sat in deep sleep and its clock tracked the days
+  // correctly the whole time); organizerSync::runTasks()/runHabits() cover
+  // the other case, where the clock itself was only wrong until a sync
+  // corrected it. See TodoistTaskCache::clearCompletedIfStale() and
+  // HabitifyHabitCache::rolloverIfStale()'s own comments for what this is
+  // protecting against.
+  {
+    uint16_t year;
+    uint8_t month, day, hour, minute;
+    if (halClock.getUtcDateTime(year, month, day, hour, minute)) {
+      if (HABITIFY_HABITS.rolloverIfStale(civil::packDate(year, month, day))) HABITIFY_HABITS.saveToFile();
+      TODOIST_TASKS.clearCompletedIfStale(
+          civil::dateFromIso(organizerSync::localIsoDateFromUtc(year, month, day, hour, minute).c_str()));
+    }
+  }
 #ifdef ENABLE_BLE_NOTIFY_SPIKE
   // Same reasoning as the caches above: SyncAllActivity reboots on exit
   // whenever WiFi was activated, so this must be loaded at boot rather than

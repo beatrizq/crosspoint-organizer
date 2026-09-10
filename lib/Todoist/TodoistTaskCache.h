@@ -127,6 +127,17 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // first. titles is moved from and truncated to MAX_COMPLETED_TODAY_TITLES.
   void setCompletedToday(uint16_t count, const std::string& date, std::vector<std::string>&& titles);
 
+  // Clears today's completion log if `today` (independently resolved by the
+  // caller, NOT derived from this cache's own syncDate) has moved past
+  // completedDay. Unlike rolloverCompletedIfNeeded(), this can run before
+  // syncDate itself has been refreshed this sync -- see runTasks()'s call
+  // site, which calls this right after a fresh NTP resolution, before any
+  // network fetch that could still fail. Touches only completedDay/
+  // completedToday/completedTodayTitles -- never syncDate itself (a
+  // different, local-date concept used for overdue flags) and never the
+  // task list or pending queues.
+  void clearCompletedIfStale(uint16_t today);
+
  private:
   // Recomputes every task's overdue flag against syncDate. The flag is derived
   // state, so it is set here rather than stored by the parser or the file.

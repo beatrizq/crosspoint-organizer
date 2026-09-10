@@ -176,6 +176,12 @@ const char* runTasks() {
   std::string ntpDate;
   if (!resolveTodayDate(ntpDate)) ntpDate.clear();
 
+  // Independent of whether the rest of this sync succeeds: if a fresh NTP
+  // read says the day has moved on since the last time this cache saw a
+  // completion, the log for that earlier day is retired now rather than
+  // surviving a failed fetch and still reading as today's.
+  if (!ntpDate.empty()) TODOIST_TASKS.clearCompletedIfStale(civil::dateFromIso(ntpDate.c_str()));
+
   // Shared across every Todoist call below (all the same host,
   // api.todoist.com) so SecureHttpClient's own keep-alive can actually take
   // effect instead of a fresh TLS handshake per call -- see TodoistClient.h's
@@ -406,6 +412,22 @@ const char* runBudget() {
 }
 
 const char* runHabits() {
+  // Unlike Tasks, nothing else in this function resolves the clock -- the
+  // journal fetch below trusts Habitify's own server date entirely (see
+  // fetchJournal()'s own comment) and never asks the device what day it
+  // thinks it is. That leaves no chance to notice a stale cache before a
+  // sync, so it is done explicitly here: a real resync (not gated on
+  // halClock.isAvailable() -- configTzTime() inside it already updates the
+  // system clock on every board, RTC chip or not), then a day-rollover check
+  // independent of whether the fetch below succeeds, the same reasoning as
+  // runTasks()'s own clearCompletedIfStale() call.
+  halClock.syncFromNTP();
+  uint16_t year;
+  uint8_t month, day, hour, minute;
+  if (halClock.getUtcDateTime(year, month, day, hour, minute)) {
+    HABITIFY_HABITS.rolloverIfStale(civil::packDate(year, month, day));
+  }
+
   // Push what is owed before fetching, so the journal that comes back already
   // reflects it. A copy of the ids and amounts: clearPending() mutates the cache
   // as we go, and the fetch replaces the list wholesale.
@@ -551,6 +573,20 @@ const char* runHabits() {
 }
 
 }  // namespace
+
+std::string localIsoDateFromUtc(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour,
+                                const uint8_t minute) {
+  uint8_t offsetQ = SETTINGS.clockUtcOffsetQ;
+  if (offsetQ > 104) offsetQ = 104;  // clamp a corrupt persisted value to UTC+14
+  const int32_t utcDays = civil::daysFromCivil(year, month, day);
+  const time_t utcEpoch = static_cast<time_t>(utcDays) * 86400 + hour * 3600 + minute * 60;
+  const time_t local = utcEpoch + (static_cast<int>(offsetQ) - 48) * 15 * 60;
+  struct tm timeinfo;
+  gmtime_r(&local, &timeinfo);
+  char buf[11];
+  strftime(buf, sizeof(buf), "%Y-%m-%d", &timeinfo);
+  return std::string(buf);
+}
 
 const char* name(const Service service) {
   // The same name the home grid and the app's own screen use, nickname included:
