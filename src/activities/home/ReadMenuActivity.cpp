@@ -173,7 +173,9 @@ void ReadMenuActivity::render(RenderLock&&) {
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(entries.size()), selectedIndex - 1,
       [&rows](int index) { return std::string(rows[index].label); }, [&rows](int index) { return rows[index].icon; });
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  // Back always calls onGoHome() (see this file's own Back handler) rather
+  // than returning to a caller, so the hint says Home, not Back.
+  const auto labels = mappedInput.mapLabels(tr(STR_HOME), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

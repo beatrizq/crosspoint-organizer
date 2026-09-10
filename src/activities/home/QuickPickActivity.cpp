@@ -588,7 +588,13 @@ void QuickPickActivity::render(RenderLock&&) {
   drawLabelledRow(row2Y, ageBold, ageRegular);
   drawLabelledRow(row3Y, highscoreBold, highscoreRegular);
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), tr(STR_LOGS),
+  // Back always lands on Home in every launch path this screen has (see its
+  // own header comment: "Back returns to Home") -- whether that is really
+  // finish() popping back to the HomeActivity caller (activateCompanion())
+  // or a replaceActivity() hand-off with no caller pushed at all
+  // (FocusSessionActivity, the boot quick-resume path), never a return to
+  // some other, non-Home screen. So this says Home, not Back.
+  const auto labels = mappedInput.mapLabels(tr(STR_HOME), poolEmpty ? "" : tr(STR_QUICK_PICK_GO), tr(STR_LOGS),
                                             poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
