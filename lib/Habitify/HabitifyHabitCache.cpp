@@ -173,3 +173,10 @@ bool HabitifyHabitCache::rolloverIfStale(const uint16_t today) {
   }
   return true;
 }
+
+void HabitifyHabitCache::clearCompletedNow() {
+  for (auto& habit : habits) {
+    habit.current = 0.0f;
+    habit.completedByStatus = false;
+  }
+}

@@ -115,6 +115,13 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   // setHabits()'s doc comment above). Returns whether anything changed, so a
   // caller outside a sync (main.cpp's boot path) knows whether to save.
   bool rolloverIfStale(uint16_t today);
+
+  // Manually zeroes every habit's today-scoped completion state right now,
+  // unconditionally -- for a user-triggered "Clear" action (see
+  // LogsActivity), independent of rolloverIfStale()'s own automatic
+  // day-boundary check. Never touches pending/pendingComplete or syncDate,
+  // same reasoning as rolloverIfStale().
+  void clearCompletedNow();
 };
 
 #define HABITIFY_HABITS HabitifyHabitCache::getInstance()

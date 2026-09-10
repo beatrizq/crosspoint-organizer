@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
@@ -69,11 +70,47 @@ void LogsActivity::onExit() {
   entries.clear();
 }
 
+void LogsActivity::offerClear() {
+  startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_LOG_CLEAR_CONFIRM), ""),
+                         [this](const ActivityResult& result) {
+                           // Same reasoning as CompanionSettingsActivity's own equivalent
+                           // popups: a still-held button when the popup resolves would
+                           // otherwise fire a stale release in this screen the moment it is
+                           // actually released.
+                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = true;
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back))
+                             swallowBackRelease = true;
+                           if (result.isCancelled) return;
+                           TODOIST_TASKS.clearCompletedNow();
+                           TODOIST_TASKS.saveToFile();
+                           HABITIFY_HABITS.clearCompletedNow();
+                           HABITIFY_HABITS.saveToFile();
+                           loadEntries();
+                           selectorIndex = 0;
+                           requestUpdate(true);
+                         });
+}
+
 void LogsActivity::loop() {
   const int itemCount = static_cast<int>(entries.size());
 
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) swallowBackRelease = false;
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    onGoHome();
+    if (swallowBackRelease) {
+      swallowBackRelease = false;
+      return;
+    }
+    finish();
+    return;
+  }
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (swallowConfirmRelease) {
+      swallowConfirmRelease = false;
+      return;
+    }
+    if (itemCount > 0) offerClear();
     return;
   }
 
@@ -177,7 +214,8 @@ void LogsActivity::render(RenderLock&&) {
     }
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_HOME), "", tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), entries.empty() ? "" : tr(STR_CLEAR_BUTTON), tr(STR_DIR_UP),
+                                            tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

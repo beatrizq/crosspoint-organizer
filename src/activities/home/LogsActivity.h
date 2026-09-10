@@ -29,7 +29,20 @@ class LogsActivity final : public Activity {
   std::vector<Entry> entries;
   size_t selectorIndex = 0;
 
+  // Guards against a stale release firing right after ConfirmationActivity
+  // closes -- same pattern and reasoning as CompanionSettingsActivity's own
+  // pair of these (some button handling in that popup answers on the press,
+  // not the release, so the matching release can still be pending when
+  // control returns here).
+  bool swallowBackRelease = false;
+  bool swallowConfirmRelease = false;
+
   void loadEntries();
+  // Confirms, then zeroes both caches' today-scoped completion data via
+  // TodoistTaskCache::clearCompletedNow()/HabitifyHabitCache::
+  // clearCompletedNow() -- the same reset the automatic day-rollover already
+  // does on its own, just user-triggered on demand from the Confirm button.
+  void offerClear();
 
  public:
   explicit LogsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

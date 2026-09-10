@@ -138,6 +138,13 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // task list or pending queues.
   void clearCompletedIfStale(uint16_t today);
 
+  // Manually zeroes today's completion log right now, unconditionally -- for
+  // a user-triggered "Clear" action (see LogsActivity), independent of
+  // clearCompletedIfStale()'s own automatic day-boundary check. Leaves
+  // completedDay untouched: a later legitimate completion or sync still
+  // rolls over/overwrites correctly regardless of this having run.
+  void clearCompletedNow();
+
  private:
   // Recomputes every task's overdue flag against syncDate. The flag is derived
   // state, so it is set here rather than stored by the parser or the file.

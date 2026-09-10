@@ -209,3 +209,8 @@ void TodoistTaskCache::clearCompletedIfStale(const uint16_t today) {
   completedToday = 0;
   completedTodayTitles.clear();
 }
+
+void TodoistTaskCache::clearCompletedNow() {
+  completedToday = 0;
+  completedTodayTitles.clear();
+}
