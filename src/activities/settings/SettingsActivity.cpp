@@ -32,13 +32,11 @@
 #include "TextSettingsActivity.h"
 #include "TodoistSettingsActivity.h"
 #include "YnabSettingsActivity.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/BleNotifyRelay.h"
-#include "util/OrganizerSleepScreen.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
                                                               StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM,
@@ -90,21 +88,15 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
-  // App Order and Sleep Screen App lead the individual apps, as asked: both
-  // are properties of the set of apps rather than of any one of them, so
-  // they come first rather than trailing after it.
+  // App Order leads the individual apps, as asked: it is a property of the
+  // set of apps rather than of any one of them, so it comes first rather
+  // than trailing after it.
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
-  organizerSettings.push_back(buildOrganizerSleepAppSetting(StrId::STR_CAT_ORGANIZER));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_TODOIST, SettingAction::Todoist));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_COMPANION, SettingAction::Companion));
-  // A footnote, not an action: the hold on the home screen's Settings button is
-  // the only way to reach a sync-everything, and nothing on that screen advertises
-  // it. A None action draws the row and does nothing when it is selected, which is
-  // also what marks it dimmed below.
-  organizerSettings.push_back(SettingInfo::Action(StrId::STR_SYNC_ALL_HINT, SettingAction::None));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   // TODO: Touch devices need their own firmware update path/artifacts before OTA is exposed.
   if (!BoardConfig::hasTouch()) {
@@ -204,13 +196,14 @@ void SettingsActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    if (selectedSettingIndex > 0) {
-      selectedSettingIndex = 0;
-      requestUpdate();
-    } else {
-      SETTINGS.saveToFile();
-      onGoHome();
-    }
+    // Always leaves, regardless of cursor depth: labelled Apps (see
+    // HomeActivity), so it reads as "go to the Apps screen", not "back up one
+    // level first" -- a setting row deep in a category used to need two
+    // presses to leave, one to surface the cursor to the category tab bar and
+    // a second to actually leave, which no longer matches what the button
+    // says it does.
+    SETTINGS.saveToFile();
+    onGoHome();
     return;
   }
 
@@ -361,7 +354,6 @@ void SettingsActivity::toggleCurrentSetting() {
 
   const auto& setting = (*currentSettings)[selectedSetting];
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
-  const bool sleepAppChanged = setting.valuePtr == &CrossPointSettings::organizerSleepApp;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
 
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
@@ -389,17 +381,10 @@ void SettingsActivity::toggleCurrentSetting() {
       // Their structure, with this branch's own side effect kept and
       // applyUiSettingChange dropped - that arrives with an upstream commit this
       // branch does not have.
-      auto onSelect = [this, valuePtr, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         SETTINGS.*valuePtr = idx;
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
-        // After the save, because reverting writes settings of its own and must
-        // not be undone by this one.
-        if (sleepAppChanged) {
-          revertSleepScreenIfOff();
-          // Starts the file browser; its own result handler rebuilds the list.
-          if (openCustomSleepScreenPickerIfChosen()) return;
-        }
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -419,14 +404,10 @@ void SettingsActivity::toggleCurrentSetting() {
     const uint8_t cur = setting.valueGetter();
     if (totalValues > 2) {
       const auto valueSetter = setting.valueSetter;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
-        if (sleepAppChanged) {
-          revertSleepScreenIfOff();
-          if (openCustomSleepScreenPickerIfChosen()) return;
-        }
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -537,49 +518,8 @@ void SettingsActivity::toggleCurrentSetting() {
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
-  // After the save, because reverting writes settings of its own. Reached by the
-  // inline-cycle path, which a two-value enum takes; the sleep-screen app has
-  // five and so goes through the popup above, but the flag is honoured either way.
-  if (sleepAppChanged) {
-    revertSleepScreenIfOff();
-    if (openCustomSleepScreenPickerIfChosen()) return;
-  }
   rebuildSettingsLists();
   selectedSettingIndex = std::min(selectedSettingIndex, settingsCount);
-}
-
-void SettingsActivity::revertSleepScreenIfOff() {
-  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return;
-  // Switched to Custom: hand back the wallpaper this feature displaced, before
-  // the picker below offers to replace it with something else. That file may be
-  // one the user picked themselves, so getting it back is the whole reason a
-  // copy was kept.
-  const bool hadWallpaper = organizerSleepScreen::hasBackup();
-  // The copy is ~48KB off the SD card, so the screen says something is happening.
-  if (hadWallpaper) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-  const bool restored = organizerSleepScreen::revert();
-  if (!hadWallpaper) return;
-  GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
-  delay(1000);
-  requestUpdate(true);
-}
-
-bool SettingsActivity::openCustomSleepScreenPickerIfChosen() {
-  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return false;
-  startActivityForResult(
-      std::make_unique<FileBrowserActivity>(renderer, mappedInput, "/", FileBrowserActivity::Mode::PickImage),
-      [this](const ActivityResult& result) {
-        if (!result.isCancelled) {
-          if (const auto* picked = std::get_if<FilePathResult>(&result.data)) {
-            GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-            const bool success = organizerSleepScreen::installCustomWallpaper(picked->path);
-            GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
-            delay(1000);
-          }
-        }
-        rebuildSettingsLists();
-      });
-  return true;
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {

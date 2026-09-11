@@ -18,6 +18,7 @@ constexpr AppInfo APPS[APP_COUNT] = {
     {AppId::Notifications, StrId::STR_BLE_NOTIFICATIONS, UIIcon::Bell},
     // None: drawn dynamically instead (see AppId::Companion's own comment).
     {AppId::Companion, StrId::STR_COMPANION, UIIcon::None},
+    {AppId::Settings, StrId::STR_SETTINGS_TITLE, UIIcon::Settings},
 };
 
 }  // namespace
@@ -51,6 +52,10 @@ char* nicknameField(const AppId id, size_t& outSize) {
     case AppId::Companion:
       outSize = sizeof(SETTINGS.companionNickname);
       return SETTINGS.companionNickname;
+    case AppId::Settings:
+      // Not an integration either - the Settings screen itself, nothing to
+      // rename it from.
+      break;
   }
   outSize = 0;
   return nullptr;

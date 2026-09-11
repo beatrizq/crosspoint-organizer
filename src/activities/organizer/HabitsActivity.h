@@ -58,7 +58,6 @@ class HabitsActivity final : public OrganizerScreenActivity {
   void onRowConfirm() override;
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::HABITS; }
-  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Habits; }
 
  private:
   // The area id at `index`, or "" (All) when out of range.

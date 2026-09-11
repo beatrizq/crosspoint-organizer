@@ -68,7 +68,6 @@ class TasksActivity final : public OrganizerScreenActivity {
   void onRowConfirm() override;
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::TASKS; }
-  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Tasks; }
 
  private:
   // The kind on screen at `index`, or ALL when the index is out of range.

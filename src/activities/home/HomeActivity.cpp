@@ -53,6 +53,8 @@ HomeMenuItem homeMenuItemFor(const homeAppOrder::AppId id) {
       return HomeMenuItem::NOTIFICATIONS;
     case homeAppOrder::AppId::Companion:
       return HomeMenuItem::COMPANION_SCREEN;
+    case homeAppOrder::AppId::Settings:
+      return HomeMenuItem::SETTINGS_MENU;
   }
   return HomeMenuItem::NONE;
 }
@@ -388,6 +390,9 @@ void HomeActivity::loop() {
       case HomeMenuItem::COMPANION_SCREEN:
         activateCompanion();
         break;
+      case HomeMenuItem::SETTINGS_MENU:
+        onSettingsOpen();
+        break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -429,22 +434,15 @@ void HomeActivity::loop() {
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen = true;
 
-  // Back is otherwise unused on the home menu, and Settings no longer has a row
-  // of its own, so it lives here. Resuming moved to the Read entry, which is a
-  // press away in the menu itself. backPressSeen guards against the stale
+  // Back is otherwise unused on the home menu, and syncing every configured
+  // integration is an action on all of them at once, so no single tile owns
+  // it -- it lives here instead. Settings has its own tile now (see
+  // buildEntries()), so Back no longer needs to double as the way to reach
+  // it, and syncing no longer needs a hold to tell the two apart: a plain
+  // press is Sync All, full stop. backPressSeen guards against the stale
   // release of the Back press that closed the previous activity.
-  //
-  // Held, the same button syncs every configured integration instead. It goes
-  // here rather than on a tile of its own because it is an action on all of them
-  // at once, so no single app owns it - and because holding a button for "the
-  // heavier version of this" is the convention the organizer tab bars already
-  // use for their own syncs.
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen) {
-    if (mappedInput.getHeldTime() >= SYNC_ALL_HOLD_MS) {
-      activityManager.goToSyncAll();
-    } else {
-      onSettingsOpen();
-    }
+    activityManager.goToSyncAll();
     return;
   }
 
@@ -585,6 +583,8 @@ void HomeActivity::render(RenderLock&&) {
           case HomeMenuItem::NOTIFICATIONS:
             return static_cast<int>(BLE_NOTIFICATIONS.getUnreadCount());
 #endif
+          // COMPANION_SCREEN's badge is drawn separately, after its
+          // (enlarged) sprite -- see render()'s own comment below for why.
           default:
             return 0;
         }
@@ -618,10 +618,31 @@ void HomeActivity::render(RenderLock&&) {
     const int budgetHeight = iconRect.height + VERTICAL_SLACK;
     const Rect spriteBudget{centreX - budgetWidth / 2, centreY - budgetHeight / 2, budgetWidth, budgetHeight};
     drawCompanionIcon(spriteBudget);
+
+    // Today's points (tasks + habits combined) -- the same figure the mood
+    // ladder itself is evaluated against, so the badge reads as "how the
+    // companion's day is going" rather than a to-do count the way the other
+    // tiles' badges are. Drawn here, after the sprite, rather than through
+    // drawButtonGrid()'s own badgeCount callback: that draws before this
+    // loop runs, straddling the icon rect's corner at its nominal 80x80 size,
+    // which the enlarged sprite above would then paint straight over. Same
+    // position convention (straddling the icon's own top-right corner), just
+    // measured from the icon rect the sprite was actually centred on, not
+    // the enlarged budget, so the badge sits where the other tiles' own
+    // badges do rather than drifting outward with the bigger sprite.
+    const int points = static_cast<int>(COMPANION.pointsToday());
+    if (points > 0) {
+      const std::string badgeText = std::to_string(points);
+      const int badgeTextWidth = renderer.getTextWidth(SMALL_FONT_ID, badgeText.c_str());
+      const int badgeTextHeight = renderer.getTextHeight(SMALL_FONT_ID);
+      const int badgeX = iconRect.x + iconRect.width - badgeTextWidth / 2;
+      const int badgeY = iconRect.y - badgeTextHeight / 2;
+      renderer.drawText(SMALL_FONT_ID, badgeX, badgeY, badgeText.c_str());
+    }
     break;
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_SETTINGS_TITLE), tr(STR_SELECT), tr(STR_DIR_PREV), tr(STR_DIR_NEXT));
+  const auto labels = mappedInput.mapLabels(tr(STR_SYNC_ALL), tr(STR_SELECT), tr(STR_DIR_PREV), tr(STR_DIR_NEXT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

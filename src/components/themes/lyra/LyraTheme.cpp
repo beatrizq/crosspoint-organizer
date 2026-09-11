@@ -32,6 +32,7 @@
 #include "components/icons/read80.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
+#include "components/icons/settings80.h"
 #include "components/icons/tasks.h"
 #include "components/icons/tasks80.h"
 #include "components/icons/text24.h"
@@ -73,6 +74,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return Habits80Icon;
       case UIIcon::Bell:
         return Bell80Icon;
+      case UIIcon::Settings:
+        return Settings80Icon;
       default:
         return nullptr;
     }

@@ -363,7 +363,6 @@ void TasksActivity::offerRescheduleDatePicker(const int cacheIndex) {
                              organizerActions::rescheduleTask(static_cast<size_t>(cacheIndex), date->packedDate);
                              rebuildTabs();
                            }
-                           updateSleepScreen();
                          });
 }
 
@@ -378,7 +377,6 @@ void TasksActivity::clearTaskDueDate(const int cacheIndex) {
     organizerActions::rescheduleTask(static_cast<size_t>(cacheIndex), todoist::DUE_NONE);
     rebuildTabs();
   }
-  updateSleepScreen();
 }
 
 void TasksActivity::completeSelectedTask() {
@@ -430,9 +428,6 @@ void TasksActivity::performTaskCompletion(const int cacheIndex) {
     if (selectedRow() >= remaining) selectedIndex = remaining;
     if (selectedIndex < 1) selectedIndex = remaining > 0 ? 1 : 0;
   }
-  // The sleep screen tracks the list, not the sync: a task completed with the
-  // radio off changes what is on screen just as much as a fetch does.
-  updateSleepScreen();
 }
 
 // -- sync -------------------------------------------------------------------
@@ -461,10 +456,4 @@ void TasksActivity::performTaskSync() {
     rebuildTabs();
   }
   finishSync(failure);
-
-  if (failure != nullptr) return;
-  // A new list is a change worth showing on a sleeping device. No-op unless this
-  // app is the chosen sleep screen source; sync-everything cannot do this, since
-  // its own progress list is what is on screen there.
-  updateSleepScreen();
 }

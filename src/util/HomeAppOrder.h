@@ -51,9 +51,14 @@ enum class AppId : uint8_t {
   // CompanionTracker::displayName(), which HomeActivity calls directly for
   // this entry's label instead of this file's own displayName().
   Companion = 6,
+  // Always a real, selectable tile -- unlike Notifications/Companion, there is
+  // no condition it is ever hidden behind. Opens the same Settings screen the
+  // gear icon always has; Home's own Back button no longer does (see
+  // HomeActivity's own comment on its Back handling).
+  Settings = 7,
 };
 
-constexpr int APP_COUNT = 7;
+constexpr int APP_COUNT = 8;
 
 struct AppInfo {
   AppId id;

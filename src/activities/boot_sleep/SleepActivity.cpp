@@ -42,6 +42,9 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
       return renderBlankSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
+    // DYNAMIC's own capture (ActivityManager::goToSleep()) writes to the same
+    // /sleep.bmp CUSTOM reads from, so the two render identically.
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::DYNAMIC):
       return renderCustomSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER):
       return renderCoverSleepScreen();

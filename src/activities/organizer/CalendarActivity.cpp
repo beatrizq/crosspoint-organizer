@@ -91,7 +91,6 @@ void CalendarActivity::performCalendarSync() {
   // reboot in onExit().
   tearDownRadio();
   finishSync(failure);
-  if (failure == nullptr) updateSleepScreen();
 }
 
 void CalendarActivity::formatEventWhen(const int index, char* out, const size_t outSize) const {

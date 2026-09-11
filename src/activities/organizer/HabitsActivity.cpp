@@ -388,9 +388,6 @@ void HabitsActivity::performIncrement(const int cacheIndex, const float amount) 
     organizerActions::logHabit(static_cast<size_t>(cacheIndex), amount);
   }
   requestUpdate(true);
-  // A press with the radio off moves the number on screen, which is as much a
-  // change as a sync is.
-  updateSleepScreen();
 }
 
 void HabitsActivity::markSelectedHabitComplete() {
@@ -404,7 +401,6 @@ void HabitsActivity::markSelectedHabitComplete() {
     organizerActions::completeHabit(static_cast<size_t>(cacheIndex));
   }
   requestUpdate(true);
-  updateSleepScreen();
 }
 
 // -- sync -------------------------------------------------------------------
@@ -433,5 +429,4 @@ void HabitsActivity::performSync() {
     rebuildTabs();
   }
   finishSync(failure);
-  if (failure == nullptr) updateSleepScreen();
 }

@@ -21,21 +21,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     COVER_CUSTOM = 4,
     BLANK = 5,
     QUICK_RESUME = 6,
+    // Captures whatever screen the device was actually showing right before
+    // it went to sleep -- see ActivityManager::goToSleep(), which writes the
+    // outgoing screen's own framebuffer to /sleep.bmp before replacing it
+    // with SleepActivity, the same file and format CUSTOM already renders
+    // from (see SleepActivity::renderCustomSleepScreen()). Replaces the old
+    // per-app "Sleep Screen App" picker (Settings -> Organizer), which only
+    // ever snapshotted one of four organizer screens' own first tab, and only
+    // opportunistically, whenever that screen's own data changed.
+    DYNAMIC = 7,
     SLEEP_SCREEN_MODE_COUNT
-  };
-  // What feeds the sleep screen: a user-picked file (SLEEP_APP_OFF, labelled
-  // "Custom" - the name is legacy, kept because it is persisted) or an
-  // organizer app's first tab. Values are persisted, so append rather than
-  // renumber -- and never reuse 5, retired along with the per-mood companion
-  // wallpapers feature; the generic ENUM clamp in fromJson() resets a stale
-  // persisted 5 to the struct default on load.
-  enum ORGANIZER_SLEEP_APP {
-    SLEEP_APP_OFF = 0,
-    SLEEP_APP_TASKS = 1,
-    SLEEP_APP_CALENDAR = 2,
-    SLEEP_APP_BUDGET = 3,
-    SLEEP_APP_HABITS = 4,
-    ORGANIZER_SLEEP_APP_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
   enum SLEEP_SCREEN_COVER_FILTER {
@@ -157,18 +152,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_DICTIONARY = 3,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
-
-  // What the sleep screen shows: a user-picked file (SLEEP_APP_OFF/"Custom",
-  // the default), an organizer app repainting /sleep.bmp from its first tab
-  // whenever its contents change, or the companion's per-mood wallpapers. See
-  // util/OrganizerSleepScreen.h.
-  uint8_t organizerSleepApp = SLEEP_APP_OFF;
-  // The sleep screen mode in force before an app's screenshot switched it to
-  // CUSTOM, so switching the app off can put it back. NO_PREVIOUS_SLEEP_SCREEN
-  // until something has been replaced. Persisted via a category-less
-  // SettingInfo::Value: it is remembered state, not a setting anyone chooses.
-  uint8_t previousSleepScreenMode = 0xFF;
-  static constexpr uint8_t NO_PREVIOUS_SLEEP_SCREEN = 0xFF;
 
   // Per-app display names. Empty means "use the app's own name", which is what
   // every one of these ships as; a value here replaces it on the home grid and on

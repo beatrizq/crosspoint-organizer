@@ -66,11 +66,6 @@ class HomeActivity final : public Activity {
   // gap above the grid).
   int menuTop() const;
 
-  // Hold threshold for "sync everything" on the Settings button. The same
-  // 1000ms the organizer screens use for their hold-to-sync, so one gesture
-  // means one thing across the firmware.
-  static constexpr unsigned long SYNC_ALL_HOLD_MS = 1000;
-
   // Rolled once in onEnter() -- see quickpick::roll() -- and held stable while
   // the cursor moves around the menu; a fresh visit to Home is what re-rolls
   // it, not a redraw. Handed to QuickPickActivity unchanged when the

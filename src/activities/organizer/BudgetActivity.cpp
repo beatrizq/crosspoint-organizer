@@ -33,26 +33,48 @@ void BudgetActivity::rebuildTabs() {
   const auto& accounts = YNAB_ACCOUNTS.getAccounts();
   tabLabels.reserve(accounts.size());
   for (const auto& account : accounts) tabLabels.push_back(ynabAccountLabel(account));
+
+  // Today's pool: every transaction dated on its own account's last sync day,
+  // across every account -- same "today" YnabAccountCache::
+  // getTodayTransactionCount() uses, and the same reason it uses it: accounts
+  // sync independently, so there is no single real-world "today" to compare
+  // every transaction against, only each account's own last sync day.
+  // Reserved against the sum of every account's own transaction count; small
+  // either way at up to six accounts, twenty-five transactions each.
+  todayEntries.clear();
+  size_t totalTransactions = 0;
+  for (const auto& account : accounts) totalTransactions += account.transactions.size();
+  todayEntries.reserve(totalTransactions);
+  for (size_t accountIndex = 0; accountIndex < accounts.size(); accountIndex++) {
+    const auto& account = accounts[accountIndex];
+    if (account.transactionsSyncDate == civil::NO_DATE) continue;
+    for (size_t transactionIndex = 0; transactionIndex < account.transactions.size(); transactionIndex++) {
+      if (account.transactions[transactionIndex].date != account.transactionsSyncDate) continue;
+      todayEntries.push_back({static_cast<uint8_t>(accountIndex), static_cast<uint8_t>(transactionIndex)});
+    }
+  }
 }
 
 const char* BudgetActivity::screenTitle() const { return homeAppOrder::displayName(homeAppOrder::AppId::Budget); }
 
 const char* BudgetActivity::tabLabel(const int index) const {
   if (index == PLAN_TAB) return tr(STR_BUDGET_TAB_PLAN);
-  const int account = index - 1;
+  if (index == TODAY_TAB) return tr(STR_BUDGET_TAB_TODAY);
+  const int account = index - 2;
   if (account < 0 || static_cast<size_t>(account) >= tabLabels.size()) return "";
   return tabLabels[static_cast<size_t>(account)].c_str();
 }
 
 const YnabAccount* BudgetActivity::currentAccount() const {
-  if (tab() == PLAN_TAB) return nullptr;
-  return YNAB_ACCOUNTS.accountAt(static_cast<size_t>(tab() - 1));
+  if (tab() == PLAN_TAB || tab() == TODAY_TAB) return nullptr;
+  return YNAB_ACCOUNTS.accountAt(static_cast<size_t>(tab() - 2));
 }
 
 // -- rows -------------------------------------------------------------------
 
 int BudgetActivity::rowCount() const {
   if (tab() == PLAN_TAB) return static_cast<int>(YNAB_CATEGORIES.getCategories().size());
+  if (tab() == TODAY_TAB) return static_cast<int>(todayEntries.size());
   const YnabAccount* account = currentAccount();
   return account == nullptr ? 0 : static_cast<int>(account->transactions.size());
 }
@@ -80,6 +102,18 @@ void BudgetActivity::drawRow(const RowLayout& layout) const {
     labelText = category.name.c_str();
     amountText = category.balance.c_str();
     if (isYnabInflowCategory(category.name)) style = EpdFontFamily::BOLD;
+  } else if (tab() == TODAY_TAB) {
+    if (layout.index < 0 || static_cast<size_t>(layout.index) >= todayEntries.size()) return;
+    const TodayEntry& entry = todayEntries[static_cast<size_t>(layout.index)];
+    const YnabAccount* account = YNAB_ACCOUNTS.accountAt(entry.accountIndex);
+    if (account == nullptr || entry.transactionIndex >= account->transactions.size()) return;
+    const YnabTransaction& transaction = account->transactions[entry.transactionIndex];
+    labelText = transaction.payee.c_str();
+    amountText = transaction.amount.c_str();
+    // The account it's from, not the date: every row here is already today's,
+    // so the date would repeat the same thing on every row - which account
+    // this is from is the more useful thing this line can say instead.
+    snprintf(when, sizeof(when), "%s", ynabAccountLabel(*account).c_str());
   } else {
     const YnabAccount* account = currentAccount();
     if (account == nullptr) return;
@@ -159,6 +193,14 @@ void BudgetActivity::startSync() {
     return;
   }
 
+  if (tab() == TODAY_TAB) {
+    // Today has no fetch of its own - it only pools whatever each account's
+    // own tab already fetched (see rebuildTabs()) - so there is nothing here
+    // for a hold to actually sync.
+    failSync(tr(STR_YNAB_TODAY_NO_SYNC));
+    return;
+  }
+
   if (tab() != PLAN_TAB) {
     const YnabAccount* account = currentAccount();
     if (account == nullptr) {
@@ -189,10 +231,6 @@ void BudgetActivity::performPlanSync() {
   // reboot in onExit().
   tearDownRadio();
   finishSync(failure);
-  // Only the Plan tab feeds the sleep screen, which updateSleepScreen enforces by
-  // checking the tab - an account tab's transactions are not what this app is
-  // recognised by.
-  if (failure == nullptr) updateSleepScreen();
 }
 
 void BudgetActivity::performTransactionSync(const std::string& accountId) {
@@ -217,6 +255,10 @@ void BudgetActivity::performTransactionSync(const std::string& accountId) {
     RenderLock lock(*this);
     // The cache sorts newest-first and trims to YNAB_MAX_TRANSACTIONS.
     YNAB_ACCOUNTS.setTransactions(accountId, std::move(fetched), date);
+    // Today pools this account's own transactions too, so a fresh fetch here
+    // can change what it holds even though nothing about the tab bar itself
+    // (rebuildTabs()'s other job) does.
+    rebuildTabs();
   }
   finishSync(error == YnabClient::OK ? nullptr : budgetErrorText(error));
   YNAB_ACCOUNTS.saveToFile();

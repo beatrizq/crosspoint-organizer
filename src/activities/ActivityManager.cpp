@@ -2,9 +2,11 @@
 
 #include <FontCacheManager.h>
 #include <HalPowerManager.h>
+#include <Logging.h>
 
 #include <algorithm>
 
+#include "CrossPointSettings.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -15,6 +17,7 @@
 #include "home/ReadMenuActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "util/ScreenshotUtil.h"
 #ifdef ENABLE_BLE_NOTIFY_SPIKE
 #include "network/BleNotificationsActivity.h"
 #endif
@@ -248,6 +251,24 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
 }
 
 void ActivityManager::goToSleep(bool fromTimeout) {
+  // Captured here, before replaceActivity() below swaps in SleepActivity:
+  // the framebuffer still holds whatever the outgoing screen last rendered,
+  // which is "whatever screen the device is on" -- capturing any later, once
+  // SleepActivity itself has painted, would just save a picture of the sleep
+  // screen. Same file and format installCustomWallpaper() writes, so
+  // SleepActivity's CUSTOM-mode render (which DYNAMIC also uses -- see
+  // SleepActivity::renderCustomSleepScreen()) picks it up unchanged.
+  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::DYNAMIC) {
+    const uint8_t* framebuffer = renderer.getFrameBuffer();
+    if (framebuffer != nullptr) {
+      if (!ScreenshotUtil::saveFramebufferAsBmp("/sleep.bmp", framebuffer, renderer.getDisplayWidth(),
+                                                renderer.getDisplayHeight())) {
+        LOG_ERR("ACT", "Failed to write dynamic sleep screen");
+      }
+    } else {
+      LOG_ERR("ACT", "Framebuffer unavailable; dynamic sleep screen not updated");
+    }
+  }
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
