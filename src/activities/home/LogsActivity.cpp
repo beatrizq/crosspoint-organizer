@@ -10,6 +10,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "companion/CompanionTracker.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HomeAppOrder.h"
@@ -85,6 +86,11 @@ void LogsActivity::offerClear() {
                            TODOIST_TASKS.saveToFile();
                            HABITIFY_HABITS.clearCompletedNow();
                            HABITIFY_HABITS.saveToFile();
+                           // Every other mutator of today's counts (completing a task/habit,
+                           // a sync) recalculates the mood ladder afterwards -- this one
+                           // didn't, so the companion kept showing whatever mood the
+                           // now-cleared counts had earned.
+                           COMPANION.recordActivity();
                            loadEntries();
                            selectorIndex = 0;
                            requestUpdate(true);
