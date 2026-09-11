@@ -18,6 +18,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/BleNotifyRelay.h"
+#include "util/AppCycler.h"
 #include "util/OrganizerSleepScreen.h"
 
 namespace {
@@ -272,6 +273,22 @@ void OrganizerScreenActivity::loop() {
     // gesture act on a row one place lower would make a misplaced hold
     // destructive.
     if (mappedInput.getHeldTime() < LONG_PRESS_MS) onRowConfirm();
+    return;
+  }
+
+  // Side Up/Down: previous/next app (see appCycler.h), independent of the
+  // front buttons' own Up/Down (row paging) below -- a fresh press each,
+  // same guard reasoning as Back/Confirm above.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    if (upPressSeen) appCycler::open(appCycler::previousApp(appId()));
+    upPressSeen = false;
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    if (downPressSeen) appCycler::open(appCycler::nextApp(appId()));
+    downPressSeen = false;
     return;
   }
 

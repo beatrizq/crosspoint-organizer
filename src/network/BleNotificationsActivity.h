@@ -18,6 +18,12 @@ class BleNotificationsActivity final : public Activity {
   // opens on a plain press -- same guard RecentBooksActivity uses for its own
   // long-press action.
   bool longPressFired = false;
+  // Side Up/Down (see util/AppCycler.h) switch to the previous/next app in
+  // the user's own App Order -- guarded by a fresh-press check the same way
+  // OrganizerScreenActivity's own upPressSeen/downPressSeen are, in case one
+  // was already held down when some other gesture landed on this screen.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
 
   void openDetail();
   void dismissAll();

@@ -47,4 +47,10 @@ class ReadMenuActivity final : public Activity {
   // ActivityManager::goToReadMenu()), and re-deriving it here is cheap.
   std::vector<RecentBook> recentBooks;
   int selectedIndex = 0;
+  // Side Up/Down (see util/AppCycler.h) switch to the previous/next app in
+  // the user's own App Order -- guarded by a fresh-press check the same way
+  // OrganizerScreenActivity's own upPressSeen/downPressSeen are, in case one
+  // was already held down when some other gesture landed on this screen.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
 };
