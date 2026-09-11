@@ -67,4 +67,11 @@ class BleNotifyRelay {
   // reset). Call from loop(); it self-paces to once per 10s. No-op while
   // paused.
   static void poll();
+
+  // Whether Gadgetbridge (or anything else) currently holds the one
+  // connection this peripheral accepts (see CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+  // in platformio.ini). False while paused, before begin() has completed, or
+  // simply not yet connected -- for BleNotificationsActivity's own header
+  // status. Always false in a build without ENABLE_BLE_NOTIFY_SPIKE.
+  static bool isConnected();
 };

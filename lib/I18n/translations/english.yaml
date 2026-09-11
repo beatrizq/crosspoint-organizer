@@ -560,6 +560,8 @@ STR_SIZE_LARGE: "Large"
 STR_CAT_ORGANIZER: "Organizer"
 STR_BLE_NOTIFICATIONS: "Alerts"
 STR_BLE_NO_NOTIFICATIONS: "No alerts yet"
+STR_BLE_CONNECTED: "Connected"
+STR_BLE_DISCONNECTED: "Disconnected"
 STR_BLE_INCOMING_CALL: "Incoming call"
 
 STR_COMPANION: "Companion"

@@ -13,6 +13,7 @@
 
 #include "BleNotificationDetailActivity.h"
 #include "BleNotificationQueue.h"
+#include "BleNotifyRelay.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
@@ -162,7 +163,12 @@ void BleNotificationsActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_BLE_NOTIFICATIONS));
+  // Same header-status slot Tasks/Calendar/Budget/Habits use for their own
+  // sync info -- this screen isn't an OrganizerScreenActivity (see this
+  // file's own header comment), so it sets the status directly rather than
+  // through that base class's formatStatus() override point.
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_BLE_NOTIFICATIONS),
+                 BleNotifyRelay::isConnected() ? tr(STR_BLE_CONNECTED) : tr(STR_BLE_DISCONNECTED));
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;

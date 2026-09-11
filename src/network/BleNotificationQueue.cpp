@@ -14,10 +14,27 @@ void BleNotificationQueue::push(const uint32_t id, const bool isCall, const char
   // own sentinel (see BleNotificationEntry's own field comment), never a
   // real dedup key, and only entries still in the visible window (fill, not
   // the full ring) count: one that already aged out is shown again as new.
-  if (!isCall && id != 0) {
+  //
+  // The id check alone isn't reliable enough in practice -- with frequent
+  // reconnects, some resends have shown up as multiple (up to 4) visible
+  // copies, meaning Gadgetbridge doesn't always reassign the same id to the
+  // same logical notification across a resync replay. Falls back to matching
+  // on sender+title+content: a real notification's own content, not id, is
+  // what actually identifies it as "the same one" to the reader, and this
+  // catches an id-mismatched resend the first check misses. Content still
+  // matches this way even for the (rare) two different real notifications
+  // with the same sender/title/content -- a false-positive dedup there is a
+  // fine trade against the far more common few-times-over duplicate.
+  if (!isCall) {
     for (size_t i = 0; i < fill; i++) {
       const BleNotificationEntry& existing = getEntry(i);
-      if (!existing.isCall && existing.id == id) return;
+      if (existing.isCall) continue;
+      if (id != 0 && existing.id == id) return;
+      if (strcmp(existing.sender, sender != nullptr ? sender : "") == 0 &&
+          strcmp(existing.title, title != nullptr ? title : "") == 0 &&
+          strcmp(existing.content, content != nullptr ? content : "") == 0) {
+        return;
+      }
     }
   }
 

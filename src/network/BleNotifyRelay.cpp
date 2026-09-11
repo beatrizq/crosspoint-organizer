@@ -41,6 +41,30 @@ constexpr char DEVICE_NAME[] = "Bangle.js CrossPoint";
 // time is exactly what HalPowerManager::Lock supports.
 std::unique_ptr<HalPowerManager::Lock> connectionLock;
 
+// Held for as long as NimBLE is merely advertising, i.e. from a successful
+// bringUp()/resume() until pause(). Without this, the CPU throttles to
+// LOW_POWER_FREQ 3s after the last button press even while advertising (not
+// just while connected) -- starving the NimBLE host task and making it too
+// slow to complete Android's connection handshake most of the time, which is
+// the leading suspect for unreliable Gadgetbridge reconnects. This and
+// connectionLock are separate, both-refcounted HalPowerManager::Lock
+// instances (Lock supports multiple concurrent holders) rather than one
+// shared one, so each can be released independently of the other's state:
+// advertisingLock always covers "NimBLE is up at all", connectionLock
+// narrows further to "and a peer is attached" for onDisconnect() to manage on
+// its own.
+//
+// This effectively holds the CPU at full speed for the device's entire awake
+// lifetime, since nothing pauses BLE before the real sleep trigger
+// (main.cpp's enterDeepSleep() calls activityManager.goToSleep() and tears
+// down WiFi/tilt-sensor/display, but never BleNotifyRelay::pause(), before
+// powerManager.startDeepSleep() cuts power outright) -- i.e. exactly the
+// user's configured "time to sleep" window, not an unbounded condition.
+// Battery-life tradeoff: this is the intentional cost of a device that stays
+// reliably reachable over BLE for its whole awake period, matched to a
+// setting the user already controls.
+std::unique_ptr<HalPowerManager::Lock> advertisingLock;
+
 // Tracks whether NimBLE is currently brought up, vs. torn down for pause().
 // poll() and resume() use this to no-op/rebuild correctly.
 bool active = false;
@@ -301,6 +325,10 @@ void bringUp() {
   }
 
   active = true;
+  advertisingLock = makeUniqueNoThrow<HalPowerManager::Lock>();
+  if (!advertisingLock) {
+    LOG_ERR("BLE", "OOM: HalPowerManager::Lock (%u bytes)", static_cast<unsigned>(sizeof(HalPowerManager::Lock)));
+  }
   bleInitHeapCost = static_cast<int32_t>(freeHeapBefore) - static_cast<int32_t>(ESP.getFreeHeap());
   LOG_INF("BLE", "Advertising as \"%s\" for Gadgetbridge pairing", DEVICE_NAME);
 }
@@ -325,6 +353,7 @@ void BleNotifyRelay::pause() {
   // exactly this "pause temporarily, resume later" use case.
   pausing = true;
   connectionLock.reset();
+  advertisingLock.reset();
   NimBLEDevice::deinit(false);
   pausing = false;
   active = false;
@@ -346,6 +375,10 @@ void BleNotifyRelay::resume() {
     return;
   }
   active = true;
+  advertisingLock = makeUniqueNoThrow<HalPowerManager::Lock>();
+  if (!advertisingLock) {
+    LOG_ERR("BLE", "OOM: HalPowerManager::Lock (%u bytes)", static_cast<unsigned>(sizeof(HalPowerManager::Lock)));
+  }
   LOG_INF("BLE", "Resumed after WiFi operation finished");
 }
 
@@ -373,11 +406,20 @@ void BleNotifyRelay::poll() {
           bleInitHeapCost);
 }
 
+bool BleNotifyRelay::isConnected() {
+  if (!active) return false;
+  // Same read poll() already does for its own status line -- getServer() is a
+  // lazy singleton, non-null once bringUp() has run at least once.
+  NimBLEServer* server = NimBLEDevice::getServer();
+  return server != nullptr && server->getConnectedCount() > 0;
+}
+
 #else
 
 void BleNotifyRelay::begin() {}
 void BleNotifyRelay::pause() {}
 void BleNotifyRelay::resume() {}
 void BleNotifyRelay::poll() {}
+bool BleNotifyRelay::isConnected() { return false; }
 
 #endif
