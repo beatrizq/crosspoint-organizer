@@ -11,6 +11,7 @@
 
 #include "CompanionState.h"
 #include "CrossPointSettings.h"
+#include "util/OrganizerSync.h"
 
 namespace {
 // clockUtcOffsetQ is biased by 48 so it fits in a uint8_t (48 == UTC+0).
@@ -54,6 +55,20 @@ bool CompanionTracker::resolveLocalDayAndMinute(int32_t& outDay, uint16_t& outMi
   uint8_t minute = 0;
 
   if (!halClock.getUtcDateTime(year, month, day, hour, minute)) return false;
+
+  // Same day-rollover check main.cpp runs once at boot (see its own comment),
+  // repeated here so it isn't a one-shot: if the clock wasn't valid yet at
+  // that exact moment (still unsynced, or a full power loss reset it), the
+  // boot-time check silently skips and nothing else ever retries it, leaving
+  // a previous day's completions showing as "today's" until the user happens
+  // to open Tasks/Habits/Sync All. This runs on every mood/day resolution
+  // instead - i.e. every time Home or the companion's own screen is viewed -
+  // so a clock that only becomes valid later still gets the stale data
+  // cleared the next time either is looked at.
+  if (HABITIFY_HABITS.rolloverIfStale(civil::packDate(year, month, day))) HABITIFY_HABITS.saveToFile();
+  TODOIST_TASKS.clearCompletedIfStale(
+      civil::dateFromIso(organizerSync::localIsoDateFromUtc(year, month, day, hour, minute).c_str()));
+
   const int32_t offset = signedUtcOffsetQuarterHours();
   outDay = companion::localDayNumber(year, month, day, hour, minute, offset);
   outMinuteOfDay = companion::localMinuteOfDay(hour, minute, offset);
