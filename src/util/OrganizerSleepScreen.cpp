@@ -34,6 +34,10 @@ uint8_t settingValueFor(const homeAppOrder::AppId id) {
     case homeAppOrder::AppId::Habits:
       return CrossPointSettings::SLEEP_APP_HABITS;
     case homeAppOrder::AppId::Read:
+    case homeAppOrder::AppId::Notifications:
+    // Not an OrganizerScreenActivity subclass, so there is no screen here to
+    // snapshot as a sleep wallpaper -- same reasoning as Read.
+    case homeAppOrder::AppId::Companion:
       break;
   }
   return CrossPointSettings::SLEEP_APP_OFF;

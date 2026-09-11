@@ -267,18 +267,6 @@ class BaseTheme {
    * wider than the bar.
    */
   static TabWindow tabWindow(const std::vector<int>& widths, int available, int reserve, int active);
-  /**
-   * Where the home screen's reading companion may draw, inside the cover card.
-   *
-   * On themes with a cover card that is the column the book's title and author
-   * used to occupy: the cover already says which book it is, so the words were
-   * the cheapest thing to give up for a companion. Returning an empty rect means
-   * this theme has no room, and the companion is simply not drawn.
-   *
-   * Bounded deliberately: the companion draws only inside what it is handed, so
-   * it can never reach across the cover.
-   */
-  virtual Rect getHomeCompanionRect(Rect coverCardRect) const;
 
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
@@ -298,6 +286,13 @@ class BaseTheme {
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon,
                               const std::function<int(int index)>& badgeCount = nullptr) const;
+  // The exact rect drawButtonGrid() would draw tile `index`'s icon into, for a
+  // caller that wants to overlay its own artwork there instead of a static
+  // UIIcon (the companion's home tile draws its own current pose here, sized
+  // to fit whatever this returns, rather than an icon bitmap). An empty rect
+  // means this theme has no grid to overlay onto (drawButtonGrid() falls back
+  // to the plain row list, which has no icon-sized square of its own).
+  virtual Rect getGridTileIconRect(const GfxRenderer& renderer, Rect rect, int buttonCount, int index) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
                                int selectedIndex) const;

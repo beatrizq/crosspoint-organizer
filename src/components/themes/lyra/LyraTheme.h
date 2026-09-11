@@ -107,7 +107,7 @@ class LyraTheme : public BaseTheme {
                       const std::function<std::string(int index)>& buttonLabel,
                       const std::function<UIIcon(int index)>& rowIcon,
                       const std::function<int(int index)>& badgeCount = nullptr) const override;
-  Rect getHomeCompanionRect(Rect coverCardRect) const override;
+  Rect getGridTileIconRect(const GfxRenderer& renderer, Rect rect, int buttonCount, int index) const override;
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                            const int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,
                            std::function<bool()> storeCoverBuffer) const override;
@@ -115,4 +115,11 @@ class LyraTheme : public BaseTheme {
   // through this on its own Home cover row.
   void drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) const;
   bool showsFileIcons() const override { return true; }
+
+ private:
+  // Tile `index`'s own icon rect within a buttonCount-tile drawButtonGrid()
+  // layout at `rect` -- the single source of truth for that math, shared by
+  // drawButtonGrid() itself and the public getGridTileIconRect() override, so
+  // the two can never drift apart.
+  Rect tileIconRect(const GfxRenderer& renderer, Rect rect, int buttonCount, int index) const;
 };

@@ -382,6 +382,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                             "budgetNickname"),
         SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.habitsNickname[0], sizeof(SETTINGS.habitsNickname),
                             "habitsNickname"),
+        SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.companionNickname[0], sizeof(SETTINGS.companionNickname),
+                            "companionNickname"),
 
         // Home grid app order: persisted + web-exposed, category-less so it is
         // hidden from the on-device Settings screen (edited from App Order).

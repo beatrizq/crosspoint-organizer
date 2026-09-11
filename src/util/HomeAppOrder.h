@@ -42,9 +42,18 @@ enum class AppId : uint8_t {
   // just the spike one, so this table and the persisted order format stay
   // identical across build flavors.
   Notifications = 5,
+  // Only a real, selectable tile when SETTINGS.companionEnabled -- HomeActivity
+  // skips it from the grid otherwise, the same runtime-gated treatment
+  // Notifications gets at compile time. Its icon is dynamic (the companion's
+  // own current pose, not a static UIIcon -- see HomeActivity's own grid
+  // rendering), and its display name prefers its character's built-in name
+  // over this table's generic appName when no nickname is set -- see
+  // CompanionTracker::displayName(), which HomeActivity calls directly for
+  // this entry's label instead of this file's own displayName().
+  Companion = 6,
 };
 
-constexpr int APP_COUNT = 6;
+constexpr int APP_COUNT = 7;
 
 struct AppInfo {
   AppId id;

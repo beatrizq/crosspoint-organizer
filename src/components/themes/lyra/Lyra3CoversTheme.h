@@ -25,9 +25,4 @@ class Lyra3CoversTheme : public LyraTheme {
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                            const int selectorIndex, bool& coverRendered, bool& coverBufferStored, bool& bufferRestored,
                            std::function<bool()> storeCoverBuffer) const override;
-  // No room: three covers already fill the width LyraTheme's own version
-  // shares with the companion column. Explicit rather than inherited, so
-  // this doesn't depend on LyraTheme's own cover-width bookkeeping, which
-  // this theme's drawRecentBookCover() above never touches.
-  Rect getHomeCompanionRect(Rect) const override { return Rect{}; }
 };

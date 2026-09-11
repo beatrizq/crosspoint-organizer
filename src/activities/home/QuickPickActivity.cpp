@@ -35,7 +35,7 @@ constexpr int BUBBLE_GAP = 4;
 constexpr int MARGIN = 24;
 // Between the sprite and whatever the active tab draws below it.
 constexpr int LABEL_GAP = 20;
-// Between the Info tab's own mood label and the log list under it.
+// Between the Logs tab's own mood label and the log list under it.
 constexpr int ROW_GAP = 4;
 // Floor on the bubble's text column, so a one-word habit name still leaves
 // room for the tail and rounded corners rather than shrinking to fit it
@@ -54,7 +54,7 @@ constexpr int HABIT_LOG_LARGE_STEP = 5;
 // Row list geometry shared by the Tasks/Habits tabs -- deliberately plain
 // (title, one line, selected row inverted) rather than each real screen's
 // own richer row: this is a glanceable subset, not a replacement for it. The
-// Info tab's own log list reuses the same row height, for the one line of
+// Logs tab's own log list reuses the same row height, for the one line of
 // title text it shows too, but never a selection fill -- nothing is
 // selectable in it, so it also reuses the dithered separator the other two
 // tabs have no need for (their selection fill already bounds every row).
@@ -83,7 +83,7 @@ void mirrorToAppState(const std::string& text, const std::string& itemId, const 
 void QuickPickActivity::onEnter() {
   Activity::onEnter();
   mirrorToAppState(pickedText, itemId, isHabit, poolEmpty);
-  activeTab = Tab::Info;
+  activeTab = Tab::Logs;
   taskSelectedRow = 0;
   habitSelectedRow = 0;
   requestUpdate(true);
@@ -100,7 +100,7 @@ std::vector<size_t> QuickPickActivity::relevantTaskIndices() const {
   // Same overdue-or-due-today rule quickpick::roll() itself pools from (see
   // its own comment) -- these are exactly the tasks a Random reroll could
   // land on, and completing/rescheduling one here credits the companion the
-  // same way acting on the Info tab's own suggestion does.
+  // same way acting on the Logs tab's own suggestion does.
   std::vector<size_t> indices;
   const auto& tasks = TODOIST_TASKS.getTasks();
   const bool knowToday = !TODOIST_TASKS.getSyncDate().empty();
@@ -775,7 +775,7 @@ void QuickPickActivity::loop() {
 
   // Confirm/Left/Right: whatever the active tab needs (see this file's own
   // header comment for the full scheme per tab).
-  if (activeTab == Tab::Info) {
+  if (activeTab == Tab::Logs) {
     if (!poolEmpty && mappedInput.wasReleased(MappedInputManager::Button::Right)) {
       reroll();
       return;
@@ -859,7 +859,7 @@ void QuickPickActivity::loop() {
 
 // -- render ---------------------------------------------------------------
 
-void QuickPickActivity::renderInfoTab(const int top, const int height) const {
+void QuickPickActivity::renderLogsTab(const int top, const int height) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int pageWidth = renderer.getScreenWidth();
   const int centreX = pageWidth / 2;
@@ -1008,7 +1008,7 @@ void QuickPickActivity::render(RenderLock&&) {
 
   // Age and highscore sit in the header's own status column, the same spot
   // Tasks/Calendar/Budget/Habits show their sync date -- lifetime info that,
-  // unlike the Info tab's own body, never changes tab to tab.
+  // unlike the Logs tab's own body, never changes tab to tab.
   char status[64];
   const std::string ageValue = CompanionTracker::formatAge(COMPANION_STATE.activatedDay);
   snprintf(status, sizeof(status), "%s: %s  \xC2\xB7  %s: %u", tr(STR_COMPANION_AGE), ageValue.c_str(),
@@ -1017,7 +1017,7 @@ void QuickPickActivity::render(RenderLock&&) {
                  CompanionTracker::displayName(), status);
 
   const std::vector<TabInfo> tabs = {
-      {tr(STR_COMPANION_TAB_INFO), activeTab == Tab::Info},
+      {tr(STR_COMPANION_TAB_LOGS), activeTab == Tab::Logs},
       {tr(STR_COMPANION_TAB_TASKS), activeTab == Tab::Tasks},
       {tr(STR_COMPANION_TAB_HABITS), activeTab == Tab::Habits},
   };
@@ -1079,8 +1079,8 @@ void QuickPickActivity::render(RenderLock&&) {
   const int tabContentHeight = std::max(0, contentBottom - tabContentTop);
 
   switch (activeTab) {
-    case Tab::Info:
-      renderInfoTab(tabContentTop, tabContentHeight);
+    case Tab::Logs:
+      renderLogsTab(tabContentTop, tabContentHeight);
       break;
     case Tab::Tasks:
       renderTasksTab(tabContentTop, tabContentHeight);
@@ -1100,7 +1100,7 @@ void QuickPickActivity::render(RenderLock&&) {
   const char* confirmLabel = "";
   const char* leftLabel = "";
   const char* rightLabel = "";
-  if (activeTab == Tab::Info) {
+  if (activeTab == Tab::Logs) {
     confirmLabel = poolEmpty ? "" : tr(STR_SELECT);
     leftLabel = logEntries().empty() ? "" : tr(STR_CLEAR_BUTTON);
     rightLabel = poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM);

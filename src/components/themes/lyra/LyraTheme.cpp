@@ -561,22 +561,15 @@ void LyraTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
   }
 }
 
-Rect LyraTheme::getHomeCompanionRect(const Rect coverCardRect) const {
-  // Full width: the cover card that used to share this band with the
-  // companion now lives at the top of the Read menu instead (see
-  // ReadMenuActivity, which calls drawRecentBookCover() below directly), so
-  // there is nothing left to share with here.
-  const int x = coverCardRect.x + LyraMetrics::values.contentSidePadding;
-  const int right = coverCardRect.x + coverCardRect.width - LyraMetrics::values.contentSidePadding;
-  if (right - x <= 0) return Rect{};
-  return Rect{x, coverCardRect.y + hPaddingInSelection, right - x, LyraMetrics::values.homeCoverHeight};
-}
-
 void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                     const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                     bool& bufferRestored, std::function<bool()> storeCoverBuffer) const {
-  // No longer called from Home (see getHomeCompanionRect()'s comment) --
-  // ReadMenuActivity calls this directly for its own leading row instead, at
+  // No longer called from Home -- Home used to share this band with a
+  // companion column beside the cover, which is why the cover card's own
+  // title/author text was dropped from here (see below); the companion has
+  // since moved to its own home grid tile, but the card itself stayed at the
+  // width that move already gave it. ReadMenuActivity calls this directly for
+  // its own leading row instead, at
   // whatever rect it hands in, so the two places show the exact same "cover
   // together with author and title" rendering rather than a second one
   // invented just for the menu.
@@ -665,7 +658,7 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
     // Title and author, beside the cover -- dropped from here back when Home
     // still called this, to leave the companion column room beside it (see
-    // getHomeCompanionRect()'s comment). ReadMenuActivity hands this a
+    // this function's own comment above). ReadMenuActivity hands this a
     // full-width band with no column competing for it, so there is room for
     // them again.
     const int textX = tileX + hPaddingInSelection + coverWidth + LyraMetrics::values.contentSidePadding;
@@ -711,31 +704,55 @@ int LyraTheme::getGridRowStep(int contentHeight, int buttonCount) const {
   return std::max(LyraMetrics::values.homeGridTileHeight, contentHeight / rows);
 }
 
+Rect LyraTheme::tileIconRect(const GfxRenderer& renderer, const Rect rect, const int buttonCount,
+                             const int index) const {
+  const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
+  const int tileHeight = getGridRowStep(rect.height, buttonCount);
+  const int tileWidth = rect.width / columns;
+  // Breathing room between the artwork and its label -- kept in step with
+  // drawButtonGrid()'s own labelGap, which this same value feeds into.
+  constexpr int labelGap = 10;
+  const int labelHeight = renderer.getLineHeight(UI_12_FONT_ID);
+  const int contentHeight = homeGridIconSize + labelGap + labelHeight;
+
+  const int column = index % columns;
+  const int row = index / columns;
+  const int tileX = rect.x + column * tileWidth;
+  const int tileY = rect.y + row * tileHeight;
+  // The tile's content is centred as a block, so a short label and a tall
+  // icon stay visually anchored to each other rather than to the cell edges.
+  const int contentTop = tileY + (tileHeight - contentHeight) / 2;
+  const int iconX = tileX + (tileWidth - homeGridIconSize) / 2;
+  return Rect{iconX, contentTop, homeGridIconSize, homeGridIconSize};
+}
+
+Rect LyraTheme::getGridTileIconRect(const GfxRenderer& renderer, const Rect rect, const int buttonCount,
+                                    const int index) const {
+  if (index < 0 || index >= buttonCount) return Rect{};
+  return tileIconRect(renderer, rect, buttonCount, index);
+}
+
 void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon,
                                const std::function<int(int index)>& badgeCount) const {
   const int columns = LyraMetrics::values.homeGridColumns > 0 ? LyraMetrics::values.homeGridColumns : 1;
-  const int tileHeight = getGridRowStep(rect.height, buttonCount);
   const int tileWidth = rect.width / columns;
-  // Breathing room between the artwork and its label, and between the label and
-  // the box that marks the selection.
   constexpr int labelGap = 10;
   constexpr int selectionPadding = 8;
-
   const int labelHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int contentHeight = homeGridIconSize + labelGap + labelHeight;
 
   for (int i = 0; i < buttonCount; i++) {
     const int column = i % columns;
-    const int row = i / columns;
     const int tileX = rect.x + column * tileWidth;
-    const int tileY = rect.y + row * tileHeight;
     const bool selected = i == selectedIndex;
 
-    // The tile's content is centred as a block, so a short label and a tall
-    // icon stay visually anchored to each other rather than to the cell edges.
-    const int contentTop = tileY + (tileHeight - contentHeight) / 2;
+    // Same rect tileIconRect() (and so the public getGridTileIconRect(), for
+    // a caller overlaying its own artwork -- see the companion's home tile)
+    // computes; contentTop is this tile's icon rect y, one and the same.
+    const Rect iconRect = tileIconRect(renderer, rect, buttonCount, i);
+    const int contentTop = iconRect.y;
 
     const std::string labelStr = buttonLabel(i);
     const auto style = selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
@@ -751,11 +768,10 @@ void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount
                                selectionLineWidth, cornerRadius, true);
     }
 
-    const int iconX = tileX + (tileWidth - homeGridIconSize) / 2;
     if (rowIcon != nullptr) {
       const uint8_t* iconBitmap = iconForName(rowIcon(i), homeGridIconSize);
       if (iconBitmap != nullptr) {
-        renderer.drawIcon(iconBitmap, iconX, contentTop, homeGridIconSize);
+        renderer.drawIcon(iconBitmap, iconRect.x, iconRect.y, homeGridIconSize);
       }
     }
 
@@ -770,7 +786,7 @@ void LyraTheme::drawButtonGrid(GfxRenderer& renderer, Rect rect, int buttonCount
       const std::string badgeText = std::to_string(badge);
       const int badgeTextWidth = renderer.getTextWidth(SMALL_FONT_ID, badgeText.c_str());
       const int badgeTextHeight = renderer.getTextHeight(SMALL_FONT_ID);
-      const int badgeX = iconX + homeGridIconSize - badgeTextWidth / 2;
+      const int badgeX = iconRect.x + homeGridIconSize - badgeTextWidth / 2;
       const int badgeY = contentTop - badgeTextHeight / 2;
       renderer.drawText(SMALL_FONT_ID, badgeX, badgeY, badgeText.c_str());
     }

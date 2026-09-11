@@ -16,6 +16,8 @@ constexpr AppInfo APPS[APP_COUNT] = {
     {AppId::Budget, StrId::STR_YNAB, UIIcon::Budget},
     {AppId::Habits, StrId::STR_HABITIFY, UIIcon::Habits},
     {AppId::Notifications, StrId::STR_BLE_NOTIFICATIONS, UIIcon::Bell},
+    // None: drawn dynamically instead (see AppId::Companion's own comment).
+    {AppId::Companion, StrId::STR_COMPANION, UIIcon::None},
 };
 
 }  // namespace
@@ -46,6 +48,9 @@ char* nicknameField(const AppId id, size_t& outSize) {
     case AppId::Notifications:
       // Same reasoning as Read: not an account, nothing to nickname.
       break;
+    case AppId::Companion:
+      outSize = sizeof(SETTINGS.companionNickname);
+      return SETTINGS.companionNickname;
   }
   outSize = 0;
   return nullptr;

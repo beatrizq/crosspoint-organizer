@@ -37,7 +37,14 @@ enum class HomeMenuItem {
   // #define BLE_NOTIFICATIONS BleNotificationQueue::getInstance()) -- the
   // preprocessor rewrites it even after "HomeMenuItem::", which does not fail
   // quietly (it errors on the resulting bogus qualified name).
-  NOTIFICATIONS
+  NOTIFICATIONS,
+  // Named COMPANION_SCREEN, not COMPANION: the latter collides with the
+  // COMPANION macro (CompanionTracker.h's
+  // #define COMPANION CompanionTracker::getInstance()), the same problem
+  // NOTIFICATIONS above already has its own comment about. Opens
+  // QuickPickActivity, the same as any other home grid tile -- see
+  // HomeActivity::activateCompanion().
+  COMPANION_SCREEN
 };
 
 /**

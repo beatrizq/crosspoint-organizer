@@ -25,7 +25,6 @@
 #include "QuickPickActivity.h"
 #include "RecentBooksStore.h"
 #include "companion/CompanionRenderer.h"
-#include "companion/CompanionState.h"
 #include "companion/CompanionTracker.h"
 #include "companion/QuickPickRoll.h"
 #include "components/UITheme.h"
@@ -52,32 +51,14 @@ HomeMenuItem homeMenuItemFor(const homeAppOrder::AppId id) {
       return HomeMenuItem::HABITS;
     case homeAppOrder::AppId::Notifications:
       return HomeMenuItem::NOTIFICATIONS;
+    case homeAppOrder::AppId::Companion:
+      return HomeMenuItem::COMPANION_SCREEN;
   }
   return HomeMenuItem::NONE;
 }
-
-// Expanded selectorIndex (which may point at the companion's own slot) ->
-// entries[] index, or -1 when selIdx *is* the companion slot. companionSlot
-// < 0 means there is no slot at all, so every index passes through unchanged.
-int toEntryIndex(const int selIdx, const int companionSlot) {
-  if (companionSlot < 0) return selIdx;
-  if (selIdx == companionSlot) return -1;
-  return selIdx > companionSlot ? selIdx - 1 : selIdx;
-}
-
-// Inverse of toEntryIndex: an entries[] index -> the expanded selectorIndex
-// that points at it, for code that already has an entries[] position (touch
-// hit-testing, the initial-menu-item lookup) and needs to place the cursor in
-// the expanded space instead.
-int fromEntryIndex(const int entryIdx, const int companionSlot) {
-  if (companionSlot < 0) return entryIdx;
-  return entryIdx >= companionSlot ? entryIdx + 1 : entryIdx;
-}
 }  // namespace
 
-int HomeActivity::getMenuItemCount() const {
-  return static_cast<int>(entries.size()) + (companionSlotIndex() >= 0 ? 1 : 0);
-}
+int HomeActivity::getMenuItemCount() const { return static_cast<int>(entries.size()); }
 
 int HomeActivity::leadingRecentCount() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -89,13 +70,10 @@ int HomeActivity::leadingRecentCount() const {
   return metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size());
 }
 
-int HomeActivity::companionSlotIndex() const {
-  if (!SETTINGS.companionEnabled) return -1;
+int HomeActivity::menuTop() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect rect =
-      GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, renderer.getScreenWidth(), metrics.homeCoverTileHeight});
-  if (rect.width <= 0) return -1;
-  return leadingRecentCount();
+  if (!metrics.homeShowsCoverCard) return metrics.homeTopPadding + metrics.verticalSpacing;
+  return metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
 }
 
 void HomeActivity::buildEntries() {
@@ -140,152 +118,51 @@ void HomeActivity::buildEntries() {
     // identical across build flavors, but never rendered as a tile here.
     if (app.id == homeAppOrder::AppId::Notifications) continue;
 #endif
-    entries.push_back({homeAppOrder::displayName(app.id), app.icon, homeMenuItemFor(app.id), -1});
+    // Same runtime-gated treatment, just checked at runtime instead of build
+    // time: the companion is only ever a real tile when the user has turned
+    // it on.
+    if (app.id == homeAppOrder::AppId::Companion && !SETTINGS.companionEnabled) continue;
+    // The companion's label prefers its character's own built-in name over
+    // this table's generic appName ("Companion") when no nickname is set --
+    // see CompanionTracker::displayName() and AppId::Companion's own comment.
+    // Every other app keeps this table's own displayName() lookup.
+    const char* label =
+        app.id == homeAppOrder::AppId::Companion ? CompanionTracker::displayName() : homeAppOrder::displayName(app.id);
+    entries.push_back({label, app.icon, homeMenuItemFor(app.id), -1});
   }
 }
 
-void HomeActivity::drawCompanion(const Rect region, const bool focused) const {
-  if (!SETTINGS.companionEnabled) return;
-  if (region.width <= 0 || region.height <= 0) return;
-
-  // Same outline convention as a selected grid tile (see
-  // LyraTheme::drawButtonGrid's selectionLineWidth/cornerRadius): a stroke
-  // reads clearly here since the column gives it real margin, so there is no
-  // need for the heavier grey fill a tighter box would have to fall back on.
-  if (focused) {
-    constexpr int SELECTION_LINE_WIDTH = 2;
-    constexpr int SELECTION_CORNER_RADIUS = 6;
-    renderer.drawRoundedRect(region.x, region.y, region.width, region.height, SELECTION_LINE_WIDTH,
-                             SELECTION_CORNER_RADIUS, true);
-  }
-
-  // Ported from JoshuaMillerCode/crosspoint-reader-companion's
-  // drawCompanionColumn. Only the column form is kept: on this home screen the
-  // companion always gets the tall gap beside the cover, never a strip under a
-  // menu, so the fork's compact and side-by-side fallbacks have nothing to pick
-  // between.
-  constexpr int PAD = 10;  // bubble inner padding
-  constexpr int TAIL_LENGTH = 12;
-  constexpr int BUBBLE_GAP = 2;  // between the tail tip and the character's head
-  constexpr int LABEL_GAP = 2;
-  // getTextHeight() reports the ascender only, but drawText() takes y as the top
-  // and descenders hang below it.
-  constexpr int DESCENDER_ALLOWANCE = 3;
-  constexpr int MARGIN = 4;
-  constexpr int WALK_STEPS = 6;
-  // Kept to roughly the tail's reach: the character has to pace clear of the
-  // bubble's tail.
-  constexpr int WALK_TRAVEL = 14;
-  constexpr int BOB_HEIGHT = 3;
-  constexpr int MAX_SCALE = 4;
-  constexpr int MIN_BUBBLE_W = 90;
-  // Floor on the bubble's own text column (narrower than MIN_BUBBLE_W above,
-  // which is a bail-out on the whole column being too tight to bother with),
-  // so a one-word suggestion still leaves room for the tail and rounded
-  // corners rather than shrinking to fit it exactly.
-  constexpr int MIN_BUBBLE_TEXT_WIDTH = 70;
-
-  const int colX = region.x + MARGIN;
-  const int colW = region.width - MARGIN * 2;
-  const int colTop = region.y + MARGIN;
-  const int colH = region.height - MARGIN * 2;
-  if (colW < MIN_BUBBLE_W) return;
-
-  const bool showLabel = SETTINGS.companionShowMoodLabel != 0;
-  const int labelH = showLabel ? renderer.getTextHeight(UI_10_FONT_ID) + DESCENDER_ALLOWANCE : 0;
-  const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
-  const int textW = colW - PAD * 2;
+void HomeActivity::drawCompanionIcon(const Rect bounds) const {
+  if (bounds.width <= 0 || bounds.height <= 0) return;
 
   const auto id = CompanionTracker::activeId();
   const auto mood = COMPANION.currentMood();
-  const char* label = showLabel ? companion::moodLabel(mood) : nullptr;
 
-  // Suggests a task/habit instead of a mood quote -- rolled once in onEnter()
-  // (see homeSuggestionText's own comment) and reused verbatim here on every
-  // repaint, so navigating the menu never changes what is being suggested.
-  // Sleeping overrides the suggestion outright: a resting companion has
-  // nothing to nag about.
-  const std::string suggestion =
-      mood == companion::Mood::Sleeping
-          ? std::string(tr(STR_COMPANION_SLEEPING_BUBBLE))
-          : (homeSuggestionPoolEmpty ? std::string(tr(STR_QUICK_PICK_EMPTY)) : homeSuggestionText);
-
-  // The bubble is measured before the character is sized: the suggestion needs
-  // however many lines it needs, and the character takes what is left.
-  const auto textFit = suggestion.empty() ? companion::BubbleFit{}
-                                          : companion::fitBubbleText(renderer, UI_10_FONT_ID, suggestion, textW,
-                                                                     MIN_BUBBLE_TEXT_WIDTH, 3);
-  const bool hasBubble = !textFit.lines.empty();
-  const int bubbleH = hasBubble ? static_cast<int>(textFit.lines.size()) * lineH + PAD * 2 : 0;
-  const int bubbleBlock = hasBubble ? bubbleH + TAIL_LENGTH + BUBBLE_GAP : 0;
-  const int bubbleWidth = hasBubble ? textFit.textWidth + PAD * 2 : 0;
-  const int statusBlock = showLabel ? LABEL_GAP + labelH : 0;
-
-  // Whole-pixel scales only: fractional scaling would smear the baked dither.
-  int scale = 0;
+  // Whole-pixel scales only: fractional scaling would smear the baked
+  // dither. Static, unlike Home's old companion column -- there is no bubble
+  // or label competing for room here, and a walk cycle would read as busy
+  // packed this small among five other still icons.
+  constexpr int MAX_SCALE = 8;
+  int scale = 1;
   for (int candidate = MAX_SCALE; candidate >= 1; candidate--) {
-    if (companion::poseWidth(candidate) + WALK_TRAVEL > colW) continue;
-    if (bubbleBlock + companion::poseHeight(candidate) + BOB_HEIGHT + statusBlock <= colH) {
+    if (companion::poseWidth(candidate) <= bounds.width && companion::poseHeight(candidate) <= bounds.height) {
       scale = candidate;
       break;
     }
   }
-  // Nothing fits: better an empty column than a clipped character.
-  if (scale == 0) return;
-
-  const int spriteW = companion::poseWidth(scale);
-  const int spriteH = companion::poseHeight(scale);
-  const int blockH = bubbleBlock + spriteH + BOB_HEIGHT + statusBlock;
-  const int blockTop = colTop + (colH - blockH) / 2;
-
-  // Bubble centred in the column with its tail pointing down at the character
-  // below, so nothing reaches sideways toward the cover -- sized to the text
-  // rather than always spanning the column, so a short suggestion doesn't
-  // stretch the bubble out to the column's full width.
-  if (hasBubble) {
-    const int bubbleX = colX + (colW - bubbleWidth) / 2;
-    companion::drawSpeechBubble(renderer, bubbleX, blockTop, bubbleWidth, bubbleH, TAIL_LENGTH,
-                                companion::TailSide::Bottom);
-    const Rect textBounds{bubbleX + PAD, blockTop, textFit.textWidth, bubbleH};
-    int textY = blockTop + PAD;
-    for (const auto& line : textFit.lines) {
-      UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, textY, line.c_str());
-      textY += lineH;
-    }
-  }
-
-  const uint32_t phase = companionFrame % (WALK_STEPS * 2);
-  const bool walkingBack = phase >= WALK_STEPS;
-  const uint32_t step = walkingBack ? (WALK_STEPS * 2 - 1 - phase) : phase;
-  const int walkX = static_cast<int>(step) * WALK_TRAVEL / (WALK_STEPS - 1);
-  const int bob = (companionFrame % 2) ? BOB_HEIGHT : 0;
-
-  // A neglected companion stops pacing, which is most of what says so. A
-  // sleeping one stops for the same reason a sleeping character stays put.
-  const bool restless = mood != companion::Mood::Neglected && mood != companion::Mood::Sleeping;
-  // Centred on the range it walks rather than on its own width, so it does not
-  // appear to drift.
-  const int laneX = colX + (colW - spriteW - WALK_TRAVEL) / 2;
-  const int spriteTop = blockTop + bubbleBlock;
-  companion::drawPose(renderer, id, mood, laneX + (restless ? walkX : WALK_TRAVEL / 2),
-                      restless ? spriteTop + bob : spriteTop, scale, restless && walkingBack);
-
-  if (label != nullptr) {
-    const int labelW = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
-    const int labelY = spriteTop + spriteH + BOB_HEIGHT + LABEL_GAP;
-    const int centreX = colX + colW / 2;
-    renderer.drawText(UI_10_FONT_ID, centreX - labelW / 2, labelY, label, true, EpdFontFamily::BOLD);
-  }
+  const int spriteX = bounds.x + (bounds.width - companion::poseWidth(scale)) / 2;
+  const int spriteY = bounds.y + (bounds.height - companion::poseHeight(scale)) / 2;
+  companion::drawPose(renderer, id, mood, spriteX, spriteY, scale);
 }
 
 void HomeActivity::activateCompanion() {
   if (!SETTINGS.companionEnabled) return;
 
-  // Shows exactly what the bubble is already showing -- no fresh roll here,
-  // see homeSuggestionText's own comment. The result handler folds back
+  // Shows the suggestion already rolled for this Home visit -- no fresh roll
+  // here, see homeSuggestionText's own comment. The result handler folds back
   // whatever QuickPickActivity ends up holding when it returns (its own
-  // Random action may have changed it), so the bubble never goes stale
-  // relative to what was last seen on the full screen.
+  // Random action may have changed it), so a later re-activation is
+  // consistent with whatever was last seen on the full screen.
   startActivityForResult(
       std::make_unique<QuickPickActivity>(renderer, mappedInput, homeSuggestionText, homeSuggestionItemId,
                                           homeSuggestionIsHabit, homeSuggestionPoolEmpty),
@@ -403,10 +280,9 @@ void HomeActivity::onEnter() {
 
   selectorIndex = 0;
   if (initialMenuItem != HomeMenuItem::NONE) {
-    const int companionSlot = companionSlotIndex();
     for (int i = 0; i < static_cast<int>(entries.size()); i++) {
       if (entries[i].item == initialMenuItem) {
-        selectorIndex = fromEntryIndex(i, companionSlot);
+        selectorIndex = i;
         break;
       }
     }
@@ -477,24 +353,12 @@ void HomeActivity::loop() {
   }
 
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth = renderer.getScreenWidth();
 
-  const int companionSlot = companionSlotIndex();
-  const bool companionVisible = companionSlot >= 0;
-  const Rect companionRect =
-      companionVisible
-          ? GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight})
-          : Rect{};
-  const int menuCount = static_cast<int>(entries.size()) + (companionVisible ? 1 : 0);
+  const int menuCount = static_cast<int>(entries.size());
 
-  auto activateSelection = [this, companionSlot] {
-    if (selectorIndex == companionSlot) {
-      activateCompanion();
-      return;
-    }
-    const int entryIdx = toEntryIndex(selectorIndex, companionSlot);
-    if (entryIdx < 0 || entryIdx >= static_cast<int>(entries.size())) return;
-    const HomeEntry& entry = entries[entryIdx];
+  auto activateSelection = [this] {
+    if (selectorIndex < 0 || selectorIndex >= static_cast<int>(entries.size())) return;
+    const HomeEntry& entry = entries[selectorIndex];
 
     if (entry.recentIndex >= 0 && entry.recentIndex < static_cast<int>(recentBooks.size())) {
       onSelectBook(recentBooks[entry.recentIndex].path);
@@ -521,6 +385,9 @@ void HomeActivity::loop() {
         activityManager.goToBleNotifications();
         break;
 #endif
+      case HomeMenuItem::COMPANION_SCREEN:
+        activateCompanion();
+        break;
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -538,9 +405,6 @@ void HomeActivity::loop() {
     }
   };
 
-  // The companion, when visible, is one more stop in this same cycle -- see
-  // companionSlotIndex() -- so Next/Prev and swipes reach it automatically
-  // with no special-casing here.
   buttonNavigator.onNext([this, menuCount] {
     selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
     requestUpdate();
@@ -584,27 +448,6 @@ void HomeActivity::loop() {
     return;
   }
 
-  // Checked ahead of the cover's own touch zone below, which spans the whole
-  // band width: without this, a tap anywhere in the companion's column would
-  // fall through and open the book instead.
-  if (companionVisible) {
-    int cx = 0;
-    int cy = 0;
-    if (mappedInput.wasScreenTouchDown(cx, cy) && cx >= companionRect.x && cx < companionRect.x + companionRect.width &&
-        cy >= companionRect.y && cy < companionRect.y + companionRect.height) {
-      if (selectorIndex != companionSlot) {
-        selectorIndex = companionSlot;
-        requestUpdate();
-      }
-      return;
-    }
-    if (mappedInput.wasTapInRect(companionRect.x, companionRect.y, companionRect.width, companionRect.height)) {
-      selectorIndex = companionSlot;
-      activateCompanion();
-      return;
-    }
-  }
-
   int tx = 0;
   int ty = 0;
   if (!recentBooks.empty() && mappedInput.wasScreenTouchDown(tx, ty) && tx >= 0 && tx < renderer.getScreenWidth() &&
@@ -623,18 +466,15 @@ void HomeActivity::loop() {
     return;
   }
 
-  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
+  const int gridTop = menuTop();
   const int leadingRecents = leadingRecentCount();
   const int renderedMenuCount = static_cast<int>(entries.size()) - leadingRecents;
 
   // Down highlights the entry under the finger, a tap opens it. Shared by both
   // layouts so the grid and the list behave identically to the touch.
-  // touchedIndex is an entries[] position; translated to the expanded space
-  // before touching selectorIndex, same as everywhere else that starts from
-  // an entries[] index.
-  auto handleMenuTouch = [this, leadingRecents, companionSlot, &activateSelection](MappedInputManager::RowTouch touch,
-                                                                                   int renderedIndex) {
-    const int touchedIndex = fromEntryIndex(renderedIndex + leadingRecents, companionSlot);
+  auto handleMenuTouch = [this, leadingRecents, &activateSelection](MappedInputManager::RowTouch touch,
+                                                                    int renderedIndex) {
+    const int touchedIndex = renderedIndex + leadingRecents;
     if (touch == MappedInputManager::RowTouch::Down) {
       if (selectorIndex != touchedIndex) {
         selectorIndex = touchedIndex;
@@ -651,12 +491,12 @@ void HomeActivity::loop() {
     const int columns = metrics.homeGridColumns;
     const int tileWidth = renderer.getScreenWidth() / columns;
     const int gridRows = (renderedMenuCount + columns - 1) / columns;
-    const int menuHeight = renderer.getScreenHeight() - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+    const int menuHeight = renderer.getScreenHeight() - gridTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
     // The same step the theme drew with: the rows share whatever height is left.
     const int tileStep = GUI.getGridRowStep(menuHeight, renderedMenuCount);
     for (int column = 0; column < columns; column++) {
       int gridRow = -1;
-      const auto tileTouch = mappedInput.rowTouch(gridRow, menuTop, tileStep, gridRows, column * tileWidth,
+      const auto tileTouch = mappedInput.rowTouch(gridRow, gridTop, tileStep, gridRows, column * tileWidth,
                                                   (column + 1) * tileWidth, tileStep);
       if (tileTouch == MappedInputManager::RowTouch::None) continue;
       const int renderedIndex = gridRow * columns + column;
@@ -667,7 +507,7 @@ void HomeActivity::loop() {
     }
   } else {
     int menuRow = -1;
-    const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, metrics.menuRowHeight + metrics.menuSpacing,
+    const auto menuTouch = mappedInput.rowTouch(menuRow, gridTop, metrics.menuRowHeight + metrics.menuSpacing,
                                                 renderedMenuCount, 0, INT32_MAX, metrics.menuRowHeight);
     if (menuTouch != MappedInputManager::RowTouch::None) {
       handleMenuTouch(menuTouch, menuRow);
@@ -692,7 +532,7 @@ void HomeActivity::render(RenderLock&&) {
 
   // Themes whose cover card has moved to the top of the Read menu instead
   // (see ReadMenuActivity, which calls drawRecentBookCover() itself) don't
-  // draw one here at all -- the companion gets the full band below instead.
+  // draw one here at all.
   if (metrics.homeShowsCoverCard) {
     bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
@@ -709,29 +549,17 @@ void HomeActivity::render(RenderLock&&) {
                             std::bind(&HomeActivity::storeCoverBuffer, this));
   }
 
-  const int companionSlot = companionSlotIndex();
-
-  // After the card, deliberately: storeCoverBuffer() runs inside that call, so
-  // the cached snapshot holds the cover alone. Restoring it each paint is what
-  // erases the previous companion frame before this one is drawn.
-  drawCompanion(GUI.getHomeCompanionRect(Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight}),
-                companionSlot >= 0 && selectorIndex == companionSlot);
-  companionFrame++;
-
   // The menu draws the entries the cover tile does not own.
   const int leadingRecents = leadingRecentCount();
   const int renderedCount = static_cast<int>(entries.size()) - leadingRecents;
   const auto& rows = entries;
 
-  // The cover card's height was missing from this sum, so the menu was handed a
-  // taller rect than the screen has under the card - the tiles bunched at the
-  // top of it with a phantom row's worth of space below.
-  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset;
-  const int menuHeight = pageHeight - menuTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  const int gridTop = menuTop();
+  const int menuHeight = pageHeight - gridTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
+  const Rect menuRect{0, gridTop, pageWidth, menuHeight};
   GUI.drawButtonGrid(
-      renderer, Rect{0, menuTop, pageWidth, menuHeight}, renderedCount,
-      toEntryIndex(selectorIndex, companionSlot) - leadingRecents,
+      renderer, menuRect, renderedCount, selectorIndex - leadingRecents,
       [&rows, leadingRecents](int index) {
         const char* label = rows[index + leadingRecents].label;
         return std::string(label != nullptr ? label : "");
@@ -761,6 +589,37 @@ void HomeActivity::render(RenderLock&&) {
             return 0;
         }
       });
+
+  // The companion's tile gets its own current pose instead of the static
+  // UIIcon::None its entry carries (see buildEntries()) -- drawn after the
+  // grid itself, centred on the same point the icon rect the theme left
+  // blank for it is centred on, so the pose reads as this tile's own artwork
+  // rather than something painted over a real icon.
+  for (int i = 0; i < static_cast<int>(entries.size()); i++) {
+    if (entries[i].item != HomeMenuItem::COMPANION_SCREEN) continue;
+    const Rect iconRect = GUI.getGridTileIconRect(renderer, menuRect, renderedCount, i - leadingRecents);
+    // A sprite scaled to literally fit inside that 80x80-ish icon box reads
+    // noticeably smaller and thinner than the Lucide line art the other
+    // tiles draw there (which fills the box edge to edge): the source sprite
+    // is only 34x30, so the largest whole-pixel scale under 80px is 68x60.
+    // Given more room instead -- most of the tile's own width (there is far
+    // more of it spare than a normal icon needs) and a modest vertical bump
+    // (checked against LyraMetrics::values.homeGridTileHeight's own margin
+    // around the icon+label block, which comfortably absorbs it) -- centred
+    // on iconRect's own centre point, so a bigger pose still lands where a
+    // normal icon's would.
+    const int columns = std::max(1, metrics.homeGridColumns);
+    const int tileWidth = menuRect.width / columns;
+    constexpr int SIDE_MARGIN = 24;
+    constexpr int VERTICAL_SLACK = 24;
+    const int centreX = iconRect.x + iconRect.width / 2;
+    const int centreY = iconRect.y + iconRect.height / 2;
+    const int budgetWidth = std::max(iconRect.width, tileWidth - SIDE_MARGIN * 2);
+    const int budgetHeight = iconRect.height + VERTICAL_SLACK;
+    const Rect spriteBudget{centreX - budgetWidth / 2, centreY - budgetHeight / 2, budgetWidth, budgetHeight};
+    drawCompanionIcon(spriteBudget);
+    break;
+  }
 
   const auto labels = mappedInput.mapLabels(tr(STR_SETTINGS_TITLE), tr(STR_SELECT), tr(STR_DIR_PREV), tr(STR_DIR_NEXT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

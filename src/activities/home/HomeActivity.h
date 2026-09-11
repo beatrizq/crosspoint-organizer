@@ -57,16 +57,14 @@ class HomeActivity final : public Activity {
   // Rows the cover tile owns, which the menu below it does not draw. Zero on
   // themes that carry reading as a menu entry instead.
   int leadingRecentCount() const;
-
-  // Where the companion sits in the cycle order, or -1 when it is off or the
-  // theme gave it no room. Not an entries[] index -- the companion is not a
-  // grid tile or a book, it is an extra stop inserted right after the
-  // leading cover(s) and before the first grid tile, so the same Prev/Next
-  // buttons and swipes that already cycle the menu pass through it too. Any
-  // selectorIndex at or past this value that isn't exactly this value maps to
-  // entries[selectorIndex - 1] instead of entries[selectorIndex] -- see
-  // toEntryIndex/fromEntryIndex in the .cpp.
-  int companionSlotIndex() const;
+  // Top of the grid/menu, shared by loop()'s touch hit-testing and render()'s
+  // own drawing so the two can never disagree about where it starts.
+  // Reserves room for the cover card's own band only on a theme that actually
+  // draws one there (metrics.homeShowsCoverCard) -- on one that does not
+  // (companion-less Home used to fill that reserved band regardless with its
+  // own column; now nothing does, so reserving it here would just be a blank
+  // gap above the grid).
+  int menuTop() const;
 
   // Hold threshold for "sync everything" on the Settings button. The same
   // 1000ms the organizer screens use for their hold-to-sync, so one gesture
@@ -75,39 +73,41 @@ class HomeActivity final : public Activity {
 
   // Rolled once in onEnter() -- see quickpick::roll() -- and held stable while
   // the cursor moves around the menu; a fresh visit to Home is what re-rolls
-  // it, not a redraw. Shown in the companion's speech bubble in place of a
-  // mood quote, and handed to QuickPickActivity unchanged when activated, so
-  // the two always agree about what was just suggested. Kept in sync with
-  // whatever QuickPickActivity ends up holding (its own Random action can
-  // change it) via its result on the way back -- see activateCompanion().
+  // it, not a redraw. Handed to QuickPickActivity unchanged when the
+  // companion's tile is activated, so its own Logs tab opens already showing
+  // a suggestion rolled for this visit rather than a stale one from whenever
+  // Home was last entered. Kept in sync with whatever QuickPickActivity ends
+  // up holding (its own Random action can change it) via its result on the
+  // way back -- see activateCompanion().
   std::string homeSuggestionText;
   std::string homeSuggestionItemId;
   bool homeSuggestionIsHabit = false;
   bool homeSuggestionPoolEmpty = true;
-  // Advances on every home repaint to drive the walk cycle. Driven by redraws
-  // rather than a timer, so the character only moves when the screen was going
-  // to be painted anyway - a timer would keep the panel refreshing, block the
-  // low-power idle and accumulate e-ink ghosting.
-  uint32_t companionFrame = 0;
   // Re-checks the companion's sleep-window mood on an idle timer (see loop())
   // rather than only on screen entry -- otherwise sitting on Home past the
-  // configured sleep time never shows it as asleep until you leave and come
-  // back. Unlike companionFrame above, this does NOT force a repaint on every
-  // tick -- COMPANION_REFRESH_INTERVAL_MS only re-reads the clock (one cheap
-  // I2C transaction) and compares moods, calling requestUpdate() solely when
-  // the result actually changed, so it doesn't fight the e-ink/idle-power
-  // reasoning companionFrame's own comment lays out.
+  // configured sleep time never shows its grid tile as asleep until you leave
+  // and come back. Does NOT force a repaint on every tick --
+  // COMPANION_REFRESH_INTERVAL_MS only re-reads the clock (one cheap I2C
+  // transaction) and compares moods, calling requestUpdate() solely when the
+  // result actually changed.
   unsigned long lastCompanionRefreshMs = 0;
   companion::Mood lastCompanionMood = companion::Mood::Happy;
 
-  // Draws the companion, its speech bubble and its status into the column the
-  // theme set aside inside the cover card. No-op when disabled, or when the
-  // theme handed back no room. Draws a focus outline when focused is true.
-  void drawCompanion(Rect region, bool focused) const;
+  // Draws the companion's own current pose (mood and character both live) as
+  // its grid tile's icon, in place of the static UIIcon a normal app tile
+  // gets, fit and centred within `bounds` -- render() hands this a rect
+  // centred on (but usually larger than) GUI.getGridTileIconRect()'s own
+  // answer, since the sprite scaled to literally match that box reads
+  // smaller and thinner than the icons that actually fill it (see render()'s
+  // own comment). No label, no bubble: the tile's label is drawn generically
+  // like every other tile's (see buildEntries()), and there is no room here
+  // for more than the appearance itself.
+  void drawCompanionIcon(Rect bounds) const;
   // Opens QuickPickActivity showing homeSuggestion* -- the same pick already
-  // in the bubble, not a fresh roll, so entering the screen never surprises
-  // you with something different from what you just saw. No-op when the
-  // companion is off or has no room on this theme.
+  // rolled for this Home visit (see its own comment), not a fresh one, so
+  // entering the screen is consistent regardless of how long the cursor
+  // lingered on the tile first. No-op when the companion is off (unreachable
+  // in practice: buildEntries() already leaves its tile out of the grid then).
   void activateCompanion();
 
   void onSelectBook(const std::string& path);
