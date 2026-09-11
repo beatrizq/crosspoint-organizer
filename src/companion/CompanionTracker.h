@@ -31,6 +31,13 @@ class CompanionTracker {
   // hand-edited settings.json) cannot index past the sprite table.
   static companion::CompanionId activeId();
 
+  // SETTINGS.companionNickname when set, else the active character's own
+  // built-in name -- used both as the companion's Settings-row value and as
+  // the title of every screen that is the companion itself (QuickPickActivity,
+  // FocusSessionActivity), the same "nickname overrides the default" pattern
+  // homeAppOrder::displayName() uses for the other apps.
+  static const char* displayName();
+
   // Resolves the calendar day (one I2C read) so currentMood() is cheap from
   // the render path. Call from a lifecycle hook such as onEnter, never from a
   // render path. Home calls this every time it is entered.

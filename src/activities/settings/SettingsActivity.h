@@ -178,6 +178,14 @@ class SettingsActivity final : public Activity {
   // Set only by SettingAction::Network -- every other row here opens its own
   // activity, which owns its own WiFi/reboot lifecycle if it needs one.
   bool wifiActivated = false;
+  // Side Up/Down switch to the previous/next category, whatever setting (or
+  // the category tab bar itself) is currently selected -- no need to back up
+  // to the tab bar and cycle it with Confirm first. Guarded by a fresh-press
+  // check, same reasoning as OrganizerScreenActivity's own upPressSeen/
+  // downPressSeen: a hold begun elsewhere should not fire an unintended
+  // category switch the moment it is finally released here.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
 
   OptionPopup optionPopup;
 

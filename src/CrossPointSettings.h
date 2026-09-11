@@ -182,6 +182,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char calendarNickname[24] = "";
   char budgetNickname[24] = "";
   char habitsNickname[24] = "";
+  // Same idea, for the companion -- falls back to its own built-in character
+  // name (CompanionTracker::displayName()) rather than an app's service name,
+  // since the companion has no account behind it to keep listing.
+  char companionNickname[24] = "";
   // Home grid app order: one digit per app id, left to right (see
   // util/HomeAppOrder.h). Persisted via a category-less SettingInfo::String in
   // SettingsList.h, so it stays out of the on-device Settings screen - it is

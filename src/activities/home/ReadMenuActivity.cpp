@@ -10,8 +10,6 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "util/AppCycler.h"
-#include "util/HomeAppOrder.h"
 #include "util/RecentBookLoader.h"
 
 void ReadMenuActivity::onEnter() {
@@ -71,21 +69,6 @@ void ReadMenuActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     activateSelected();
-    return;
-  }
-
-  // Side Up/Down: previous/next app (see util/AppCycler.h), independent of
-  // the front buttons' own Up/Down (row paging) below.
-  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
-  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
-  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-    if (upPressSeen) appCycler::open(appCycler::previousApp(homeAppOrder::AppId::Read));
-    upPressSeen = false;
-    return;
-  }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
-    if (downPressSeen) appCycler::open(appCycler::nextApp(homeAppOrder::AppId::Read));
-    downPressSeen = false;
     return;
   }
 

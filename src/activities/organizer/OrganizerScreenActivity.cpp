@@ -18,7 +18,6 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/BleNotifyRelay.h"
-#include "util/AppCycler.h"
 #include "util/OrganizerSleepScreen.h"
 
 namespace {
@@ -276,19 +275,42 @@ void OrganizerScreenActivity::loop() {
     return;
   }
 
-  // Side Up/Down: previous/next app (see appCycler.h), independent of the
-  // front buttons' own Up/Down (row paging) below -- a fresh press each,
-  // same guard reasoning as Back/Confirm above.
+  // Side Up/Down: previous/next tab, from wherever the cursor already is --
+  // no need to move up to the tab bar and cycle it with Confirm first.
+  // Independent of the front buttons' own Up/Down (row paging) below; a
+  // fresh press each, same guard reasoning as Back/Confirm above.
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
   if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-    if (upPressSeen) appCycler::open(appCycler::previousApp(appId()));
+    if (upPressSeen) {
+      {
+        RenderLock lock(*this);
+        switchTab(previousTab());
+      }
+      requestUpdate(true);
+    }
     upPressSeen = false;
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
-    if (downPressSeen) appCycler::open(appCycler::nextApp(appId()));
+    if (downPressSeen) {
+      {
+        RenderLock lock(*this);
+        switchTab(nextTab());
+      }
+      requestUpdate(true);
+    }
     downPressSeen = false;
+    return;
+  }
+  // Swallowed for as long as either is held, on the press frame and every
+  // frame after: buttonNavigator's row paging below reacts to the logical
+  // NavNext/NavPrevious buttons, which are side Up/Down blended with front
+  // Left/Right (see MappedInputManager::mapButton). Without this, a side
+  // press would page a row immediately (NavNext/NavPrevious firing on the
+  // same press) and only switch the tab afterwards, on release.
+  if (mappedInput.isPressed(MappedInputManager::Button::Up) ||
+      mappedInput.isPressed(MappedInputManager::Button::Down)) {
     return;
   }
 

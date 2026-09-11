@@ -214,6 +214,32 @@ void SettingsActivity::loop() {
     return;
   }
 
+  // Side Up/Down: previous/next category, from wherever the cursor already
+  // is -- independent of the front buttons' own Up/Down (row paging) below.
+  // A fresh press each, same guard reasoning as Back/Confirm above.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    if (upPressSeen) {
+      selectedCategoryIndex = (selectedCategoryIndex + categoryCount - 1) % categoryCount;
+      selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
+      applyCategorySelection();
+      requestUpdate();
+    }
+    upPressSeen = false;
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    if (downPressSeen) {
+      selectedCategoryIndex = (selectedCategoryIndex + 1) % categoryCount;
+      selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
+      applyCategorySelection();
+      requestUpdate();
+    }
+    downPressSeen = false;
+    return;
+  }
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   int tx = 0;
   int ty = 0;
@@ -318,18 +344,6 @@ void SettingsActivity::loop() {
 
   buttonNavigator.onPreviousRelease([this] {
     selectedSettingIndex = ButtonNavigator::previousIndex(selectedSettingIndex, settingsCount + 1);
-    requestUpdate();
-  });
-
-  buttonNavigator.onNextContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::nextIndex(selectedCategoryIndex, categoryCount);
-    requestUpdate();
-  });
-
-  buttonNavigator.onPreviousContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::previousIndex(selectedCategoryIndex, categoryCount);
     requestUpdate();
   });
 

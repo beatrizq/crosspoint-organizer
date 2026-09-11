@@ -178,17 +178,21 @@ class OrganizerScreenActivity : public Activity {
   // and the cancel takes the user all the way back to Home instead of just
   // closing the popup.
   bool swallowBackRelease = false;
-  // Side Up/Down (see appCycler.h) switch to the previous/next app in the
-  // user's own App Order -- guarded by a fresh-press check the same way
-  // Back/Confirm are above, in case one was already held down when some
-  // other gesture left this screen (a hold begun elsewhere should not fire
-  // an unintended app switch the moment it is finally released here).
+  // Side Up/Down switch to the previous/next tab, whatever row (or the tab
+  // bar itself) is currently selected -- the point is reaching a sibling tab
+  // without first navigating up to the tab bar to cycle it with Confirm.
+  // Guarded by a fresh-press check the same way Back/Confirm are above, in
+  // case one was already held down when some other gesture left this screen
+  // (a hold begun elsewhere should not fire an unintended tab switch the
+  // moment it is finally released here).
   bool upPressSeen = false;
   bool downPressSeen = false;
 
  private:
   // The tab Select moves to when the tab bar is focused; wraps at the end.
   int nextTab() const { return tabCount() <= 1 ? activeTab : (activeTab + 1) % tabCount(); }
+  // Mirrors nextTab(): wraps the other way, for side Up.
+  int previousTab() const { return tabCount() <= 1 ? activeTab : (activeTab + tabCount() - 1) % tabCount(); }
   void switchTab(int next);
   // Geometry the input and render paths must agree on.
   int listTop() const;

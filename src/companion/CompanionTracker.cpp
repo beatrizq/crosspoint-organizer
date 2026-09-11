@@ -47,6 +47,11 @@ companion::CompanionId CompanionTracker::activeId() {
   return static_cast<companion::CompanionId>(id);
 }
 
+const char* CompanionTracker::displayName() {
+  if (SETTINGS.companionNickname[0] != '\0') return SETTINGS.companionNickname;
+  return companion::COMPANION_NAMES[static_cast<size_t>(activeId())];
+}
+
 bool CompanionTracker::resolveLocalDayAndMinute(int32_t& outDay, uint16_t& outMinuteOfDay) {
   uint16_t year = 0;
   uint8_t month = 0;

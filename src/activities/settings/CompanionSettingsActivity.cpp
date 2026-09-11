@@ -21,14 +21,15 @@
 #include "fontIds.h"
 
 namespace {
-constexpr int ROW_ENABLED = 0;
-constexpr int ROW_SHOW_MOOD_LABEL = 1;
-constexpr int ROW_SLEEP_START = 2;
-constexpr int ROW_SLEEP_END = 3;
-constexpr int ROW_HAPPY_POINTS = 4;
-constexpr int ROW_SATISFIED_POINTS = 5;
-constexpr int ROW_NEGLECTED_DAYS = 6;
-constexpr int ROW_RESET = 7;
+constexpr int ROW_NICKNAME = 0;
+constexpr int ROW_ENABLED = 1;
+constexpr int ROW_SHOW_MOOD_LABEL = 2;
+constexpr int ROW_SLEEP_START = 3;
+constexpr int ROW_SLEEP_END = 4;
+constexpr int ROW_HAPPY_POINTS = 5;
+constexpr int ROW_SATISFIED_POINTS = 6;
+constexpr int ROW_NEGLECTED_DAYS = 7;
+constexpr int ROW_RESET = 8;
 
 // "HH:MM" for a Sleep start/end row's value column -- digits need no
 // translation.
@@ -69,6 +70,9 @@ void CompanionSettingsActivity::stampActivationIfNeeded() {
 
 void CompanionSettingsActivity::handleSelection() {
   switch (selectedIndex) {
+    case ROW_NICKNAME:
+      editSettingsText(tr(STR_NICKNAME_ENTER), SETTINGS.companionNickname, sizeof(SETTINGS.companionNickname));
+      return;
     case ROW_ENABLED: {
       const bool turningOn = SETTINGS.companionEnabled == 0;
       startActivityForResult(std::make_unique<ConfirmationActivity>(
@@ -284,6 +288,8 @@ void CompanionSettingsActivity::render(RenderLock&&) {
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
         switch (index) {
+          case ROW_NICKNAME:
+            return std::string(tr(STR_NICKNAME));
           case ROW_ENABLED:
             return std::string(tr(STR_COMPANION_ENABLED));
           case ROW_SHOW_MOOD_LABEL:
@@ -305,6 +311,8 @@ void CompanionSettingsActivity::render(RenderLock&&) {
       nullptr, nullptr,
       [](int index) -> std::string {
         switch (index) {
+          case ROW_NICKNAME:
+            return std::string(CompanionTracker::displayName());
           case ROW_ENABLED:
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_SHOW_MOOD_LABEL:

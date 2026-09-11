@@ -1,27 +1,46 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "activities/Activity.h"
 
 /**
- * Full-screen "companion reveals what it picked for you" screen: the
- * character, scaled up, holding one line -- the task or habit text Home's
- * quick-pick chose, or an empty-pool message when there was nothing to pick
- * from. Reached from Home (companion focused, then activated) or reconstructed
- * on boot from CrossPointState when the device was showing this screen at the
- * moment it went to sleep -- either way, everything it needs comes through the
- * constructor, since it also mirrors its own content into CrossPointState on
- * entry and on every reroll (see onEnter()/reroll()) rather than main.cpp
- * fishing it out reactively.
+ * The companion's own screen: its figure, mood and speech bubble stay on
+ * screen across three tabs -- Info (today's log of completed tasks/habits,
+ * plus the same suggestion Random/Go act on), Tasks and Habits (the same
+ * items that count toward the mood: due-today-or-overdue tasks, not-yet-done
+ * habits) -- so acting on one of them updates the mood right where it is
+ * shown, without leaving to the real Tasks/Habits screens. Age and highscore
+ * (lifetime info, not today's) sit in the header's own status column instead
+ * -- the same spot Tasks/Calendar/Budget/Habits show their sync date -- since
+ * neither changes tab to tab; the companion's name is the header title
+ * itself (see CompanionTracker::displayName()), so there is nothing left to
+ * repeat in the Info tab's own body.
  *
- * Random rerolls the pick in place; Go opens the same Options menu Tasks and
- * Habits offer on a row -- Complete/Log, or Focus session -- acting on the
- * suggested item directly rather than navigating there; Back returns to Home,
- * reporting whatever is currently held as a QuickPickResult so Home's own
- * bubble can be kept in sync. setResult() has to be called before finish(),
- * not in onExit() -- ActivityManager::popActivity() reads the result before
- * it runs the outgoing activity's onExit().
+ * Reached from Home (companion focused, then activated) or reconstructed on
+ * boot from CrossPointState when the device was showing this screen at the
+ * moment it went to sleep -- either way, everything the Info tab needs comes
+ * through the constructor, since it also mirrors its own content into
+ * CrossPointState on entry and on every reroll (see onEnter()/reroll())
+ * rather than main.cpp fishing it out reactively.
+ *
+ * Side Up/Down switch tabs (see every other app screen's own convention);
+ * front buttons are whatever the active tab needs: Info keeps Confirm/Right
+ * as Select/Random exactly as before there was more than one tab (Confirm
+ * opens the same [action, Focus session] options showOptions() always has),
+ * and Left is Clear -- LogsActivity's own former Confirm action, folded in
+ * now that its entries live in this tab's own body instead of a separate
+ * screen. Tasks
+ * and Habits use Left/Confirm/Right as Up/Select/Down over that tab's own
+ * row list, the same shape a real row list's front buttons already have
+ * elsewhere. Back always leaves, in every tab, reporting whatever the Info
+ * tab currently holds as a QuickPickResult so Home's own bubble stays in
+ * sync. setResult() has to be called before finish(), not in onExit() --
+ * ActivityManager::popActivity() reads the result before it runs the
+ * outgoing activity's onExit().
  */
 class QuickPickActivity final : public Activity {
  public:
@@ -42,9 +61,39 @@ class QuickPickActivity final : public Activity {
   bool isQuickPickActivity() const override { return true; }
 
  private:
+  enum class Tab : uint8_t { Info = 0, Tasks = 1, Habits = 2 };
+  static constexpr int TAB_COUNT = 3;
+
+  Tab nextTab() const { return static_cast<Tab>((static_cast<int>(activeTab) + 1) % TAB_COUNT); }
+  Tab previousTab() const { return static_cast<Tab>((static_cast<int>(activeTab) + TAB_COUNT - 1) % TAB_COUNT); }
+  // Resets the row cursor of whichever tab is switched to -- the old cursor
+  // was into a different list, and rebuilding that list to check it is still
+  // in range is not worth it for what a fresh 0 already gives for free.
+  void switchTab(Tab next);
+
+  // The cache indices that count toward the companion's mood right now --
+  // same criteria quickpick::roll() itself pools from (see its own
+  // comment): tasks overdue or due today, habits not yet complete. Rebuilt
+  // fresh every time rather than stored, the same way roll()'s own pool is -
+  // cheap, and never goes stale across a completion or a sync.
+  std::vector<size_t> relevantTaskIndices() const;
+  std::vector<size_t> relevantHabitIndices() const;
+
   // Rerolls via quickpick::roll() -- the same pool/weights Home's own roll
   // used -- and re-mirrors the result into CrossPointState.
   void reroll();
+
+  // Today's completed tasks/habits, in completion order -- same source
+  // LogsActivity's own loadEntries() read (TodoistTaskCache::
+  // getCompletedTodayTitles() plus completed habits), just titles only:
+  // this tab's own row list has no subtitle to put a source app in, the way
+  // LogsActivity's did.
+  std::vector<std::string> logEntries() const;
+  // Left, Info tab only -- LogsActivity's own former Confirm action, moved
+  // here now that its list lives in this tab's own body. Same confirm-then-
+  // clear-both-caches behaviour, and the same mood recalculation afterwards
+  // (see its own comment for why that call is needed at all).
+  void offerClearLogs();
 
   // Go opens this. Same [action, Focus session] choice Tasks/Habits show on
   // a row, resolved against itemId rather than a selected row.
@@ -79,10 +128,43 @@ class QuickPickActivity final : public Activity {
   // before.
   bool currentPickStillEligible() const;
 
+  // Tasks tab row action -- mirrors TasksActivity's own showRowOptions() and
+  // the actions it leads to, resolved against a cache index straight from
+  // relevantTaskIndices() rather than a row list this screen owns a copy of.
+  void showTaskRowOptions(size_t cacheIndex);
+  void completeTaskRow(size_t cacheIndex);
+  void offerRescheduleRow(size_t cacheIndex);
+  void offerRescheduleDatePickerRow(size_t cacheIndex);
+  void clearTaskDueDateRow(size_t cacheIndex);
+  void offerFocusSessionForTask(size_t cacheIndex);
+
+  // Habits tab row action -- mirrors HabitsActivity's own showRowOptions().
+  void showHabitRowOptions(size_t cacheIndex);
+  void logHabitRow(size_t cacheIndex);
+  void completeHabitRow(size_t cacheIndex);
+  void offerFocusSessionForHabit(size_t cacheIndex);
+
+  // Common tail of every row action above: rerolls the Info tab's own
+  // suggestion if what it was showing is no longer eligible, then repaints.
+  void afterRowAction();
+
+  // render()'s own three tab bodies, sharing the rect below the companion
+  // figure and speech bubble (present, unchanged, in all three -- see this
+  // file's own header comment).
+  void renderInfoTab(int top, int height) const;
+  void renderTasksTab(int top, int height) const;
+  void renderHabitsTab(int top, int height) const;
+
   std::string pickedText;
   std::string itemId;
   bool isHabit;
   bool poolEmpty;
+
+  Tab activeTab = Tab::Info;
+  // Row cursor within Tasks'/Habits' own filtered list -- an index into
+  // relevantTaskIndices()/relevantHabitIndices(), not a cache index itself.
+  int taskSelectedRow = 0;
+  int habitSelectedRow = 0;
 
   // See OrganizerScreenActivity's own swallow flags for why these exist: the
   // Options popup (and the confirmation or number entry it can lead to)
@@ -90,4 +172,9 @@ class QuickPickActivity final : public Activity {
   // owed to this screen once the sub-activity it was pushed from closes.
   bool swallowConfirmRelease = false;
   bool swallowBackRelease = false;
+  // Side Up/Down switch tabs -- guarded by a fresh-press check the same way
+  // every other app screen's own upPressSeen/downPressSeen are, in case one
+  // was already held down when some other gesture landed on this screen.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
 };
