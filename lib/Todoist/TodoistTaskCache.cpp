@@ -197,17 +197,46 @@ void TodoistTaskCache::rolloverCompletedIfNeeded() {
   // Undated ("today" unknown) leaves the counter alone rather than resetting
   // it against a sentinel: the same tolerance applyOverdueFlags() has for not
   // yet knowing what today is.
-  if (today == todoist::DUE_NONE || completedDay == today) return;
+  //
+  // Rolls forward only: completedDay ahead of syncDate's own (possibly stale,
+  // not-yet-synced-today) notion of today means clearCompletedIfStale() has
+  // already advanced it from the real clock, which is more current than a
+  // stale syncDate can be. Treating that as "different, so roll over" would
+  // walk completedDay back to the stale day and wipe the very completion this
+  // call is in the middle of recording -- exactly what happened completing a
+  // task before today's first sync: this function and clearCompletedIfStale()
+  // would fight over completedDay, each call here reverting it to yesterday
+  // just in time for the next recordActivity() to see "stale" and clear it
+  // again, so the completion and the mood credit it should have earned both
+  // silently disappeared.
+  if (today == todoist::DUE_NONE) return;
+  if (completedDay != todoist::DUE_NONE && completedDay >= today) return;
   completedDay = today;
   completedToday = 0;
   completedTodayTitles.clear();
+  // A completion queued for the server but not pushed before the day it
+  // happened on ended is abandoned rather than carried forward -- by
+  // design, per user choice: sync the same day or the completion is lost.
+  // The task stays gone from `tasks` (already erased in completeTaskAt())
+  // until a real sync re-fetches it, still open, from a server that was
+  // never actually told.
+  pendingIds.clear();
 }
 
 void TodoistTaskCache::clearCompletedIfStale(const uint16_t today) {
-  if (today == todoist::DUE_NONE || completedDay == todoist::DUE_NONE || completedDay == today) return;
+  if (today == todoist::DUE_NONE || completedDay == todoist::DUE_NONE) return;
+  // Only ever advances -- see rolloverCompletedIfNeeded()'s own comment: the
+  // two calls must agree that completedDay never moves backward, or whichever
+  // runs second undoes whatever the first one just recorded.
+  if (completedDay >= today) return;
   completedDay = today;
   completedToday = 0;
   completedTodayTitles.clear();
+  // Same abandon-on-rollover policy as rolloverCompletedIfNeeded()'s own
+  // pendingIds.clear() -- whichever of the two calls notices the day changed
+  // first, a completion not pushed before then is dropped, not carried into
+  // the new day.
+  pendingIds.clear();
 }
 
 void TodoistTaskCache::clearCompletedNow() {

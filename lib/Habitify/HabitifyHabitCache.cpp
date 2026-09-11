@@ -165,11 +165,21 @@ void HabitifyHabitCache::clear() {
 }
 
 bool HabitifyHabitCache::rolloverIfStale(const uint16_t today) {
-  if (today == civil::NO_DATE || syncDate == civil::NO_DATE || syncDate == today) return false;
+  if (today == civil::NO_DATE || syncDate == civil::NO_DATE) return false;
+  // Only ever advances -- see this method's own header comment for why a
+  // syncDate already at or ahead of `today` must be left alone.
+  if (syncDate >= today) return false;
   syncDate = today;
   for (auto& habit : habits) {
     habit.current = 0.0f;
     habit.completedByStatus = false;
+    // A log or Complete queued for the server but not pushed before the day
+    // it happened on ended is abandoned, not carried into the new day -- by
+    // design, per user choice: sync the same day or it's lost. Same policy
+    // TodoistTaskCache::rolloverCompletedIfNeeded()/clearCompletedIfStale()
+    // apply to a task completion's own pendingIds.
+    habit.pending = 0.0f;
+    habit.pendingComplete = false;
   }
   return true;
 }

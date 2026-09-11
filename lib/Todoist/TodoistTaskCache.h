@@ -33,10 +33,12 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   std::vector<TodoistPendingReschedule> pendingReschedules;
   std::string syncDate;         // Local date of the last sync, "YYYY-MM-DD"
   uint16_t completedToday = 0;  // Tasks completed on this device today
-  // Day completedToday belongs to, keyed the same way syncDate's day is
-  // (see completeTaskAt): the class already treats syncDate as "today"
-  // everywhere else, so the completion counter follows the same convention
-  // rather than introducing a second notion of today.
+  // Day completedToday belongs to. Normally keyed the same way syncDate's day
+  // is (see completeTaskAt/rolloverCompletedIfNeeded), but clearCompletedIfStale()
+  // can also advance it straight from the real clock, ahead of a syncDate that
+  // has not synced yet today -- see rolloverCompletedIfNeeded()'s own comment
+  // for why it must never walk this back down to match a stale syncDate once
+  // that has happened.
   uint16_t completedDay = todoist::DUE_NONE;
   // Titles behind completedToday, for the Companion's Logs screen. See
   // getCompletedTodayTitles()'s own comment for how it relates to the count.
@@ -128,21 +130,35 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   void setCompletedToday(uint16_t count, const std::string& date, std::vector<std::string>&& titles);
 
   // Clears today's completion log if `today` (independently resolved by the
-  // caller, NOT derived from this cache's own syncDate) has moved past
-  // completedDay. Unlike rolloverCompletedIfNeeded(), this can run before
-  // syncDate itself has been refreshed this sync -- see runTasks()'s call
-  // site, which calls this right after a fresh NTP resolution, before any
-  // network fetch that could still fail. Touches only completedDay/
-  // completedToday/completedTodayTitles -- never syncDate itself (a
-  // different, local-date concept used for overdue flags) and never the
-  // task list or pending queues.
+  // caller, NOT derived from this cache's own syncDate) has genuinely moved
+  // past completedDay -- a no-op if completedDay is already at or ahead of
+  // it, the same "only ever advance" rule rolloverCompletedIfNeeded() applies
+  // in the other direction, so the two can never fight over completedDay and
+  // undo each other's advance. Unlike rolloverCompletedIfNeeded(), this can
+  // run before syncDate itself has been refreshed this sync -- see
+  // runTasks()'s call site, which calls this right after a fresh NTP
+  // resolution, before any network fetch that could still fail.
+  //
+  // Also drops pendingIds when it rolls over: a completion queued for the
+  // server is abandoned, not carried into the new day, if it was not synced
+  // before the day it happened on ended -- by design, the same choice this
+  // makes for completedToday/completedTodayTitles, so the same "sync the
+  // same day or it's lost" rule applies uniformly to everything a local
+  // completion touches. Never touches syncDate itself (a different,
+  // local-date concept used for overdue flags), pendingReschedules (a
+  // reschedule has nothing to do with which day it was made), or the task
+  // list.
   void clearCompletedIfStale(uint16_t today);
 
   // Manually zeroes today's completion log right now, unconditionally -- for
-  // a user-triggered "Clear" action (see LogsActivity), independent of
-  // clearCompletedIfStale()'s own automatic day-boundary check. Leaves
-  // completedDay untouched: a later legitimate completion or sync still
-  // rolls over/overwrites correctly regardless of this having run.
+  // a user-triggered "Clear" action (see QuickPickActivity's Info tab),
+  // independent of clearCompletedIfStale()'s own automatic day-boundary
+  // check. Leaves completedDay and pendingIds untouched: this clears what the
+  // log already shows for today, not what is still owed to the server -- a
+  // completion queued here is still the same day it was made, so it still
+  // deserves its sync, same as it would if Clear had never been pressed. A
+  // later legitimate completion or sync still rolls over/overwrites correctly
+  // regardless of this having run.
   void clearCompletedNow();
 
  private:
@@ -150,9 +166,13 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // state, so it is set here rather than stored by the parser or the file.
   void applyOverdueFlags();
 
-  // Zeroes completedToday the first time syncDate's day moves past
-  // completedDay. Shared by setTasks (a sync can itself roll the day over)
-  // and completeTaskAt (a local completion can too, between syncs).
+  // Zeroes completedToday (and abandons pendingIds -- see this method's own
+  // .cpp comment) the first time syncDate's day moves past completedDay.
+  // Shared by setTasks (a sync can itself roll the day over) and
+  // completeTaskAt (a local completion can too, between syncs). Never rolls
+  // completedDay backward -- see its own comment for why a syncDate that has
+  // not synced yet today must not override a completedDay
+  // clearCompletedIfStale() already advanced from the real clock.
   void rolloverCompletedIfNeeded();
 };
 

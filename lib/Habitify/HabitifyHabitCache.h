@@ -107,20 +107,34 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   void clear();
 
   // Clears every habit's today-scoped completion state (current,
-  // completedByStatus) and advances syncDate to `today` when today has moved
-  // past this cache's own syncDate. Never touches pending/pendingComplete
-  // (unsynced local actions still owed to the server) or the habit list
-  // itself -- only what feeds isComplete() for a day that has since passed.
-  // `today` is UTC-packed, matching syncDate's own existing convention (see
-  // setHabits()'s doc comment above). Returns whether anything changed, so a
-  // caller outside a sync (main.cpp's boot path) knows whether to save.
+  // completedByStatus, and -- deliberately, see the .cpp comment -- pending/
+  // pendingComplete too) and advances syncDate to `today` when today has
+  // genuinely moved past this cache's own syncDate -- a no-op (returns false)
+  // if syncDate is already at or ahead of `today`, so a real-clock check like
+  // this one can never be dragged backward by a second, independent day
+  // source (Habitify has none today, but Todoist's equivalent pair --
+  // TodoistTaskCache::rolloverCompletedIfNeeded()/clearCompletedIfStale() --
+  // do, and this mirrors the same "only ever advance" rule they settled on).
+  // Unlike a completed task (which is already gone from the visible list the
+  // moment it's completed), a habit still logged locally reads as done right
+  // up until this fires -- a log or Complete not pushed before the day it
+  // happened on ended is abandoned along with it, by the same "sync the same
+  // day or it's lost" choice, so the habit reverts to whatever the server
+  // still has for it. Never touches the habit list itself. `today` is
+  // UTC-packed, matching syncDate's own existing convention (see setHabits()'s
+  // doc comment above). Returns whether anything changed, so a caller outside
+  // a sync (main.cpp's boot path) knows whether to save.
   bool rolloverIfStale(uint16_t today);
 
   // Manually zeroes every habit's today-scoped completion state right now,
   // unconditionally -- for a user-triggered "Clear" action (see
-  // LogsActivity), independent of rolloverIfStale()'s own automatic
-  // day-boundary check. Never touches pending/pendingComplete or syncDate,
-  // same reasoning as rolloverIfStale().
+  // QuickPickActivity's Info tab), independent of rolloverIfStale()'s own
+  // automatic day-boundary check. Unlike rolloverIfStale(), leaves
+  // pending/pendingComplete and syncDate alone: this clears what already
+  // reached the server's ledger for today, not what is still owed to it --
+  // a log or Complete queued here is still the same day it was made, so it
+  // still deserves its sync, same as it would if Clear had never been
+  // pressed.
   void clearCompletedNow();
 };
 
