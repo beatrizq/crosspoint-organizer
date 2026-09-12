@@ -60,7 +60,7 @@ class QuickPickActivity final : public Activity {
   bool isQuickPickActivity() const override { return true; }
 
  private:
-  enum class Tab : uint8_t { Logs = 0, Tasks = 1, Habits = 2 };
+  enum class Tab : uint8_t { Tasks = 0, Habits = 1, Logs = 2 };
   static constexpr int TAB_COUNT = 3;
 
   Tab nextTab() const { return static_cast<Tab>((static_cast<int>(activeTab) + 1) % TAB_COUNT); }
@@ -159,7 +159,7 @@ class QuickPickActivity final : public Activity {
   bool isHabit;
   bool poolEmpty;
 
-  Tab activeTab = Tab::Logs;
+  Tab activeTab = Tab::Tasks;
   // Row cursor within Tasks'/Habits' own filtered list -- an index into
   // relevantTaskIndices()/relevantHabitIndices(), not a cache index itself.
   int taskSelectedRow = 0;

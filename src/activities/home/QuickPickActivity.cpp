@@ -83,7 +83,7 @@ void mirrorToAppState(const std::string& text, const std::string& itemId, const 
 void QuickPickActivity::onEnter() {
   Activity::onEnter();
   mirrorToAppState(pickedText, itemId, isHabit, poolEmpty);
-  activeTab = Tab::Logs;
+  activeTab = Tab::Tasks;
   taskSelectedRow = 0;
   habitSelectedRow = 0;
   requestUpdate(true);
@@ -1017,9 +1017,9 @@ void QuickPickActivity::render(RenderLock&&) {
                  CompanionTracker::displayName(), status);
 
   const std::vector<TabInfo> tabs = {
-      {tr(STR_COMPANION_TAB_LOGS), activeTab == Tab::Logs},
       {tr(STR_COMPANION_TAB_TASKS), activeTab == Tab::Tasks},
       {tr(STR_COMPANION_TAB_HABITS), activeTab == Tab::Habits},
+      {tr(STR_COMPANION_TAB_LOGS), activeTab == Tab::Logs},
   };
   // Always drawn as "focused": there is no separate level where the cursor
   // sits on the tab bar itself here (side Up/Down switch it directly), so

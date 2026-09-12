@@ -42,10 +42,13 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
       return renderBlankSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
-    // DYNAMIC's own capture (ActivityManager::goToSleep()) writes to the same
-    // /sleep.bmp CUSTOM reads from, so the two render identically.
-    case (CrossPointSettings::SLEEP_SCREEN_MODE::DYNAMIC):
       return renderCustomSleepScreen();
+    // DYNAMIC's own capture (ActivityManager::goToSleep()) writes to the same
+    // /sleep.bmp CUSTOM reads from, so the two render identically -- except
+    // DYNAMIC also overlays the "Sleep screen" label bar (see
+    // renderCustomSleepScreen()'s own doc comment for why).
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::DYNAMIC):
+      return renderCustomSleepScreen(true);
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER):
       return renderCoverSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
@@ -59,7 +62,7 @@ void SleepActivity::onEnter() {
   }
 }
 
-void SleepActivity::renderCustomSleepScreen() const {
+void SleepActivity::renderCustomSleepScreen(const bool showSleepLabel) const {
   // Check if we have a /.sleep (preferred) or /sleep directory
   const char* sleepDir = nullptr;
   auto dir = Storage.open("/.sleep");
@@ -72,7 +75,7 @@ void SleepActivity::renderCustomSleepScreen() const {
     Bitmap bitmap(file, true);
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       LOG_DBG("SLP", "Loading: /sleep.bmp");
-      renderBitmapSleepScreen(bitmap);
+      renderBitmapSleepScreen(bitmap, showSleepLabel);
       file.close();
       if (dir) dir.close();
       return;
@@ -174,7 +177,7 @@ void SleepActivity::renderDefaultSleepScreen() const {
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
 
-void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
+void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool showSleepLabel) const {
   int x, y;
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
@@ -226,6 +229,17 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
     renderer.invertScreen();
   }
 
+  // Only the plain (non-greyscale) path below: the greyscale composite that
+  // follows redraws the bitmap from scratch into its own separate buffers
+  // (rewindToData()+clearScreen() per pass), which would wipe this label
+  // right back out before displayGrayBuffer() ever runs. A DYNAMIC capture is
+  // always a plain 1-bit screenshot of the framebuffer (see
+  // ActivityManager::goToSleep()), never a greyscale-tagged bitmap, so this
+  // never actually applies to the one caller that passes showSleepLabel=true.
+  if (showSleepLabel && !hasGreyscale) {
+    drawSleepScreenLabel();
+  }
+
   if (hasGreyscale) {
     // OEM grayscale pipeline base. Must stay HALF: the gray nudge LUT is
     // calibrated against the pixel state the single-pass HALF waveform leaves
@@ -255,18 +269,21 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
 }
 
 void SleepActivity::renderCoverSleepScreen() const {
-  void (SleepActivity::*renderNoCoverSleepScreen)() const;
-  switch (SETTINGS.sleepScreen) {
-    case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
-      renderNoCoverSleepScreen = &SleepActivity::renderCustomSleepScreen;
-      break;
-    default:
-      renderNoCoverSleepScreen = &SleepActivity::renderDefaultSleepScreen;
-      break;
-  }
+  // A plain function (not a member-function pointer, now that
+  // renderCustomSleepScreen() and renderDefaultSleepScreen() no longer share
+  // a signature): COVER_CUSTOM's fallback is never a DYNAMIC capture, so it
+  // always passes showSleepLabel's default (false).
+  const bool useCustomFallback = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM;
+  auto renderNoCoverSleepScreen = [this, useCustomFallback] {
+    if (useCustomFallback) {
+      renderCustomSleepScreen();
+    } else {
+      renderDefaultSleepScreen();
+    }
+  };
 
   if (APP_STATE.openEpubPath.empty()) {
-    return (this->*renderNoCoverSleepScreen)();
+    return renderNoCoverSleepScreen();
   }
 
   std::string coverBmpPath;
@@ -278,12 +295,12 @@ void SleepActivity::renderCoverSleepScreen() const {
     Xtc lastXtc(APP_STATE.openEpubPath, "/.crosspoint");
     if (!lastXtc.load()) {
       LOG_ERR("SLP", "Failed to load last XTC");
-      return (this->*renderNoCoverSleepScreen)();
+      return renderNoCoverSleepScreen();
     }
 
     if (!lastXtc.generateCoverBmp()) {
       LOG_ERR("SLP", "Failed to generate XTC cover bmp");
-      return (this->*renderNoCoverSleepScreen)();
+      return renderNoCoverSleepScreen();
     }
 
     coverBmpPath = lastXtc.getCoverBmpPath();
@@ -292,12 +309,12 @@ void SleepActivity::renderCoverSleepScreen() const {
     Txt lastTxt(APP_STATE.openEpubPath, "/.crosspoint");
     if (!lastTxt.load()) {
       LOG_ERR("SLP", "Failed to load last TXT");
-      return (this->*renderNoCoverSleepScreen)();
+      return renderNoCoverSleepScreen();
     }
 
     if (!lastTxt.generateCoverBmp()) {
       LOG_ERR("SLP", "No cover image found for TXT file");
-      return (this->*renderNoCoverSleepScreen)();
+      return renderNoCoverSleepScreen();
     }
 
     coverBmpPath = lastTxt.getCoverBmpPath();
@@ -307,17 +324,17 @@ void SleepActivity::renderCoverSleepScreen() const {
     // Skip loading css since we only need metadata here
     if (!lastEpub.load(true, true)) {
       LOG_ERR("SLP", "Failed to load last epub");
-      return (this->*renderNoCoverSleepScreen)();
+      return renderNoCoverSleepScreen();
     }
 
     if (!lastEpub.generateCoverBmp(cropped)) {
       LOG_ERR("SLP", "Failed to generate cover bmp");
-      return (this->*renderNoCoverSleepScreen)();
+      return renderNoCoverSleepScreen();
     }
 
     coverBmpPath = lastEpub.getCoverBmpPath(cropped);
   } else {
-    return (this->*renderNoCoverSleepScreen)();
+    return renderNoCoverSleepScreen();
   }
 
   HalFile file;
@@ -330,7 +347,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     }
   }
 
-  return (this->*renderNoCoverSleepScreen)();
+  return renderNoCoverSleepScreen();
 }
 
 void SleepActivity::renderLastScreenSleepScreen() const {
@@ -348,4 +365,19 @@ void SleepActivity::renderLastScreenSleepScreen() const {
 void SleepActivity::renderBlankSleepScreen() const {
   renderer.clearScreen();
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+}
+
+void SleepActivity::drawSleepScreenLabel() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  const int barHeight = metrics.buttonHintsHeight;
+  const int barY = pageHeight - barHeight;
+
+  // Solid black bar over whatever the captured screen's own (now-inert)
+  // button-hints row was showing, "Sleep screen" centered in white on top --
+  // see this method's own declaration for why only DYNAMIC draws this.
+  renderer.fillRect(0, barY, pageWidth, barHeight);
+  const int textY = barY + (barHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
+  renderer.drawCenteredText(UI_10_FONT_ID, textY, tr(STR_SLEEP_SCREEN_LABEL), false);
 }

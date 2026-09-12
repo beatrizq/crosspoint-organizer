@@ -1,5 +1,6 @@
 #include "LyraTheme.h"
 
+#include <CivilTime.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalGPIO.h>
@@ -9,10 +10,13 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
 #include "RecentBooksStore.h"
+#include "activities/organizer/OrganizerLabels.h"
 #include "components/UITheme.h"
 #include "components/icons/bell80.h"
 #include "components/icons/book.h"
@@ -159,10 +163,27 @@ void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 
   // Clock, mirroring the battery on the opposite corner. Silently absent when
   // there is no usable time yet (no hardware RTC and never NTP-synced this
-  // power session) rather than showing a stale or garbage value.
+  // power session) rather than showing a stale or garbage value. Today's date
+  // rides alongside it, "." separated, in the same "Mon 17 Aug" format
+  // Tasks/Calendar/Budget/Habits already use for their own header date
+  // (organizer::formatDayLabel) -- silently dropped along with the time when
+  // the clock isn't usable yet, same as the time itself.
   char timeBuf[9];
   if (halClock.formatTime(timeBuf, sizeof(timeBuf), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1)) {
-    renderer.drawText(SMALL_FONT_ID, rect.x + LyraMetrics::values.contentSidePadding, rect.y + 5, timeBuf, true);
+    char headerClock[32];
+    strlcpy(headerClock, timeBuf, sizeof(headerClock));
+
+    uint16_t year = 0;
+    uint8_t month = 0;
+    uint8_t day = 0;
+    uint8_t hour = 0;
+    uint8_t minute = 0;
+    if (halClock.getUtcDateTime(year, month, day, hour, minute)) {
+      char dateBuf[16];
+      organizer::formatDayLabel(civil::packDate(year, month, day), dateBuf, sizeof(dateBuf));
+      snprintf(headerClock, sizeof(headerClock), "%s . %s", timeBuf, dateBuf);
+    }
+    renderer.drawText(SMALL_FONT_ID, rect.x + LyraMetrics::values.contentSidePadding, rect.y + 5, headerClock, true);
   }
 
   int maxTitleWidth = title != nullptr ? renderer.getTextWidth(UI_12_FONT_ID, title, EpdFontFamily::BOLD) : 0;
