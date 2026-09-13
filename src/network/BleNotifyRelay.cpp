@@ -220,6 +220,26 @@ void processCommand(char* buf, size_t len) {
   // which just logs "packet type '...' not understood" and moves on.
 }
 
+// Step 1 of the bonding follow-up (see this session's scoping notes): makes
+// bonding POSSIBLE without making it REQUIRED -- the write characteristic
+// below is still plain WRITE/WRITE_NR, so an unbonded Gadgetbridge (today's
+// only tested configuration) keeps working exactly as before. A bond only
+// happens if Gadgetbridge's own bonding UI (BangleJSCoordinator's
+// BONDING_STYLE_ASK) is used to request one. Requiring it (WRITE_ENC) is a
+// deliberate later step, once a bond is confirmed to actually form and
+// survive reconnects on real hardware.
+void configureSecurity() {
+  // Just Works: no passkey/numeric-comparison UI, since this device has no
+  // screen or keyboard to show or enter one. mitm=false because Just Works
+  // cannot offer MITM protection by definition (no out-of-band channel to
+  // authenticate against); sc=true (LE Secure Connections) is the modern
+  // pairing algorithm and costs nothing extra here -- NimBLE's crypto is
+  // already compiled into this binary either way (see platformio.ini's own
+  // SM_LEGACY/SM_SC revert note).
+  NimBLEDevice::setSecurityAuth(/*bonding=*/true, /*mitm=*/false, /*sc=*/true);
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+}
+
 class ServerCallbacks final : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* /*server*/, NimBLEConnInfo& connInfo) override {
     LOG_INF("BLE", "Connected: %s", connInfo.getAddress().toString().c_str());
@@ -240,6 +260,16 @@ class ServerCallbacks final : public NimBLEServerCallbacks {
   }
 
   void onMTUChange(const uint16_t mtu, NimBLEConnInfo& /*connInfo*/) override { LOG_INF("BLE", "MTU: %u", mtu); }
+
+  // Diagnostic only, for confirming on real hardware whether Gadgetbridge's
+  // own bonding UI actually produced a bond (see configureSecurity()'s own
+  // comment) -- fires whether or not a bond resulted, since Just Works still
+  // completes an (unbonded) encrypted-for-this-session pairing even when the
+  // peer declines to bond.
+  void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
+    LOG_INF("BLE", "Auth complete: bonded=%d encrypted=%d authenticated=%d", connInfo.isBonded(),
+            connInfo.isEncrypted(), connInfo.isAuthenticated());
+  }
 };
 
 class WriteCallbacks final : public NimBLECharacteristicCallbacks {
@@ -294,6 +324,7 @@ void bringUp() {
   const uint32_t freeHeapBefore = ESP.getFreeHeap();
 
   NimBLEDevice::init(DEVICE_NAME);
+  configureSecurity();
 
   NimBLEServer* server = NimBLEDevice::createServer();
   server->setCallbacks(&serverCallbacks);
@@ -369,6 +400,10 @@ void BleNotifyRelay::resume() {
   // new one, so calling bringUp() again here would be redundant at best and
   // risk a duplicate service at worst.
   NimBLEDevice::init(DEVICE_NAME);
+  // deinit(false) tears down the whole host stack (see pause()'s own doc
+  // comment), which resets the security config set in bringUp() -- reapply
+  // it every time init() runs again, not just the first time.
+  configureSecurity();
   NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
   if (!advertising->start()) {
     LOG_ERR("BLE", "Failed to resume advertising -- Gadgetbridge will never see this device");

@@ -5,8 +5,41 @@
 #include <algorithm>
 #include <cstring>
 
+namespace {
+// Sender/title/content are drawn as plain single-line text (see
+// BleNotificationsActivity's list row and BleNotificationDetailActivity's own
+// rendering) -- a real Android notification body can legitimately contain a
+// literal control character (a multi-line message preview's embedded '\n'),
+// which has no glyph in any of this firmware's fonts. GfxRenderer's codepoint
+// loop then logs "No glyph for codepoint N" and silently skips it for every
+// one in the string -- harmless, but noisy, and the newline doesn't start a
+// new line in a single-line drawer either, so it may as well not be there.
+// Replacing every C0 control byte (< ' ') with a plain space here, once, at
+// the point a notification enters the queue, keeps every future read clean
+// without each display needing its own sanitizing pass. UTF-8-safe: every
+// continuation/lead byte of a multi-byte sequence is >= 0x80, so this can
+// never touch the middle of one.
+void sanitizeControlChars(char* text) {
+  for (char* p = text; *p != '\0'; p++) {
+    if (static_cast<unsigned char>(*p) < ' ') *p = ' ';
+  }
+}
+}  // namespace
+
 void BleNotificationQueue::push(const uint32_t id, const bool isCall, const char* sender, const char* title,
                                 const char* content, const uint8_t hour, const uint8_t minute) {
+  // Sanitized up front, before the dedup check below as well as storage:
+  // dedup compares these against already-stored (and thus already-sanitized)
+  // entries, so comparing against the raw strings here would never match a
+  // resend of the same notification whenever it contains a control character.
+  BleNotificationEntry incoming{};
+  strlcpy(incoming.sender, sender != nullptr ? sender : "", sizeof(incoming.sender));
+  strlcpy(incoming.title, title != nullptr ? title : "", sizeof(incoming.title));
+  strlcpy(incoming.content, content != nullptr ? content : "", sizeof(incoming.content));
+  sanitizeControlChars(incoming.sender);
+  sanitizeControlChars(incoming.title);
+  sanitizeControlChars(incoming.content);
+
   // A BLE reconnect can resend every notification still active on the phone,
   // not just what arrived since the last connection (Gadgetbridge itself has
   // no "already sent to this device" tracking) -- skip one already held
@@ -30,9 +63,8 @@ void BleNotificationQueue::push(const uint32_t id, const bool isCall, const char
       const BleNotificationEntry& existing = getEntry(i);
       if (existing.isCall) continue;
       if (id != 0 && existing.id == id) return;
-      if (strcmp(existing.sender, sender != nullptr ? sender : "") == 0 &&
-          strcmp(existing.title, title != nullptr ? title : "") == 0 &&
-          strcmp(existing.content, content != nullptr ? content : "") == 0) {
+      if (strcmp(existing.sender, incoming.sender) == 0 && strcmp(existing.title, incoming.title) == 0 &&
+          strcmp(existing.content, incoming.content) == 0) {
         return;
       }
     }
@@ -41,9 +73,9 @@ void BleNotificationQueue::push(const uint32_t id, const bool isCall, const char
   BleNotificationEntry& e = entries[pos];
   e.id = id;
   e.isCall = isCall;
-  strlcpy(e.sender, sender != nullptr ? sender : "", sizeof(e.sender));
-  strlcpy(e.title, title != nullptr ? title : "", sizeof(e.title));
-  strlcpy(e.content, content != nullptr ? content : "", sizeof(e.content));
+  strlcpy(e.sender, incoming.sender, sizeof(e.sender));
+  strlcpy(e.title, incoming.title, sizeof(e.title));
+  strlcpy(e.content, incoming.content, sizeof(e.content));
   e.hour = hour;
   e.minute = minute;
 

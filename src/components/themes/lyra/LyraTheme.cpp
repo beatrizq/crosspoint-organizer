@@ -164,10 +164,11 @@ void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   // Clock, mirroring the battery on the opposite corner. Silently absent when
   // there is no usable time yet (no hardware RTC and never NTP-synced this
   // power session) rather than showing a stale or garbage value. Today's date
-  // rides alongside it, "." separated, in the same "Mon 17 Aug" format
-  // Tasks/Calendar/Budget/Habits already use for their own header date
-  // (organizer::formatDayLabel) -- silently dropped along with the time when
-  // the clock isn't usable yet, same as the time itself.
+  // rides alongside it, middle-dot separated (same glyph and spacing
+  // QuickPickActivity's own age/highscore status line uses), in the same
+  // "Mon 17 Aug" format Tasks/Calendar/Budget/Habits already use for their
+  // own header date (organizer::formatDayLabel) -- silently dropped along
+  // with the time when the clock isn't usable yet, same as the time itself.
   char timeBuf[9];
   if (halClock.formatTime(timeBuf, sizeof(timeBuf), SETTINGS.clockUtcOffsetQ, SETTINGS.clockFormat == 1)) {
     char headerClock[32];
@@ -181,7 +182,7 @@ void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
     if (halClock.getUtcDateTime(year, month, day, hour, minute)) {
       char dateBuf[16];
       organizer::formatDayLabel(civil::packDate(year, month, day), dateBuf, sizeof(dateBuf));
-      snprintf(headerClock, sizeof(headerClock), "%s . %s", timeBuf, dateBuf);
+      snprintf(headerClock, sizeof(headerClock), "%s  \xC2\xB7  %s", timeBuf, dateBuf);
     }
     renderer.drawText(SMALL_FONT_ID, rect.x + LyraMetrics::values.contentSidePadding, rect.y + 5, headerClock, true);
   }
