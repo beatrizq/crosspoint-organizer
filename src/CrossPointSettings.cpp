@@ -187,14 +187,44 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  frontButtonRight1 =
-      clamp(doc["frontButtonRight1"] | (uint8_t)FRONT_HW_RIGHT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT1);
-  frontButtonRight2 =
-      clamp(doc["frontButtonRight2"] | (uint8_t)FRONT_HW_RIGHT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT2);
-  frontButtonLeft1 =
-      clamp(doc["frontButtonLeft1"] | (uint8_t)FRONT_HW_LEFT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT1);
-  frontButtonLeft2 =
-      clamp(doc["frontButtonLeft2"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
+  // The JSON keys were renamed (frontButtonBack/Confirm/Left/Right -> frontButtonRight1/
+  // Right2/Left1/Left2) to match the button-ID rename, but an existing on-disk settings.json
+  // still has the OLD keys -- reading only the new ones would silently discard any saved
+  // custom remap and fall back to hardware defaults. Read the new key first; if it is absent,
+  // fall back to the old key so an existing save still loads correctly, and flag a resave so
+  // it is written back out under the new key from then on.
+  if (doc["frontButtonRight1"].isNull() && !doc["frontButtonBack"].isNull()) {
+    frontButtonRight1 =
+        clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_RIGHT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT1);
+    needsResave = true;
+  } else {
+    frontButtonRight1 =
+        clamp(doc["frontButtonRight1"] | (uint8_t)FRONT_HW_RIGHT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT1);
+  }
+  if (doc["frontButtonRight2"].isNull() && !doc["frontButtonConfirm"].isNull()) {
+    frontButtonRight2 =
+        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_RIGHT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT2);
+    needsResave = true;
+  } else {
+    frontButtonRight2 =
+        clamp(doc["frontButtonRight2"] | (uint8_t)FRONT_HW_RIGHT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT2);
+  }
+  if (doc["frontButtonLeft1"].isNull() && !doc["frontButtonLeft"].isNull()) {
+    frontButtonLeft1 =
+        clamp(doc["frontButtonLeft"] | (uint8_t)FRONT_HW_LEFT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT1);
+    needsResave = true;
+  } else {
+    frontButtonLeft1 =
+        clamp(doc["frontButtonLeft1"] | (uint8_t)FRONT_HW_LEFT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT1);
+  }
+  if (doc["frontButtonLeft2"].isNull() && !doc["frontButtonRight"].isNull()) {
+    frontButtonLeft2 =
+        clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
+    needsResave = true;
+  } else {
+    frontButtonLeft2 =
+        clamp(doc["frontButtonLeft2"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
+  }
   validateFrontButtonMapping(s);
 
   // Reader font size — an actual point size since 1.5. Files written by 1.4 and
