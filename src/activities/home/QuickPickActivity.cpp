@@ -86,6 +86,7 @@ void QuickPickActivity::onEnter() {
   activeTab = Tab::Tasks;
   taskSelectedRow = 0;
   habitSelectedRow = 0;
+  companionFocused = false;
   requestUpdate(true);
 }
 
@@ -94,6 +95,7 @@ void QuickPickActivity::switchTab(const Tab next) {
   activeTab = next;
   taskSelectedRow = 0;
   habitSelectedRow = 0;
+  companionFocused = false;
 }
 
 std::vector<size_t> QuickPickActivity::relevantTaskIndices() const {
@@ -151,8 +153,8 @@ void QuickPickActivity::offerClearLogs() {
                            // swallowConfirmRelease/swallowBackRelease's own comment): a button
                            // still held when the popup resolves would otherwise fire a stale
                            // release here the moment it is actually released.
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = true;
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back))
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = true;
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1))
                              swallowBackRelease = true;
                            if (result.isCancelled) return;
                            TODOIST_TASKS.clearCompletedNow();
@@ -241,15 +243,16 @@ void QuickPickActivity::showOptions() {
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
       [this, logIdx, completeHabitIdx, habitFocusIdx, rescheduleIdx](const ActivityResult& result) {
-        // Confirm may still be physically down (the popup answers on the
-        // press, this screen on the release). Back is swallowed whenever the
-        // result was cancelled at all, since dismissing the popup with Back
-        // can itself be release-triggered - by then the button is no longer
-        // down, but the release is still what this screen would see next.
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        // Right2 may still be physically down (the popup answers on the
+        // press, this screen on the release). Right1 is swallowed whenever
+        // the result was cancelled at all, since dismissing the popup with
+        // Right1 can itself be release-triggered - by then the button is no
+        // longer down, but the release is still what this screen would see
+        // next.
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -282,10 +285,10 @@ void QuickPickActivity::offerFocusSession() {
   startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
                                                                organizerActions::focusSessionDurationOptions()),
                          [this, capturedText, capturedItemId, capturedIsHabit](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -313,10 +316,10 @@ void QuickPickActivity::completeSuggestedTask() {
   startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
                                                                 tasks[cacheIndex].content),
                          [this](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -346,10 +349,10 @@ void QuickPickActivity::offerReschedule() {
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_RESCHEDULE_TASK, std::move(options)),
       [this](const ActivityResult& result) {
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -380,10 +383,10 @@ void QuickPickActivity::offerRescheduleDatePicker() {
 
   startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
                          [this](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -446,10 +449,10 @@ void QuickPickActivity::logSuggestedHabit() {
                              /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true, StrId::STR_NONE_OPT,
                              habit.name, habit.unitSymbol),
                          [this](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -506,10 +509,10 @@ void QuickPickActivity::showTaskRowOptions(const size_t cacheIndex) {
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
       [this, cacheIndex, rescheduleIdx](const ActivityResult& result) {
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -533,10 +536,10 @@ void QuickPickActivity::offerFocusSessionForTask(const size_t cacheIndex) {
   startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
                                                                organizerActions::focusSessionDurationOptions()),
                          [this, text, id](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -556,10 +559,10 @@ void QuickPickActivity::offerRescheduleRow(const size_t cacheIndex) {
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_RESCHEDULE_TASK, std::move(options)),
       [this, cacheIndex](const ActivityResult& result) {
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -581,10 +584,10 @@ void QuickPickActivity::offerRescheduleDatePickerRow(const size_t cacheIndex) {
 
   startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
                          [this, cacheIndex](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -616,10 +619,10 @@ void QuickPickActivity::completeTaskRow(const size_t cacheIndex) {
   startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_TODOIST_COMPLETE_PROMPT),
                                                                 tasks[cacheIndex].content),
                          [this, cacheIndex](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -651,10 +654,10 @@ void QuickPickActivity::showHabitRowOptions(const size_t cacheIndex) {
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_OPTIONS, std::move(options)),
       [this, cacheIndex, logIdx, completeIdx, focusIdx](const ActivityResult& result) {
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -678,10 +681,10 @@ void QuickPickActivity::offerFocusSessionForHabit(const size_t cacheIndex) {
   startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
                                                                organizerActions::focusSessionDurationOptions()),
                          [this, text, id](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -705,10 +708,10 @@ void QuickPickActivity::logHabitRow(const size_t cacheIndex) {
                              /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true, StrId::STR_NONE_OPT,
                              habit.name, habit.unitSymbol),
                          [this, cacheIndex](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -734,12 +737,12 @@ void QuickPickActivity::completeHabitRow(const size_t cacheIndex) {
 
 void QuickPickActivity::loop() {
   // A press seen here is a fresh one, so nothing is owed any more.
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) swallowBackRelease = false;
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) swallowBackRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
   // Side Up/Down switch tabs, from wherever the cursor already is -- same
   // convention every other app screen follows. A fresh press each, same
-  // guard reasoning as Back/Confirm.
+  // guard reasoning as Right1/Right2.
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
   if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
@@ -759,8 +762,12 @@ void QuickPickActivity::loop() {
     return;
   }
 
-  // Back always leaves, in every tab (see this file's own header comment).
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  // Right1 (the "Apps" button) always leaves -- except while the companion
+  // is focused (see this file's own header comment), where it becomes Random
+  // instead, mirroring Logs' own Right1+Right2 = Random+Select scheme.
+  // Always false in Logs (see companionFocused's own comment), so this never
+  // touches that tab's own unconditional leave-on-Right1 behavior below.
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (swallowBackRelease) {
       // The tail of the press that cancelled a popup pushed from this screen.
       // Acting on it would leave the screen entirely instead of just closing
@@ -768,30 +775,34 @@ void QuickPickActivity::loop() {
       swallowBackRelease = false;
       return;
     }
+    if (companionFocused) {
+      if (!poolEmpty) reroll();
+      return;
+    }
     setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
     finish();
     return;
   }
 
-  // Confirm/Left/Right: whatever the active tab needs (see this file's own
+  // Right2/Left1/Left2: whatever the active tab needs (see this file's own
   // header comment for the full scheme per tab).
   if (activeTab == Tab::Logs) {
-    if (!poolEmpty && mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    if (!poolEmpty && mappedInput.wasReleased(MappedInputManager::Button::Left2)) {
       reroll();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
       offerClearLogs();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       if (swallowConfirmRelease) {
         // The tail of the press that answered a popup pushed from this screen.
         // Acting on it would reopen it, and cancelling would reopen it again.
         swallowConfirmRelease = false;
         return;
       }
-      // Nothing to act on with an empty pool -- Confirm just leaves, same as Back.
+      // Nothing to act on with an empty pool -- Right2 just leaves, same as Right1.
       if (poolEmpty) {
         setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
         finish();
@@ -804,26 +815,56 @@ void QuickPickActivity::loop() {
 
   if (activeTab == Tab::Tasks) {
     const auto indices = relevantTaskIndices();
-    if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-      if (!indices.empty()) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
+      if (companionFocused) {
+        // Continues the same circular traversal that got here: past the top,
+        // wrapping to the last row (see this file's own header comment).
+        if (!indices.empty()) {
+          companionFocused = false;
+          taskSelectedRow = static_cast<int>(indices.size()) - 1;
+          requestUpdate();
+        }
+      } else if (taskSelectedRow == 0) {
+        // Off the top of the list -- move up onto the companion figure
+        // instead of wrapping to the last row.
+        companionFocused = true;
+        requestUpdate();
+      } else if (!indices.empty()) {
         taskSelectedRow = static_cast<int>((taskSelectedRow + indices.size() - 1) % indices.size());
         requestUpdate();
       }
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-      if (!indices.empty()) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left2)) {
+      if (companionFocused) {
+        // Continues the same circular traversal in the other direction,
+        // landing back on the first row.
+        if (!indices.empty()) {
+          companionFocused = false;
+          taskSelectedRow = 0;
+          requestUpdate();
+        }
+      } else if (!indices.empty()) {
         taskSelectedRow = static_cast<int>((static_cast<size_t>(taskSelectedRow) + 1) % indices.size());
         requestUpdate();
       }
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       if (swallowConfirmRelease) {
         swallowConfirmRelease = false;
         return;
       }
-      if (!indices.empty() && taskSelectedRow >= 0 && static_cast<size_t>(taskSelectedRow) < indices.size()) {
+      if (companionFocused) {
+        // Same "nothing to act on, just leave" fallback Logs uses for its own
+        // identical Right2-on-empty-pool case.
+        if (poolEmpty) {
+          setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
+          finish();
+          return;
+        }
+        showOptions();
+      } else if (!indices.empty() && taskSelectedRow >= 0 && static_cast<size_t>(taskSelectedRow) < indices.size()) {
         showTaskRowOptions(indices[static_cast<size_t>(taskSelectedRow)]);
       }
     }
@@ -832,26 +873,54 @@ void QuickPickActivity::loop() {
 
   // activeTab == Tab::Habits
   const auto indices = relevantHabitIndices();
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-    if (!indices.empty()) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
+    if (companionFocused) {
+      // Continues the same circular traversal that got here: past the top,
+      // wrapping to the last row (see this file's own header comment).
+      if (!indices.empty()) {
+        companionFocused = false;
+        habitSelectedRow = static_cast<int>(indices.size()) - 1;
+        requestUpdate();
+      }
+    } else if (habitSelectedRow == 0) {
+      // Off the top of the list -- move up onto the companion figure
+      // instead of wrapping to the last row.
+      companionFocused = true;
+      requestUpdate();
+    } else if (!indices.empty()) {
       habitSelectedRow = static_cast<int>((habitSelectedRow + indices.size() - 1) % indices.size());
       requestUpdate();
     }
     return;
   }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    if (!indices.empty()) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left2)) {
+    if (companionFocused) {
+      // Continues the same circular traversal in the other direction,
+      // landing back on the first row.
+      if (!indices.empty()) {
+        companionFocused = false;
+        habitSelectedRow = 0;
+        requestUpdate();
+      }
+    } else if (!indices.empty()) {
       habitSelectedRow = static_cast<int>((static_cast<size_t>(habitSelectedRow) + 1) % indices.size());
       requestUpdate();
     }
     return;
   }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;
     }
-    if (!indices.empty() && habitSelectedRow >= 0 && static_cast<size_t>(habitSelectedRow) < indices.size()) {
+    if (companionFocused) {
+      if (poolEmpty) {
+        setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
+        finish();
+        return;
+      }
+      showOptions();
+    } else if (!indices.empty() && habitSelectedRow >= 0 && static_cast<size_t>(habitSelectedRow) < indices.size()) {
       showHabitRowOptions(indices[static_cast<size_t>(habitSelectedRow)]);
     }
   }
@@ -880,7 +949,7 @@ void QuickPickActivity::renderLogsTab(const int top, const int height) const {
   const int listHeight = std::max(0, top + height - listTop);
 
   // Today's completed tasks/habits -- same source and same "cleared by the
-  // Left button" convention LogsActivity had as its own dedicated screen.
+  // Left1 button" convention LogsActivity had as its own dedicated screen.
   const auto entries = logEntries();
   if (entries.empty()) {
     renderer.drawCenteredText(UI_10_FONT_ID, listTop + listHeight / 2, tr(STR_LOG_EMPTY));
@@ -928,7 +997,9 @@ void QuickPickActivity::renderTasksTab(const int top, const int height) const {
     const size_t cacheIndex = indices[static_cast<size_t>(i)];
     if (cacheIndex >= tasks.size()) continue;
     const int rowY = top + row * ROW_HEIGHT;
-    const bool selected = i == taskSelectedRow;
+    // Focus is up on the companion figure, not on any row -- see this file's
+    // own header comment -- so no row shows the selection fill right now.
+    const bool selected = !companionFocused && i == taskSelectedRow;
     const bool ink = !selected;
 
     if (selected) renderer.fillRect(0, rowY, pageWidth, ROW_HEIGHT);
@@ -975,7 +1046,9 @@ void QuickPickActivity::renderHabitsTab(const int top, const int height) const {
     if (cacheIndex >= habits.size()) continue;
     const auto& habit = habits[cacheIndex];
     const int rowY = top + row * ROW_HEIGHT;
-    const bool selected = i == habitSelectedRow;
+    // Focus is up on the companion figure, not on any row -- see this file's
+    // own header comment -- so no row shows the selection fill right now.
+    const bool selected = !companionFocused && i == habitSelectedRow;
     const bool ink = !selected;
 
     if (selected) renderer.fillRect(0, rowY, pageWidth, ROW_HEIGHT);
@@ -1063,6 +1136,15 @@ void QuickPickActivity::render(RenderLock&&) {
   const int centreX = pageWidth / 2;
   const int bubbleX = centreX - bubbleWidth / 2;
 
+  // Hovering the companion figure from Tasks/Habits (see this file's own
+  // header comment): a dithered light-grey background behind bubble+sprite,
+  // the same "selected" treatment ReadMenuActivity's own recent-book cover
+  // uses, rather than the solid black fill Tasks'/Habits' own row selection
+  // uses -- this highlights a whole section, not a single row.
+  if (companionFocused) {
+    renderer.fillRectDither(0, contentTop, pageWidth, bubbleBlock + spriteH, Color::LightGray);
+  }
+
   companion::drawSpeechBubble(renderer, bubbleX, contentTop, bubbleWidth, bubbleH, TAIL_LENGTH,
                               companion::TailSide::Bottom);
   const Rect textBounds{bubbleX + PAD, contentTop, textFit.textWidth, bubbleH};
@@ -1090,12 +1172,13 @@ void QuickPickActivity::render(RenderLock&&) {
       break;
   }
 
-  // Back always lands on Home in every launch path this screen has (see its
-  // own header comment: "Back returns to Home") -- whether that is really
-  // finish() popping back to the HomeActivity caller (activateCompanion())
-  // or a replaceActivity() hand-off with no caller pushed at all
+  // Right1 always lands on Home in every launch path this screen has (see
+  // this file's own header comment) -- whether that is really finish()
+  // popping back to the HomeActivity caller (activateCompanion()) or a
+  // replaceActivity() hand-off with no caller pushed at all
   // (FocusSessionActivity, the boot quick-resume path), never a return to
-  // some other, non-Home screen. So this says Home, not Back, in every tab.
+  // some other, non-Home screen -- except while the companion is focused,
+  // where it is Random instead, so this says Home in every OTHER state.
   const char* backLabel = tr(STR_HOME);
   const char* confirmLabel = "";
   const char* leftLabel = "";
@@ -1104,6 +1187,16 @@ void QuickPickActivity::render(RenderLock&&) {
     confirmLabel = poolEmpty ? "" : tr(STR_SELECT);
     leftLabel = logEntries().empty() ? "" : tr(STR_CLEAR_BUTTON);
     rightLabel = poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM);
+  } else if (companionFocused) {
+    // Hovering the companion figure always exposes the same suggestion
+    // actions Logs offers, regardless of which tab's list is showing below
+    // it -- it is the same suggestion either way, just on Right1/Right2
+    // rather than Logs' own Left2/Right2 (Left1/Left2 are busy re-entering
+    // the row list here, unlike Logs, which has no row list to move within).
+    backLabel = poolEmpty ? "" : tr(STR_QUICK_PICK_RANDOM);
+    confirmLabel = poolEmpty ? "" : tr(STR_SELECT);
+    leftLabel = tr(STR_DIR_UP);
+    rightLabel = tr(STR_DIR_DOWN);
   } else {
     const bool hasRows = activeTab == Tab::Tasks ? !relevantTaskIndices().empty() : !relevantHabitIndices().empty();
     confirmLabel = hasRows ? tr(STR_SELECT) : "";

@@ -33,7 +33,7 @@ void YnabSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
   state = State::MENU;
-  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   requestUpdate();
 }
 
@@ -42,14 +42,14 @@ void YnabSettingsActivity::onExit() { Activity::onExit(); }
 void YnabSettingsActivity::loop() {
   auto activateSelected = [this] { handleSelection(); };
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     finish();
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;

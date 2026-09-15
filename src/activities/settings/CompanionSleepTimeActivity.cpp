@@ -123,12 +123,12 @@ void CompanionSleepTimeActivity::getTouchControlRects(Rect& minusRect, Rect& plu
 }
 
 void CompanionSleepTimeActivity::loop() {
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     finish();
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     activeField = static_cast<Field>((activeField + 1) % FIELD_COUNT);
     requestUpdate();
     return;
@@ -176,11 +176,11 @@ void CompanionSleepTimeActivity::loop() {
     }
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] {
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left1}, [this] {
     adjustActiveField(-1);
     requestUpdate();
   });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] {
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left2}, [this] {
     adjustActiveField(+1);
     requestUpdate();
   });

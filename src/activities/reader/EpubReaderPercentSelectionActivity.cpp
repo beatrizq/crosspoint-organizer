@@ -71,7 +71,7 @@ void EpubReaderPercentSelectionActivity::loop() {
   }
 
   // Back cancels, confirm selects, arrows adjust the percent.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     ActivityResult result;
     result.isCancelled = true;
     setResult(std::move(result));
@@ -96,14 +96,14 @@ void EpubReaderPercentSelectionActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     setResult(PercentResult{percent});
     finish();
     return;
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { adjustPercent(-kSmallStep); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { adjustPercent(kSmallStep); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left1}, [this] { adjustPercent(-kSmallStep); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left2}, [this] { adjustPercent(kSmallStep); });
 
   // On X3 the side buttons sit on the left/right edges of the screen rather than as a vertical up/down
   // rocker (X4), so BTN_UP is physically the left button and BTN_DOWN the right one. Flip the large-step

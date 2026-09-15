@@ -33,7 +33,7 @@ void GCalSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
   state = State::MENU;
-  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   requestUpdate();
 }
 
@@ -50,7 +50,7 @@ void GCalSettingsActivity::onExit() {
 }
 
 void GCalSettingsActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (state != State::MENU) {
       // Abandon the pairing attempt rather than leaving the screen: the code is
       // useless once we stop polling, and the user may want to retry.
@@ -69,9 +69,9 @@ void GCalSettingsActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;

@@ -9,7 +9,7 @@
 #include "fontIds.h"
 
 namespace {
-// UI steps correspond to logical roles in order: Back, Confirm, Left, Right.
+// UI steps correspond to logical roles in order: Right1, Right2, Left1, Left2.
 constexpr uint8_t kRoleCount = 4;
 // Marker used when a role has not been assigned yet.
 constexpr uint8_t kUnassigned = 0xFF;
@@ -47,10 +47,10 @@ void ButtonRemapActivity::loop() {
   // - Down: cancel without saving.
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
     // Persist default mapping immediately so the user can recover quickly.
-    SETTINGS.frontButtonBack = CrossPointSettings::FRONT_HW_BACK;
-    SETTINGS.frontButtonConfirm = CrossPointSettings::FRONT_HW_CONFIRM;
-    SETTINGS.frontButtonLeft = CrossPointSettings::FRONT_HW_LEFT;
-    SETTINGS.frontButtonRight = CrossPointSettings::FRONT_HW_RIGHT;
+    SETTINGS.frontButtonRight1 = CrossPointSettings::FRONT_HW_RIGHT1;
+    SETTINGS.frontButtonRight2 = CrossPointSettings::FRONT_HW_RIGHT2;
+    SETTINGS.frontButtonLeft1 = CrossPointSettings::FRONT_HW_LEFT1;
+    SETTINGS.frontButtonLeft2 = CrossPointSettings::FRONT_HW_LEFT2;
     SETTINGS.saveToFile();
     finish();
     return;
@@ -141,20 +141,20 @@ void ButtonRemapActivity::render(RenderLock&&) {
                    tr(STR_REMAP_CANCEL_HINT));
 
   // Live preview of logical labels under front buttons.
-  // This mirrors the on-device front button order: Back, Confirm, Left, Right.
-  GUI.drawButtonHints(renderer, labelForHardware(CrossPointSettings::FRONT_HW_BACK),
-                      labelForHardware(CrossPointSettings::FRONT_HW_CONFIRM),
-                      labelForHardware(CrossPointSettings::FRONT_HW_LEFT),
-                      labelForHardware(CrossPointSettings::FRONT_HW_RIGHT));
+  // This mirrors the on-device front button order: Right1, Right2, Left1, Left2.
+  GUI.drawButtonHints(renderer, labelForHardware(CrossPointSettings::FRONT_HW_RIGHT1),
+                      labelForHardware(CrossPointSettings::FRONT_HW_RIGHT2),
+                      labelForHardware(CrossPointSettings::FRONT_HW_LEFT1),
+                      labelForHardware(CrossPointSettings::FRONT_HW_LEFT2));
   renderer.displayBuffer();
 }
 
 void ButtonRemapActivity::applyTempMapping() {
   // Commit temporary mapping into settings (logical role -> hardware).
-  SETTINGS.frontButtonBack = tempMapping[0];
-  SETTINGS.frontButtonConfirm = tempMapping[1];
-  SETTINGS.frontButtonLeft = tempMapping[2];
-  SETTINGS.frontButtonRight = tempMapping[3];
+  SETTINGS.frontButtonRight1 = tempMapping[0];
+  SETTINGS.frontButtonRight2 = tempMapping[1];
+  SETTINGS.frontButtonLeft1 = tempMapping[2];
+  SETTINGS.frontButtonLeft2 = tempMapping[3];
 }
 
 bool ButtonRemapActivity::validateUnassigned(const uint8_t pressedButton) {
@@ -185,13 +185,13 @@ const char* ButtonRemapActivity::getRoleName(const uint8_t roleIndex) const {
 
 const char* ButtonRemapActivity::getHardwareName(const uint8_t buttonIndex) const {
   switch (buttonIndex) {
-    case CrossPointSettings::FRONT_HW_BACK:
+    case CrossPointSettings::FRONT_HW_RIGHT1:
       return tr(STR_HW_BACK_LABEL);
-    case CrossPointSettings::FRONT_HW_CONFIRM:
+    case CrossPointSettings::FRONT_HW_RIGHT2:
       return tr(STR_HW_CONFIRM_LABEL);
-    case CrossPointSettings::FRONT_HW_LEFT:
+    case CrossPointSettings::FRONT_HW_LEFT1:
       return tr(STR_HW_LEFT_LABEL);
-    case CrossPointSettings::FRONT_HW_RIGHT:
+    case CrossPointSettings::FRONT_HW_LEFT2:
       return tr(STR_HW_RIGHT_LABEL);
     default:
       return "Unknown";

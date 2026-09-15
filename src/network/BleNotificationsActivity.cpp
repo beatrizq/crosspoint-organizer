@@ -88,7 +88,7 @@ void BleNotificationsActivity::onEnter() {
 void BleNotificationsActivity::loop() {
   const int itemCount = static_cast<int>(BLE_NOTIFICATIONS.getCount());
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     onGoHome();
     return;
   }
@@ -98,7 +98,7 @@ void BleNotificationsActivity::loop() {
   // once the button is up) -- same pattern RecentBooksActivity uses for its
   // own long-press action.
   if (longPressFired) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Right2)) {
       longPressFired = false;
     }
     return;
@@ -106,7 +106,7 @@ void BleNotificationsActivity::loop() {
 
   // Long-press Confirm: Dismiss (clear the whole queue). Fires when the hold
   // times out while still held.
-  if (itemCount > 0 && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+  if (itemCount > 0 && mappedInput.isPressed(MappedInputManager::Button::Right2) &&
       mappedInput.getHeldTime() >= LONG_PRESS_MS) {
     longPressFired = true;
     dismissAll();
@@ -114,7 +114,7 @@ void BleNotificationsActivity::loop() {
   }
 
   // Plain Confirm: Select -- open the full-detail view of the selected entry.
-  if (itemCount > 0 && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (itemCount > 0 && mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     openDetail();
     return;
   }

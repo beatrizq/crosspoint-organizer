@@ -104,13 +104,13 @@ void GCalCalendarPickerActivity::toggleSelected() {
 }
 
 void GCalCalendarPickerActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     finish();
     return;
   }
   if (state == State::LOADING) return;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (state == State::FAILED) {
       finish();
       return;

@@ -30,7 +30,7 @@ void RescheduleTaskActivity::onEnter() {
   activeField = FIELD_DAY;
   // Same reasoning as every other screen reached from a menu selection: the
   // Confirm press that picked "Reschedule" may still be physically down.
-  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   requestUpdate();
 }
 
@@ -122,13 +122,13 @@ bool RescheduleTaskActivity::fieldFromPoint(const int x, const int y, Field& fie
 }
 
 void RescheduleTaskActivity::loop() {
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     setResult(DateResult{packedDate()});
     finish();
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;
@@ -151,11 +151,11 @@ void RescheduleTaskActivity::loop() {
     }
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] {
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left1}, [this] {
     adjustActiveField(-1);
     requestUpdate();
   });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] {
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left2}, [this] {
     adjustActiveField(+1);
     requestUpdate();
   });

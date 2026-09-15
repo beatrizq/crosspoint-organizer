@@ -20,7 +20,7 @@ void AppOrderActivity::onEnter() {
   selectedIndex = 0;
   holding = false;
   dirty = false;
-  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   requestUpdate();
 }
 
@@ -59,9 +59,9 @@ void AppOrderActivity::moveHeld(const int delta) {
 }
 
 void AppOrderActivity::loop() {
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (holding) {
       // Back puts the row down rather than leaving, so there is a way out of
       // holding that is not "commit wherever it happens to be".
@@ -73,7 +73,7 @@ void AppOrderActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       // The tail of the press that opened this screen -- see its own comment.
       swallowConfirmRelease = false;

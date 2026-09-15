@@ -237,12 +237,12 @@ void OtaUpdateActivity::loop() {
       }
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       runUpdateInstall();
       return;
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       finish();
     }
 
@@ -252,7 +252,7 @@ void OtaUpdateActivity::loop() {
   if (state == FAILED) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) || mappedInput.wasScreenTapped(x, y)) {
       finish();
     }
     return;
@@ -261,7 +261,7 @@ void OtaUpdateActivity::loop() {
   if (state == NO_UPDATE) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) || mappedInput.wasScreenTapped(x, y)) {
       finish();
     }
     return;

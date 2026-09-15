@@ -35,13 +35,13 @@ void NetworkModeSelectionActivity::loop() {
   };
 
   // Handle back button - cancel
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     onCancel();
     return;
   }
 
   // Handle confirm button - select current option
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     selectCurrent();
     return;
   }

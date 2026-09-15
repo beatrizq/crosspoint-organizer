@@ -29,12 +29,12 @@ void LanguageSelectActivity::onExit() { Activity::onExit(); }
 void LanguageSelectActivity::loop() {
   auto activateSelected = [this] { handleSelection(); };
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     onBack();
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     activateSelected();
     return;
   }

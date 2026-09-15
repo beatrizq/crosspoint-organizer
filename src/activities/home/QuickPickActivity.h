@@ -28,18 +28,32 @@
  * rather than main.cpp fishing it out reactively.
  *
  * Side Up/Down switch tabs (see every other app screen's own convention);
- * front buttons are whatever the active tab needs: Logs keeps Confirm/Right
- * as Select/Random exactly as before there was more than one tab (Confirm
- * opens the same [action, Focus session] options showOptions() always has),
- * and Left is Clear -- LogsActivity's own former Confirm action, folded in
- * now that its entries live in this tab's own body instead of a separate
- * screen. Tasks and Habits use Left/Confirm/Right as Up/Select/Down over
- * that tab's own row list, the same shape a real row list's front buttons
- * already have elsewhere. Back always leaves, in every tab, reporting
- * whatever the Logs tab currently holds as a QuickPickResult so Home's own
- * bubble stays in sync. setResult() has to be called before finish(), not in
- * onExit() -- ActivityManager::popActivity() reads the result before it runs
- * the outgoing activity's onExit().
+ * front buttons are whatever the active tab needs. Button IDs used here:
+ * Left1/Left2 are the pair that moves focus up/down through a row list
+ * (Left1 = up, Left2 = down); Right1/Right2 are the pair printed "Apps"/
+ * "Select" on the case (Right1 = the button that otherwise always leaves,
+ * Right2 = the button that otherwise always opens options).
+ *
+ * Logs keeps Right2/Left2 as Select/Random exactly as before there was more
+ * than one tab (Right2 opens the same [action, Focus session] options
+ * showOptions() always has), and Left1 is Clear -- LogsActivity's own former
+ * Right2 action, folded in now that its entries live in this tab's own body
+ * instead of a separate screen. Tasks and Habits use Left1/Right2/Left2 as
+ * Up/Select/Down over that tab's own row list, the same shape a real row
+ * list's front buttons already have elsewhere -- except at the very top:
+ * Left1 off row 0 moves focus up onto the companion figure itself (dithered
+ * light-grey highlight behind it, the same "selected" treatment
+ * ReadMenuActivity's own recent-book cover uses) rather than wrapping to the
+ * last row, since the figure always represents this same suggestion
+ * regardless of which tab is showing below it. From there Right2 stays
+ * Select, and Right1 -- which otherwise always leaves -- becomes Random
+ * instead, mirroring Logs' own Random/Select pairing (on different buttons,
+ * since Left1/Left2 are busy here continuing the circular traversal: Left1
+ * wraps on to the last row, Left2 back to the first). Right1 leaves in every
+ * other state, reporting whatever the Logs tab currently holds as a
+ * QuickPickResult so Home's own bubble stays in sync. setResult() has to be
+ * called before finish(), not in onExit() -- ActivityManager::popActivity()
+ * reads the result before it runs the outgoing activity's onExit().
  */
 class QuickPickActivity final : public Activity {
  public:
@@ -88,10 +102,10 @@ class QuickPickActivity final : public Activity {
   // this tab's own row list has no subtitle to put a source app in, the way
   // LogsActivity's did.
   std::vector<std::string> logEntries() const;
-  // Left, Logs tab only -- LogsActivity's own former Confirm action, moved
-  // here now that its list lives in this tab's own body. Same confirm-then-
-  // clear-both-caches behaviour, and the same mood recalculation afterwards
-  // (see its own comment for why that call is needed at all).
+  // Left1, Logs tab only -- LogsActivity's own former Right2 (Select) action,
+  // moved here now that its list lives in this tab's own body. Same confirm-
+  // then-clear-both-caches behaviour, and the same mood recalculation
+  // afterwards (see its own comment for why that call is needed at all).
   void offerClearLogs();
 
   // Go opens this. Same [action, Focus session] choice Tasks/Habits show on
@@ -164,6 +178,15 @@ class QuickPickActivity final : public Activity {
   // relevantTaskIndices()/relevantHabitIndices(), not a cache index itself.
   int taskSelectedRow = 0;
   int habitSelectedRow = 0;
+  // Tasks/Habits only (see this file's own header comment): Left1 off the top
+  // row (row 0) moves focus here instead of wrapping to the bottom -- one
+  // stop above the row list, not a third index space of its own, so no
+  // separate cursor position is needed. Left1/Left2 continue the same
+  // circular traversal back into the row list (last/first row respectively)
+  // while this is true. Always false in the Logs tab, which has no row
+  // cursor to move off of; switchTab() resets it on every tab change for
+  // exactly that reason.
+  bool companionFocused = false;
 
   // See OrganizerScreenActivity's own swallow flags for why these exist: the
   // Options popup (and the confirmation or number entry it can lead to)

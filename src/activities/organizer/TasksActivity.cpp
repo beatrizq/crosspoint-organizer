@@ -268,10 +268,10 @@ void TasksActivity::showRowOptions() {
         // Confirm may still be physically down (the popup answers on the
         // press, this screen on the release) -- same dance completeSelectedTask()
         // does below for the popup it pushes in turn.
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -294,10 +294,10 @@ void TasksActivity::offerFocusSession(const int cacheIndex) {
   startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
                                                                organizerActions::focusSessionDurationOptions()),
                          [this, text, id](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -317,10 +317,10 @@ void TasksActivity::offerReschedule(const int cacheIndex) {
   startActivityForResult(
       std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_RESCHEDULE_TASK, std::move(options)),
       [this, cacheIndex](const ActivityResult& result) {
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -343,10 +343,10 @@ void TasksActivity::offerRescheduleDatePicker(const int cacheIndex) {
 
   startActivityForResult(std::make_unique<RescheduleTaskActivity>(renderer, mappedInput, seed),
                          [this, cacheIndex](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -396,10 +396,10 @@ void TasksActivity::completeSelectedTask() {
         // cancelled at all, since dismissing the popup with Back can itself be
         // release-triggered - by then the button is no longer down, but the
         // release is still what this screen would see next.
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) {

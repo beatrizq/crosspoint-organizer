@@ -432,7 +432,7 @@ void HomeActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) backPressSeen = true;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) backPressSeen = true;
 
   // Back is otherwise unused on the home menu, and syncing every configured
   // integration is an action on all of them at once, so no single tile owns
@@ -441,7 +441,7 @@ void HomeActivity::loop() {
   // it, and syncing no longer needs a hold to tell the two apart: a plain
   // press is Sync All, full stop. backPressSeen guards against the stale
   // release of the Back press that closed the previous activity.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && backPressSeen) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1) && backPressSeen) {
     activityManager.goToSyncAll();
     return;
   }
@@ -513,7 +513,7 @@ void HomeActivity::loop() {
     }
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     activateSelection();
   }
 }

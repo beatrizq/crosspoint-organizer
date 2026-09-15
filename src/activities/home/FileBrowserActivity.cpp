@@ -82,14 +82,14 @@ void FileBrowserActivity::onEnter() {
 
   // If Confirm was held while this activity opened (typical when launched from a menu), ignore
   // its release — otherwise we'd immediately auto-open whatever is at index 0.
-  lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
 
   auto root = Storage.open(basepath.c_str());
   if (!root) {
     basepath = "/";
     loadFiles();
   } else if (!root.isDirectory()) {
-    lockLongPressBack = mappedInput.isPressed(MappedInputManager::Button::Back);
+    lockLongPressBack = mappedInput.isPressed(MappedInputManager::Button::Right1);
 
     const std::string oldPath = basepath;
     basepath = FsHelpers::extractFolderPath(basepath);
@@ -195,7 +195,7 @@ bool FileBrowserActivity::removeDirFile(const std::string& fullPath) {
 void FileBrowserActivity::loop() {
   // Long press BACK (1s+) goes to root folder (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
-  if (mode == Mode::Books && mappedInput.isPressed(MappedInputManager::Button::Back) &&
+  if (mode == Mode::Books && mappedInput.isPressed(MappedInputManager::Button::Right1) &&
       mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/" && !lockLongPressBack) {
     basepath = "/";
     loadFiles();
@@ -204,7 +204,7 @@ void FileBrowserActivity::loop() {
     return;
   }
 
-  if (lockLongPressBack && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (lockLongPressBack && mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     lockLongPressBack = false;
     return;
   }
@@ -247,8 +247,8 @@ void FileBrowserActivity::loop() {
         // The confirmation popup acts on button press; if that button is still
         // held when we resume, swallow its release so it doesn't also act here
         // (Back would go up a directory, Confirm would open the selection).
-        lockLongPressBack = mappedInput.isPressed(MappedInputManager::Button::Back);
-        lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+        lockLongPressBack = mappedInput.isPressed(MappedInputManager::Button::Right1);
+        lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
         if (!res.isCancelled) {
           LOG_DBG("FileBrowser", "Attempting to delete: %s", fullPath.c_str());
           if (removeDirFile(fullPath)) {
@@ -298,12 +298,12 @@ void FileBrowserActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     activateSelected();
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
       if (basepath != "/") {

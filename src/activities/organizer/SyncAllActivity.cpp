@@ -147,8 +147,8 @@ void SyncAllActivity::loop() {
   // run is over. Leaving mid-flight would strand the radio and the caches.
   if (!finished) return;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     onGoHome();
   }
 }

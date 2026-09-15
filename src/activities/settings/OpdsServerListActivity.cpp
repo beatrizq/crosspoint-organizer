@@ -66,7 +66,7 @@ void OpdsServerListActivity::onExit() { Activity::onExit(); }
 void OpdsServerListActivity::loop() {
   auto activateSelected = [this] { handleSelection(); };
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     if (pickerMode && returnToReadMenu) {
       activityManager.goToReadMenu();
     } else if (pickerMode) {
@@ -77,7 +77,7 @@ void OpdsServerListActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     activateSelected();
     return;
   }

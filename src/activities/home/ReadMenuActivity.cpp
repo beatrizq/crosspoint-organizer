@@ -62,12 +62,12 @@ void ReadMenuActivity::activateSelected() {
 void ReadMenuActivity::loop() {
   const int itemCount = static_cast<int>(entries.size()) + 1;  // +1 for the leading card slot
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     onGoHome(HomeMenuItem::READ_MENU);
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     activateSelected();
     return;
   }

@@ -25,7 +25,7 @@ void EpubReaderFootnotesActivity::loop() {
     }
   };
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     ActivityResult result;
     result.isCancelled = true;
     setResult(std::move(result));
@@ -33,7 +33,7 @@ void EpubReaderFootnotesActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2) ||
       mappedInput.wasReleased(MappedInputManager::Button::Power)) {
     selectFootnote();
     return;

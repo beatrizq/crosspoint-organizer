@@ -78,11 +78,11 @@ void OpdsBookBrowserActivity::loop() {
     return;
   }
 
-  if (consumeConfirm && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (consumeConfirm && mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     consumeConfirm = false;
     return;
   }
-  if (consumeBack && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (consumeBack && mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     consumeBack = false;
     return;
   }
@@ -90,7 +90,7 @@ void OpdsBookBrowserActivity::loop() {
   if (state == BrowserState::ERROR) {
     int tx = 0;
     int ty = 0;
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(tx, ty)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2) || mappedInput.wasScreenTapped(tx, ty)) {
       if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
         state = BrowserState::LOADING;
         statusMessage = tr(STR_LOADING);
@@ -99,14 +99,14 @@ void OpdsBookBrowserActivity::loop() {
       } else {
         launchWifiSelection();
       }
-    } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    } else if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
       navigateBack();
     }
     return;
   }
 
   if (state == BrowserState::CHECK_WIFI || state == BrowserState::LOADING) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
       // CHECK_WIFI is the entry state, so navigationHistory is always empty
       // here too -- navigateBack() already does the right thing either way.
       navigateBack();
@@ -124,11 +124,11 @@ void OpdsBookBrowserActivity::loop() {
       }
     };
 
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       activateSelected();
-    } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    } else if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
       navigateBack();
-    } else if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    } else if (mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
       if (!searchTemplate.empty() && selectorIndex == 0) launchSearch();
     }
 

@@ -52,7 +52,7 @@ std::string thresholdValue(const StrId formatId, const uint8_t n) {
 void CompanionSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
-  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   stampActivationIfNeeded();
   requestUpdate();
 }
@@ -83,9 +83,9 @@ void CompanionSettingsActivity::handleSelection() {
                                // back here once this screen is active again -- same reasoning as
                                // swallowConfirmRelease in onEnter(), just armed from this result
                                // instead.
-                               if (mappedInput.isPressed(MappedInputManager::Button::Confirm))
+                               if (mappedInput.isPressed(MappedInputManager::Button::Right2))
                                  swallowConfirmRelease = true;
-                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                                  swallowBackRelease = true;
                                }
                                if (result.isCancelled) return;
@@ -107,10 +107,10 @@ void CompanionSettingsActivity::handleSelection() {
             // Same reasoning as ROW_ENABLED's popup above: this sub-screen
             // answers Back/Confirm on the button going down in places, so a
             // release can still land here.
-            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+            if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
               swallowConfirmRelease = true;
             }
-            if (mappedInput.isPressed(MappedInputManager::Button::Back)) {
+            if (mappedInput.isPressed(MappedInputManager::Button::Right1)) {
               swallowBackRelease = true;
             }
             requestUpdate();
@@ -126,10 +126,10 @@ void CompanionSettingsActivity::handleSelection() {
           std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPANION_RESET_CONFIRM), ""),
           [this](const ActivityResult& result) {
             // Same reasoning as ROW_ENABLED's popup above.
-            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+            if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
               swallowConfirmRelease = true;
             }
-            if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+            if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
               swallowBackRelease = true;
             }
             if (result.isCancelled) return;
@@ -187,10 +187,10 @@ void CompanionSettingsActivity::offerThresholdPicker(const int row) {
                                                   /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true),
       [this, row](const ActivityResult& result) {
         // Same reasoning as ROW_ENABLED's popup above.
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -221,8 +221,8 @@ void CompanionSettingsActivity::offerThresholdPicker(const int row) {
 void CompanionSettingsActivity::loop() {
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) swallowBackRelease = false;
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) swallowBackRelease = false;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (swallowBackRelease) {
       swallowBackRelease = false;
       return;
@@ -231,9 +231,9 @@ void CompanionSettingsActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;

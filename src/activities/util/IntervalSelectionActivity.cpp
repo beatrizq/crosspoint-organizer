@@ -60,11 +60,11 @@ void IntervalSelectionActivity::drawStepHintLine(const int y, const StrId labelI
 
 void IntervalSelectionActivity::loop() {
   if (ignoreConfirmRelease) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       ignoreConfirmRelease = false;
       return;
     }
-    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Right2)) {
       ignoreConfirmRelease = false;
     }
   }
@@ -99,7 +99,7 @@ void IntervalSelectionActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     ActivityResult result;
     result.isCancelled = true;
     setResult(std::move(result));
@@ -107,7 +107,7 @@ void IntervalSelectionActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     setResult(IntervalResult{static_cast<uint32_t>(value)});
     finish();
     return;
@@ -134,8 +134,8 @@ void IntervalSelectionActivity::loop() {
     }
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { adjustValue(-smallStep); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { adjustValue(smallStep); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left1}, [this] { adjustValue(-smallStep); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left2}, [this] { adjustValue(smallStep); });
 
   // On X3 the side buttons sit on the left/right edges of the screen rather than as a vertical up/down
   // rocker (X4), so BTN_UP is physically the left button and BTN_DOWN the right one. Flip the large-step

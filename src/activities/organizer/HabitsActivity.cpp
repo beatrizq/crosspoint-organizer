@@ -295,10 +295,10 @@ void HabitsActivity::showRowOptions() {
         // Confirm may still be physically down (the popup answers on the
         // press, this screen on the release) -- same dance completeSelectedHabit()
         // does below for the picker it pushes in turn.
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -321,10 +321,10 @@ void HabitsActivity::offerFocusSession(const int cacheIndex) {
   startActivityForResult(std::make_unique<OptionsMenuActivity>(renderer, mappedInput, StrId::STR_FOCUS_SESSION,
                                                                organizerActions::focusSessionDurationOptions()),
                          [this, text, id](const ActivityResult& result) {
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) return;
@@ -360,10 +360,10 @@ void HabitsActivity::completeSelectedHabit() {
                            // result was cancelled at all, since dismissing the picker with Back
                            // is release-triggered here - by then the button is no longer down,
                            // but the release is still what this screen would see next.
-                           if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+                           if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
                              swallowConfirmRelease = true;
                            }
-                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                           if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                              swallowBackRelease = true;
                            }
                            if (result.isCancelled) {

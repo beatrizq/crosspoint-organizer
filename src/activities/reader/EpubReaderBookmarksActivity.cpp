@@ -79,7 +79,7 @@ void EpubReaderBookmarksActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     ActivityResult result;
     result.isCancelled = true;
     setResult(std::move(result));
@@ -131,12 +131,12 @@ void EpubReaderBookmarksActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {  // Open
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {  // Open
     openBookmark();
     return;
   }
 
-  if (mappedInput.isPressed(MappedInputManager::Button::Confirm) && mappedInput.getHeldTime() > ENTER_DELETE_MODE_MS) {
+  if (mappedInput.isPressed(MappedInputManager::Button::Right2) && mappedInput.getHeldTime() > ENTER_DELETE_MODE_MS) {
     if (bookmarks.empty()) {
       return;
     }

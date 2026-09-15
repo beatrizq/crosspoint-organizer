@@ -19,8 +19,8 @@ void BleNotificationDetailActivity::onEnter() {
 void BleNotificationDetailActivity::loop() {
   // finish(), not onGoHome(): this is pushed on top of BleNotificationsActivity
   // (startActivityForResult), so either button just pops back to the list.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     finish();
   }
 }

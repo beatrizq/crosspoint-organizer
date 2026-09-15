@@ -29,15 +29,15 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 }  // namespace
 
 void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
-  const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,
-                             settings.frontButtonRight};
+  const uint8_t mapping[] = {settings.frontButtonRight1, settings.frontButtonRight2, settings.frontButtonLeft1,
+                             settings.frontButtonLeft2};
   for (size_t i = 0; i < 4; i++) {
     for (size_t j = i + 1; j < 4; j++) {
       if (mapping[i] == mapping[j]) {
-        settings.frontButtonBack = FRONT_HW_BACK;
-        settings.frontButtonConfirm = FRONT_HW_CONFIRM;
-        settings.frontButtonLeft = FRONT_HW_LEFT;
-        settings.frontButtonRight = FRONT_HW_RIGHT;
+        settings.frontButtonRight1 = FRONT_HW_RIGHT1;
+        settings.frontButtonRight2 = FRONT_HW_RIGHT2;
+        settings.frontButtonLeft1 = FRONT_HW_LEFT1;
+        settings.frontButtonLeft2 = FRONT_HW_LEFT2;
         return;
       }
     }
@@ -83,10 +83,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   }
 
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  doc["frontButtonBack"] = frontButtonBack;
-  doc["frontButtonConfirm"] = frontButtonConfirm;
-  doc["frontButtonLeft"] = frontButtonLeft;
-  doc["frontButtonRight"] = frontButtonRight;
+  doc["frontButtonRight1"] = frontButtonRight1;
+  doc["frontButtonRight2"] = frontButtonRight2;
+  doc["frontButtonLeft1"] = frontButtonLeft1;
+  doc["frontButtonLeft2"] = frontButtonLeft2;
   // Font family and size — both use dynamic getter/setters in SettingsList (the
   // option lists depend on the SD font registry), so the generic loop skips them.
   doc["fontFamily"] = fontFamily;
@@ -187,12 +187,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
-  frontButtonConfirm =
-      clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-  frontButtonLeft = clamp(doc["frontButtonLeft"] | (uint8_t)FRONT_HW_LEFT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT);
-  frontButtonRight =
-      clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_RIGHT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT);
+  frontButtonRight1 =
+      clamp(doc["frontButtonRight1"] | (uint8_t)FRONT_HW_RIGHT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT1);
+  frontButtonRight2 =
+      clamp(doc["frontButtonRight2"] | (uint8_t)FRONT_HW_RIGHT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT2);
+  frontButtonLeft1 =
+      clamp(doc["frontButtonLeft1"] | (uint8_t)FRONT_HW_LEFT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT1);
+  frontButtonLeft2 =
+      clamp(doc["frontButtonLeft2"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
   validateFrontButtonMapping(s);
 
   // Reader font size — an actual point size since 1.5. Files written by 1.4 and

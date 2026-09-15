@@ -76,22 +76,22 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // Front button layout options (legacy)
-  // Default: Back, Confirm, Left, Right
-  // Swapped: Left, Right, Back, Confirm
+  // Default: Right1, Right2, Left1, Left2
+  // Swapped: Left1, Left2, Right1, Right2
   enum FRONT_BUTTON_LAYOUT {
-    BACK_CONFIRM_LEFT_RIGHT = 0,
-    LEFT_RIGHT_BACK_CONFIRM = 1,
-    LEFT_BACK_CONFIRM_RIGHT = 2,
-    BACK_CONFIRM_RIGHT_LEFT = 3,
+    RIGHT1_RIGHT2_LEFT1_LEFT2 = 0,
+    LEFT1_LEFT2_RIGHT1_RIGHT2 = 1,
+    LEFT1_RIGHT1_RIGHT2_LEFT2 = 2,
+    RIGHT1_RIGHT2_LEFT2_LEFT1 = 3,
     FRONT_BUTTON_LAYOUT_COUNT
   };
 
   // Front button hardware identifiers (for remapping)
   enum FRONT_BUTTON_HARDWARE {
-    FRONT_HW_BACK = 0,
-    FRONT_HW_CONFIRM = 1,
-    FRONT_HW_LEFT = 2,
-    FRONT_HW_RIGHT = 3,
+    FRONT_HW_RIGHT1 = 0,
+    FRONT_HW_RIGHT2 = 1,
+    FRONT_HW_LEFT1 = 2,
+    FRONT_HW_LEFT2 = 3,
     FRONT_BUTTON_HARDWARE_COUNT
   };
 
@@ -242,15 +242,15 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
   // Button layouts (front layout retained for migration only)
-  uint8_t frontButtonLayout = BACK_CONFIRM_LEFT_RIGHT;
+  uint8_t frontButtonLayout = RIGHT1_RIGHT2_LEFT1_LEFT2;
   uint8_t sideButtonLayout = PREV_NEXT;
   uint8_t frontButtonFollowOrientation = 0;
   // Front button remap (logical -> hardware)
   // Used by MappedInputManager to translate logical buttons into physical front buttons.
-  uint8_t frontButtonBack = FRONT_HW_BACK;
-  uint8_t frontButtonConfirm = FRONT_HW_CONFIRM;
-  uint8_t frontButtonLeft = FRONT_HW_LEFT;
-  uint8_t frontButtonRight = FRONT_HW_RIGHT;
+  uint8_t frontButtonRight1 = FRONT_HW_RIGHT1;
+  uint8_t frontButtonRight2 = FRONT_HW_RIGHT2;
+  uint8_t frontButtonLeft1 = FRONT_HW_LEFT1;
+  uint8_t frontButtonLeft2 = FRONT_HW_LEFT2;
   // Reader font settings
   uint8_t fontFamily = NOTOSERIF;
   // Point size of the reader font. Only sizes the active family actually ships

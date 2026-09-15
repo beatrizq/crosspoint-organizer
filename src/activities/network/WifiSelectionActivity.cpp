@@ -492,12 +492,12 @@ void WifiSelectionActivity::checkConnectionStatus() {
 void WifiSelectionActivity::loop() {
   // Check scan progress
   if (state == WifiSelectionState::SCANNING) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       WiFi.scanDelete();
       onComplete(false);
       return;
     }
-    if (autoConnecting && mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (autoConnecting && mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       autoConnecting = false;
       manualNetworkListRequested = true;
       requestUpdate();
@@ -509,12 +509,12 @@ void WifiSelectionActivity::loop() {
   // Check connection progress
   if (state == WifiSelectionState::CONNECTING || state == WifiSelectionState::AUTO_CONNECTING) {
     if (state == WifiSelectionState::AUTO_CONNECTING) {
-      if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
         WiFi.disconnect();
         onComplete(false);
         return;
       }
-      if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
         showNetworkListFromAutoConnect();
         return;
       }
@@ -576,18 +576,18 @@ void WifiSelectionActivity::loop() {
     }
 
     if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Left)) {
+        mappedInput.wasPressed(MappedInputManager::Button::Left1)) {
       if (savePromptSelection > 0) {
         savePromptSelection--;
         requestUpdate();
       }
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
-               mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+               mappedInput.wasPressed(MappedInputManager::Button::Left2)) {
       if (savePromptSelection < 1) {
         savePromptSelection++;
         requestUpdate();
       }
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (savePromptSelection == 0) {
         // User chose "Yes" - save the password
         RenderLock lock(*this);
@@ -595,7 +595,7 @@ void WifiSelectionActivity::loop() {
       }
       // Complete - parent will start web server
       onComplete(true);
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       // Skip saving, complete anyway
       onComplete(true);
     }
@@ -638,18 +638,18 @@ void WifiSelectionActivity::loop() {
     }
 
     if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Left)) {
+        mappedInput.wasPressed(MappedInputManager::Button::Left1)) {
       if (forgetPromptSelection > 0) {
         forgetPromptSelection--;
         requestUpdate();
       }
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
-               mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+               mappedInput.wasPressed(MappedInputManager::Button::Left2)) {
       if (forgetPromptSelection < 1) {
         forgetPromptSelection++;
         requestUpdate();
       }
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (forgetPromptSelection == 1) {
         RenderLock lock(*this);
         // User chose "Forget network" - forget the network
@@ -663,7 +663,7 @@ void WifiSelectionActivity::loop() {
       }
       // Go back to network list (whether Cancel or Forget network was selected)
       startWifiScan();
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       // Skip forgetting, go back to network list
       startWifiScan();
     }
@@ -680,8 +680,8 @@ void WifiSelectionActivity::loop() {
 
   // Handle connection failed state
   if (state == WifiSelectionState::CONNECTION_FAILED) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) ||
+        mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       // If we were auto-connecting or using a saved credential, offer to forget
       // the network
       if (autoConnecting || usedSavedPassword) {
@@ -700,13 +700,13 @@ void WifiSelectionActivity::loop() {
   // Handle network list state
   if (state == WifiSelectionState::NETWORK_LIST) {
     // Check for Back button to exit (cancel)
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       onComplete(false);
       return;
     }
 
     // Check for Confirm button to select network or rescan
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (!networks.empty()) {
         selectNetwork(selectedNetworkIndex);
       } else {
@@ -715,12 +715,12 @@ void WifiSelectionActivity::loop() {
       return;
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Left2)) {
       startWifiScan();
       return;
     }
 
-    const bool leftPressed = mappedInput.wasPressed(MappedInputManager::Button::Left);
+    const bool leftPressed = mappedInput.wasPressed(MappedInputManager::Button::Left1);
     if (leftPressed) {
       const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
       if (hasSavedPassword) {
