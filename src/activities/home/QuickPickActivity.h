@@ -40,20 +40,22 @@
  * Right2 action, folded in now that its entries live in this tab's own body
  * instead of a separate screen. Tasks and Habits use Left1/Right2/Left2 as
  * Up/Select/Down over that tab's own row list, the same shape a real row
- * list's front buttons already have elsewhere -- except at the very top:
- * Left1 off row 0 moves focus up onto the companion figure itself (dithered
- * light-grey highlight behind it, the same "selected" treatment
- * ReadMenuActivity's own recent-book cover uses) rather than wrapping to the
- * last row, since the figure always represents this same suggestion
- * regardless of which tab is showing below it. From there Right2 stays
- * Select, and Right1 -- which otherwise always leaves -- becomes Random
- * instead, mirroring Logs' own Random/Select pairing (on different buttons,
- * since Left1/Left2 are busy here continuing the circular traversal: Left1
- * wraps on to the last row, Left2 back to the first). Right1 leaves in every
- * other state, reporting whatever the Logs tab currently holds as a
- * QuickPickResult so Home's own bubble stays in sync. setResult() has to be
- * called before finish(), not in onExit() -- ActivityManager::popActivity()
- * reads the result before it runs the outgoing activity's onExit().
+ * list's front buttons already have elsewhere -- except the row list and the
+ * companion figure form one continuous circular loop: Left1 off row 0, or
+ * Left2 off the last row, moves focus onto the companion figure itself
+ * (dithered light-grey highlight behind it, the same "selected" treatment
+ * ReadMenuActivity's own recent-book cover uses) rather than wrapping
+ * straight to the opposite end of the list, since the figure always
+ * represents this same suggestion regardless of which tab is showing below
+ * it. From there Right2 stays Select, and Right1 -- which otherwise always
+ * leaves -- becomes Random instead, mirroring Logs' own Random/Select
+ * pairing (on different buttons, since Left1/Left2 are busy here continuing
+ * the loop: Left1 on to the last row, Left2 back to the first). Right1
+ * leaves in every other state, reporting whatever the Logs tab currently
+ * holds as a QuickPickResult so Home's own bubble stays in sync. setResult()
+ * has to be called before finish(), not in onExit() --
+ * ActivityManager::popActivity() reads the result before it runs the
+ * outgoing activity's onExit().
  */
 class QuickPickActivity final : public Activity {
  public:
@@ -178,14 +180,14 @@ class QuickPickActivity final : public Activity {
   // relevantTaskIndices()/relevantHabitIndices(), not a cache index itself.
   int taskSelectedRow = 0;
   int habitSelectedRow = 0;
-  // Tasks/Habits only (see this file's own header comment): Left1 off the top
-  // row (row 0) moves focus here instead of wrapping to the bottom -- one
-  // stop above the row list, not a third index space of its own, so no
-  // separate cursor position is needed. Left1/Left2 continue the same
-  // circular traversal back into the row list (last/first row respectively)
-  // while this is true. Always false in the Logs tab, which has no row
-  // cursor to move off of; switchTab() resets it on every tab change for
-  // exactly that reason.
+  // Tasks/Habits only (see this file's own header comment): Left1 off row 0,
+  // or Left2 off the last row, moves focus here instead of wrapping to the
+  // opposite end of the list -- one stop above the row list, not a third
+  // index space of its own, so no separate cursor position is needed.
+  // Left1/Left2 continue the same circular traversal back into the row list
+  // (last/first row respectively) while this is true. Always false in the
+  // Logs tab, which has no row cursor to move off of; switchTab() resets it
+  // on every tab change for exactly that reason.
   bool companionFocused = false;
 
   // See OrganizerScreenActivity's own swallow flags for why these exist: the

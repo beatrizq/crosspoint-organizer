@@ -844,6 +844,12 @@ void QuickPickActivity::loop() {
           taskSelectedRow = 0;
           requestUpdate();
         }
+      } else if (!indices.empty() && static_cast<size_t>(taskSelectedRow) == indices.size() - 1) {
+        // Off the bottom of the list -- move down onto the companion figure
+        // instead of wrapping to the first row (symmetric with Left1 at the
+        // top).
+        companionFocused = true;
+        requestUpdate();
       } else if (!indices.empty()) {
         taskSelectedRow = static_cast<int>((static_cast<size_t>(taskSelectedRow) + 1) % indices.size());
         requestUpdate();
@@ -902,6 +908,12 @@ void QuickPickActivity::loop() {
         habitSelectedRow = 0;
         requestUpdate();
       }
+    } else if (!indices.empty() && static_cast<size_t>(habitSelectedRow) == indices.size() - 1) {
+      // Off the bottom of the list -- move down onto the companion figure
+      // instead of wrapping to the first row (symmetric with Left1 at the
+      // top).
+      companionFocused = true;
+      requestUpdate();
     } else if (!indices.empty()) {
       habitSelectedRow = static_cast<int>((static_cast<size_t>(habitSelectedRow) + 1) % indices.size());
       requestUpdate();
@@ -1140,9 +1152,14 @@ void QuickPickActivity::render(RenderLock&&) {
   // header comment): a dithered light-grey background behind bubble+sprite,
   // the same "selected" treatment ReadMenuActivity's own recent-book cover
   // uses, rather than the solid black fill Tasks'/Habits' own row selection
-  // uses -- this highlights a whole section, not a single row.
+  // uses -- this highlights a whole section, not a single row. Stretches
+  // from the tab bar down to the first row (contentTop's own verticalSpacing
+  // gap above and LABEL_GAP below would otherwise show as unhighlighted
+  // white margins), so the section reads as one contiguous, tappable block.
   if (companionFocused) {
-    renderer.fillRectDither(0, contentTop, pageWidth, bubbleBlock + spriteH, Color::LightGray);
+    const int highlightTop = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight;
+    const int highlightBottom = contentTop + bubbleBlock + spriteH + LABEL_GAP;
+    renderer.fillRectDither(0, highlightTop, pageWidth, highlightBottom - highlightTop, Color::LightGray);
   }
 
   companion::drawSpeechBubble(renderer, bubbleX, contentTop, bubbleWidth, bubbleH, TAIL_LENGTH,
