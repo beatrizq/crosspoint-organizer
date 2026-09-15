@@ -4,13 +4,16 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <BoardConfig.h>
 #include <HalClock.h>
+#include <HalGPIO.h>
 #include <HalPowerManager.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <NimBLEDevice.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -29,9 +32,23 @@ namespace {
 constexpr char SERVICE_UUID[] = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 constexpr char CHAR_WRITE_UUID[] = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 constexpr char CHAR_NOTIFY_UUID[] = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-// Must match Gadgetbridge's BangleJSCoordinator device-name regex
-// ("Bangle\.js.*") for its Bangle.js device support to offer pairing at all.
-constexpr char DEVICE_NAME[] = "Bangle.js CrossPoint";
+// Must start with "Bangle.js" to match Gadgetbridge's BangleJSCoordinator
+// device-name regex ("Bangle\.js.*") for its Bangle.js device support to
+// offer pairing at all. The rest is the board's own model identifier
+// (BoardConfig::ACTIVE.name, e.g. "xteink_x3") rather than a fixed literal,
+// so the advertised name always matches whatever hardware actually detected
+// itself -- no per-model string to keep in sync by hand. Built once, lazily,
+// into a static buffer: BoardConfig::ACTIVE is a runtime value (X3 vs X4 on
+// the shared C3 binary is resolved by setupDisplayAndFonts()'s detection,
+// which always runs before the first bringUp()/resume() call from
+// BleNotifyRelay::begin()), so it can't be a constexpr.
+const char* deviceName() {
+  static char nameBuf[32];
+  if (nameBuf[0] == '\0') {
+    snprintf(nameBuf, sizeof(nameBuf), "Bangle.js %s", BoardConfig::ACTIVE.name);
+  }
+  return nameBuf;
+}
 
 // Held for the lifetime of a connection: without it, HalPowerManager throttles
 // the CPU to LOW_POWER_FREQ (10 MHz, no-PSRAM board) after 3s of button
@@ -68,6 +85,13 @@ std::unique_ptr<HalPowerManager::Lock> advertisingLock;
 // Tracks whether NimBLE is currently brought up, vs. torn down for pause().
 // poll() and resume() use this to no-op/rebuild correctly.
 bool active = false;
+
+// The device->phone side of the Nordic UART Service, set once in bringUp()
+// (called only from begin()). Survives pause()/resume() untouched, same as
+// the server/service objects it belongs to (see resume()'s own doc comment),
+// so this pointer stays valid for the object's whole lifetime once set --
+// resume() need not (and does not) reassign it.
+NimBLECharacteristic* notifyCharacteristic = nullptr;
 
 // bringUp()'s real, dynamic heap cost (NimBLE's heap_caps_malloc-based mbuf
 // pools/buffers, connection state, host task stack -- not the static
@@ -323,7 +347,7 @@ WriteCallbacks writeCallbacks;
 void bringUp() {
   const uint32_t freeHeapBefore = ESP.getFreeHeap();
 
-  NimBLEDevice::init(DEVICE_NAME);
+  NimBLEDevice::init(deviceName());
   configureSecurity();
 
   NimBLEServer* server = NimBLEDevice::createServer();
@@ -333,13 +357,14 @@ void bringUp() {
   NimBLECharacteristic* writeChar =
       service->createCharacteristic(CHAR_WRITE_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   writeChar->setCallbacks(&writeCallbacks);
-  service->createCharacteristic(CHAR_NOTIFY_UUID, NIMBLE_PROPERTY::NOTIFY);
+  notifyCharacteristic = service->createCharacteristic(CHAR_NOTIFY_UUID, NIMBLE_PROPERTY::NOTIFY);
   // No NimBLEService::start() call: it is a deprecated no-op in this library
   // version (2.5.x) -- the server and its services start together, below.
 
-  // A legacy advertising packet is capped at 31 bytes; the name (23 bytes)
-  // and the 128-bit service UUID (18 bytes) don't both fit alongside the
-  // 3-byte flags structure NimBLE always adds. Whichever doesn't fit spills
+  // A legacy advertising packet is capped at 31 bytes; the name (now
+  // model-dependent length, ~20-25 bytes) and the 128-bit service UUID
+  // (18 bytes) don't both fit alongside the 3-byte flags structure NimBLE
+  // always adds. Whichever doesn't fit spills
   // into the scan response automatically -- but enableScanResponse() must be
   // called first for that overflow to be decided the way we want: the
   // service UUID is what a scanner's device-detection filter actually keys
@@ -349,7 +374,7 @@ void bringUp() {
   NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
   advertising->enableScanResponse(true);
   advertising->addServiceUUID(service->getUUID());
-  advertising->setName(DEVICE_NAME);
+  advertising->setName(deviceName());
   if (!advertising->start()) {
     LOG_ERR("BLE", "Failed to start advertising -- Gadgetbridge will never see this device");
     return;
@@ -361,7 +386,57 @@ void bringUp() {
     LOG_ERR("BLE", "OOM: HalPowerManager::Lock (%u bytes)", static_cast<unsigned>(sizeof(HalPowerManager::Lock)));
   }
   bleInitHeapCost = static_cast<int32_t>(freeHeapBefore) - static_cast<int32_t>(ESP.getFreeHeap());
-  LOG_INF("BLE", "Advertising as \"%s\" for Gadgetbridge pairing", DEVICE_NAME);
+  LOG_INF("BLE", "Advertising as \"%s\" for Gadgetbridge pairing", deviceName());
+}
+
+// GATT notifications carry no ATT-level continuation protocol of their own --
+// unlike a GATT long-write, the payload is hard-capped at (negotiated MTU -
+// 3) bytes, and anything past that is silently dropped by the stack, not
+// fragmented. This project's negotiated MTU is 23 in practice (confirmed on
+// real hardware: a live capture showed every notification/write landing as
+// exactly 20-byte payloads -- see platformio.ini's own
+// CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU comment), so any message longer than 20
+// bytes needs multiple sequential notify() calls ourselves. No chunk framing
+// of our own is needed: Gadgetbridge's own RX path already reassembles
+// multiple characteristic-changed packets into one line before parsing
+// (BangleJSDeviceSupport.onCharacteristicChanged: `receivedLine += packetStr`
+// until it finds '\n').
+constexpr size_t MAX_NOTIFY_CHUNK = 20;
+
+void notifyChunked(const char* data, const size_t len) {
+  if (notifyCharacteristic == nullptr) return;
+  size_t offset = 0;
+  while (offset < len) {
+    const size_t chunkLen = (len - offset < MAX_NOTIFY_CHUNK) ? (len - offset) : MAX_NOTIFY_CHUNK;
+    if (!notifyCharacteristic->notify(reinterpret_cast<const uint8_t*>(data + offset), chunkLen)) {
+      LOG_ERR("BLE", "notify() failed at chunk offset %u/%u", static_cast<unsigned>(offset),
+              static_cast<unsigned>(len));
+      return;
+    }
+    offset += chunkLen;
+  }
+}
+
+// Pushes a Bangle.js-protocol "status" packet -- the same message type real
+// Bangle.js firmware sends for its own battery reporting, so Gadgetbridge's
+// existing, unmodified BangleJSDeviceSupport.handleBatteryStatus() parses and
+// displays it on the device card with no app-side changes at all. Terminated
+// with "\r\n", not just "\n": BangleJSDeviceSupport's own line-splitting
+// (onCharacteristicChanged) drops the one byte immediately before every
+// "\n" -- real Bangle.js firmware always sends CRLF for exactly this reason,
+// so matching that convention (rather than bare "\n", which would silently
+// truncate our own closing '}' and fail JSON parsing on every single update)
+// is what keeps the message valid on the phone side.
+void sendBatteryStatus() {
+  if (notifyCharacteristic == nullptr) return;
+  char buf[48];
+  const int len = snprintf(buf, sizeof(buf), "{\"t\":\"status\",\"bat\":%u,\"chg\":%d}\r\n",
+                           static_cast<unsigned>(powerManager.getBatteryPercentage()), gpio.isUsbConnected() ? 1 : 0);
+  if (len <= 0 || static_cast<size_t>(len) >= sizeof(buf)) {
+    LOG_ERR("BLE", "Battery status message truncated or encoding failed");
+    return;
+  }
+  notifyChunked(buf, static_cast<size_t>(len));
 }
 
 }  // namespace
@@ -399,7 +474,7 @@ void BleNotifyRelay::resume() {
   // lazy singletons that return the existing object rather than creating a
   // new one, so calling bringUp() again here would be redundant at best and
   // risk a duplicate service at worst.
-  NimBLEDevice::init(DEVICE_NAME);
+  NimBLEDevice::init(deviceName());
   // deinit(false) tears down the whole host stack (see pause()'s own doc
   // comment), which resets the security config set in bringUp() -- reapply
   // it every time init() runs again, not just the first time.
@@ -439,6 +514,11 @@ void BleNotifyRelay::poll() {
   const unsigned connectedCount = server != nullptr ? static_cast<unsigned>(server->getConnectedCount()) : 0;
   LOG_INF("BLE", "Status: advertising=%d connected=%u, init heap cost=%d bytes", isAdvertising, connectedCount,
           bleInitHeapCost);
+
+  // Same 10s cadence as the status log above rather than a second timer --
+  // a 48-byte notify is cheap, and Gadgetbridge only ever shows the most
+  // recent value anyway, so there is nothing to gain from a slower interval.
+  if (connectedCount > 0) sendBatteryStatus();
 }
 
 bool BleNotifyRelay::isConnected() {
