@@ -40,6 +40,7 @@
 #include "activities/home/QuickPickActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "companion/CompanionState.h"
+#include "companion/QuickPickRoll.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
@@ -504,17 +505,27 @@ void setup() {
         renderer, mappedInputManager, APP_STATE.focusSessionText, APP_STATE.focusSessionItemId,
         APP_STATE.focusSessionIsHabit, APP_STATE.focusSessionEndAbsMinutes, APP_STATE.focusSessionEndHour,
         APP_STATE.focusSessionEndMinute));
-  } else if (APP_STATE.lastSleepFromQuickPick && !mappedInputManager.isPressed(MappedInputManager::Button::Back)) {
+  } else if (APP_STATE.lastSleepFromQuickPick && !mappedInputManager.isPressed(MappedInputManager::Button::Right1)) {
     // Same escape hatch as the reader branch below: holding Back on wake skips
     // straight to home instead of putting the old pick back up.
     activityManager.replaceActivity(std::make_unique<QuickPickActivity>(
         renderer, mappedInputManager, APP_STATE.quickPickText, APP_STATE.quickPickItemId, APP_STATE.quickPickIsHabit,
         APP_STATE.quickPickPoolEmpty));
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-             mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
-    activityManager.goHome();
+             mappedInputManager.isPressed(MappedInputManager::Button::Right1) ||
+             APP_STATE.readerActivityLoadCount > 0) {
+    // Boot to the companion instead of the app menu (Home) if no book is open, last sleep was not from reader,
+    // back button is held, or reader activity crashed (indicated by readerActivityLoadCount > 0) -- unless the
+    // companion is disabled, in which case Home is still the only landing that makes sense. Rolls a fresh
+    // suggestion, the same one HomeActivity::onEnter() would compute for its own companion tile, since there is
+    // no HomeActivity instance here to source one from.
+    if (SETTINGS.companionEnabled) {
+      const auto rolled = quickpick::roll();
+      activityManager.replaceActivity(std::make_unique<QuickPickActivity>(
+          renderer, mappedInputManager, rolled.text, rolled.itemId, rolled.isHabit, rolled.poolEmpty));
+    } else {
+      activityManager.goHome();
+    }
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
     const auto path = APP_STATE.openEpubPath;
