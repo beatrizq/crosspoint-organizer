@@ -104,6 +104,18 @@ class HabitifyHabitCache : public PersistableStore<HabitifyHabitCache> {
   // turned out to already be gone.
   void clearPendingComplete(const std::string& habitId);
 
+  // Reverts whatever LOCAL, not-yet-pushed state made a habit complete --
+  // for the Companion's Logs screen's per-row "Clear" (Cached rows only, see
+  // its own comment). Zeroes `pending` (undoes a locally logged amount) and,
+  // if `pendingComplete` is set, clears both it and `completedByStatus`
+  // together (they are always set together by completeHabitAt(), so it is
+  // always safe to revert them together too). Never touches `current` --
+  // server-confirmed progress from a past sync has nothing local left to
+  // undo, which is exactly why a habit with no pending state at all
+  // (!hasPending()) is Synced, not Cached, and should never reach this. No-op
+  // for an unknown id.
+  void undoLocalCompletion(const std::string& habitId);
+
   void clear();
 
   // Clears every habit's today-scoped completion state (current,

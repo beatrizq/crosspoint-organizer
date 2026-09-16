@@ -158,6 +158,17 @@ void HabitifyHabitCache::clearPendingComplete(const std::string& habitId) {
   found->pendingComplete = false;
 }
 
+void HabitifyHabitCache::undoLocalCompletion(const std::string& habitId) {
+  const auto found =
+      std::find_if(habits.begin(), habits.end(), [&habitId](const HabitifyHabit& h) { return h.id == habitId; });
+  if (found == habits.end()) return;
+  found->pending = 0.0f;
+  if (found->pendingComplete) {
+    found->pendingComplete = false;
+    found->completedByStatus = false;
+  }
+}
+
 void HabitifyHabitCache::clear() {
   habits.clear();
   areas.clear();

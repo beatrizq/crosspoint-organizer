@@ -13,6 +13,19 @@ struct TodoistPendingReschedule {
   uint16_t dueDays = todoist::DUE_NONE;
 };
 
+// One row of the Companion's Logs screen for a completed task. `taskId` and
+// `pending` exist so the Logs screen can tell a locally-completed-but-not-
+// yet-pushed row (Cached, `pending=true`, safely cancellable via
+// cancelCompletedLogEntry()) apart from one a sync has already confirmed
+// (Synced, `pending=false`, `taskId` left empty since there is nothing left
+// to cancel a push for). See completeTaskAt()/setCompletedToday() for who
+// sets which.
+struct TodoistCompletedLogEntry {
+  std::string title;
+  std::string taskId;
+  bool pending = false;
+};
+
 /**
  * Singleton holding the last synced task list plus the completions and
  * reschedules that have not reached the server yet.
@@ -40,9 +53,9 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // for why it must never walk this back down to match a stale syncDate once
   // that has happened.
   uint16_t completedDay = todoist::DUE_NONE;
-  // Titles behind completedToday, for the Companion's Logs screen. See
-  // getCompletedTodayTitles()'s own comment for how it relates to the count.
-  std::vector<std::string> completedTodayTitles;
+  // Rows behind completedToday, for the Companion's Logs screen. See
+  // getCompletedTodayEntries()'s own comment for how it relates to the count.
+  std::vector<TodoistCompletedLogEntry> completedTodayEntries;
 
   TodoistTaskCache() = default;
   ~TodoistTaskCache() = default;
@@ -110,14 +123,14 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // figure in this class already tolerates between syncs.
   uint16_t getCompletedToday() const { return completedToday; }
 
-  // Titles behind getCompletedToday(), for the Companion's Logs screen. Not
+  // Rows behind getCompletedToday(), for the Companion's Logs screen. Not
   // necessarily one-to-one with the count: a local completion appends
   // immediately (see completeTaskAt) for instant feedback, but the fetch
   // that lands in setCompletedToday() is authoritative and replaces both
-  // together, so titles can briefly outrun/undershoot the count between a
+  // together, so entries can briefly outrun/undershoot the count between a
   // local press and the next sync the same way completedToday itself can be
   // stale (see its own comment). Capped at MAX_COMPLETED_TODAY_TITLES.
-  const std::vector<std::string>& getCompletedTodayTitles() const { return completedTodayTitles; }
+  const std::vector<TodoistCompletedLogEntry>& getCompletedTodayEntries() const { return completedTodayEntries; }
   static constexpr size_t MAX_COMPLETED_TODAY_TITLES = 20;
 
   // Sets today's completed count and titles directly, from a fetch that
@@ -126,8 +139,21 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // than adds - the fetch is authoritative for the day, not incremental - and
   // marks completedDay resolved so a completion pressed on-device later the
   // same day still adds on top of this baseline instead of rolling over
-  // first. titles is moved from and truncated to MAX_COMPLETED_TODAY_TITLES.
+  // first. titles is moved from and truncated to MAX_COMPLETED_TODAY_TITLES;
+  // every resulting entry is Synced (pending=false, taskId="") -- a fetch is
+  // by definition already confirmed by the server, with no push left to
+  // cancel.
   void setCompletedToday(uint16_t count, const std::string& date, std::vector<std::string>&& titles);
+
+  // Cancels one Cached (not yet pushed) Logs-screen row: removes it from
+  // completedTodayEntries, decrements completedToday, and cancels its queued
+  // server push via clearPending() so the task is not completed remotely
+  // either -- it simply reappears in getTasks() after the next sync re-fetches
+  // it, since it was never actually closed on the server. No-op (returns
+  // false) for an out-of-range index or a Synced entry (pending=false): a
+  // sync has already confirmed that one, and there is nothing local left to
+  // cancel.
+  bool cancelCompletedLogEntry(size_t displayIndex);
 
   // Clears today's completion log if `today` (independently resolved by the
   // caller, NOT derived from this cache's own syncDate) has genuinely moved
@@ -142,7 +168,7 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   // Also drops pendingIds when it rolls over: a completion queued for the
   // server is abandoned, not carried into the new day, if it was not synced
   // before the day it happened on ended -- by design, the same choice this
-  // makes for completedToday/completedTodayTitles, so the same "sync the
+  // makes for completedToday/completedTodayEntries, so the same "sync the
   // same day or it's lost" rule applies uniformly to everything a local
   // completion touches. Never touches syncDate itself (a different,
   // local-date concept used for overdue flags), pendingReschedules (a
@@ -151,7 +177,7 @@ class TodoistTaskCache : public PersistableStore<TodoistTaskCache> {
   void clearCompletedIfStale(uint16_t today);
 
   // Manually zeroes today's completion log right now, unconditionally -- for
-  // a user-triggered "Clear" action (see QuickPickActivity's Info tab),
+  // a user-triggered "Clear All" action (see QuickPickActivity's Logs tab),
   // independent of clearCompletedIfStale()'s own automatic day-boundary
   // check. Leaves completedDay and pendingIds untouched: this clears what the
   // log already shows for today, not what is still owed to the server -- a
