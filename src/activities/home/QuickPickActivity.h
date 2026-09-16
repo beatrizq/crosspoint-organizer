@@ -9,16 +9,19 @@
 
 /**
  * The companion's own screen: its figure, mood and speech bubble stay on
- * screen across three tabs -- Logs (today's log of completed tasks/habits,
- * plus the same suggestion Random/Go act on), Tasks and Habits (the same
- * items that count toward the mood: due-today-or-overdue tasks, not-yet-done
- * habits) -- so acting on one of them updates the mood right where it is
- * shown, without leaving to the real Tasks/Habits screens. Age and highscore
- * (lifetime info, not today's) sit in the header's own status column instead
- * -- the same spot Tasks/Calendar/Budget/Habits show their sync date -- since
- * neither changes tab to tab; the companion's name is the header title
- * itself (see CompanionTracker::displayName()), so there is nothing left to
- * repeat in the Logs tab's own body.
+ * screen across six tabs -- Overview (the default landing tab: one glance
+ * line per one of the other four, see renderOverviewTab()'s own comment),
+ * Tasks and Habits (the same items that count toward the mood: due-today-or-
+ * overdue tasks, not-yet-done habits), Calendar and Budget (read-only
+ * glances at GCalEventCache/YnabCategoryCache, unrelated to the mood), and
+ * Logs (today's log of completed tasks/habits, plus the same suggestion
+ * Random/Go act on) -- so acting on a Tasks/Habits row updates the mood
+ * right where it is shown, without leaving to the real Tasks/Habits screens.
+ * Age and highscore (lifetime info, not today's) sit in the header's own
+ * status column instead -- the same spot Tasks/Calendar/Budget/Habits show
+ * their sync date -- since neither changes tab to tab; the companion's name
+ * is the header title itself (see CompanionTracker::displayName()), so there
+ * is nothing left to repeat in the Logs tab's own body.
  *
  * Reached from Home (companion focused, then activated) or reconstructed on
  * boot from CrossPointState when the device was showing this screen at the
@@ -34,7 +37,7 @@
  * "Select" on the case (Right1 = the button that otherwise always leaves,
  * Right2 = the button that otherwise always opens options).
  *
- * All three tabs use Left1/Right2/Left2 as Up/Select/Down over that tab's own
+ * Every tab uses Left1/Right2/Left2 as Up/Select/Down over that tab's own
  * row list, the same shape a real row list's front buttons already have
  * elsewhere -- and in every tab, the row list and the companion figure form
  * one continuous circular loop: Left1 off row 0, or Left2 off the last row,
@@ -57,6 +60,11 @@
  * LogEntry::cached and clearLogRow()'s own comment): a completion still
  * local/unpushed, actually reversible, as opposed to Synced (a sync already
  * confirmed it, nothing local left to undo, Right2 does nothing there).
+ * Calendar/Budget's rows have no Right2 action at all (see
+ * renderCalendarTab()/renderBudgetTab()'s own comment) -- both real screens
+ * are read-only. Overview's rows are the one exception that IS actionable
+ * despite not belonging to Tasks/Habits/Logs: Right2 on a row jumps straight
+ * into the tab it summarizes (see renderOverviewTab()'s own comment).
  *
  * A pending BLE notification (see BleNotificationQueue, ENABLE_BLE_NOTIFY_SPIKE
  * builds only) takes over the bubble ahead of the sleeping/empty/suggestion
@@ -87,8 +95,8 @@ class QuickPickActivity final : public Activity {
   bool isQuickPickActivity() const override { return true; }
 
  private:
-  enum class Tab : uint8_t { Tasks = 0, Habits = 1, Calendar = 2, Budget = 3, Logs = 4 };
-  static constexpr int TAB_COUNT = 5;
+  enum class Tab : uint8_t { Overview = 0, Tasks = 1, Habits = 2, Calendar = 3, Budget = 4, Logs = 5 };
+  static constexpr int TAB_COUNT = 6;
 
   Tab nextTab() const { return static_cast<Tab>((static_cast<int>(activeTab) + 1) % TAB_COUNT); }
   Tab previousTab() const { return static_cast<Tab>((static_cast<int>(activeTab) + TAB_COUNT - 1) % TAB_COUNT); }
@@ -187,8 +195,8 @@ class QuickPickActivity final : public Activity {
   // suggestion if what it was showing is no longer eligible, then repaints.
   void afterRowAction();
 
-  // render()'s own five tab bodies, sharing the rect below the companion
-  // figure and speech bubble (present, unchanged, in all five -- see this
+  // render()'s own six tab bodies, sharing the rect below the companion
+  // figure and speech bubble (present, unchanged, in all six -- see this
   // file's own header comment).
   void renderLogsTab(int top, int height) const;
   void renderTasksTab(int top, int height) const;
@@ -204,6 +212,17 @@ class QuickPickActivity final : public Activity {
   // category's bold styling) is reproduced here.
   void renderCalendarTab(int top, int height) const;
   void renderBudgetTab(int top, int height) const;
+  // The default landing tab: one fixed row per other tab (Tasks, Habits,
+  // Calendar, Budget -- Logs is derived from the first two, so it earns no
+  // row of its own here), each a single glance line built fresh from the
+  // same caches those tabs already read (see the .cpp for exactly what each
+  // line shows and falls back to when empty/never synced). Unlike Calendar/
+  // Budget's rows, an Overview row IS actionable: Right2 on one (not
+  // companionFocused) jumps straight into the tab it summarizes via
+  // switchTab(), the "clickable" behavior this file's own header comment
+  // describes -- Left1/Left2 and the companion-focus loop work exactly like
+  // every other tab's fixed-size list.
+  void renderOverviewTab(int top, int height) const;
 
   // Re-syncs notificationsDismissed against BLE_NOTIFICATIONS' current state
   // -- resets to 0 if the newest entry changed since last checked (a new
@@ -235,7 +254,7 @@ class QuickPickActivity final : public Activity {
   bool isHabit;
   bool poolEmpty;
 
-  Tab activeTab = Tab::Tasks;
+  Tab activeTab = Tab::Overview;
   // Row cursor within each tab's own list -- an index into
   // relevantTaskIndices()/relevantHabitIndices()/logEntries(), or straight
   // into GCAL_EVENTS.getEvents()/YNAB_CATEGORIES.getCategories() for
@@ -246,6 +265,10 @@ class QuickPickActivity final : public Activity {
   int logSelectedRow = 0;
   int calendarSelectedRow = 0;
   int budgetSelectedRow = 0;
+  // Overview's own row cursor -- 0..3, straight into the fixed 4-entry
+  // {Tasks, Habits, Calendar, Budget} order renderOverviewTab()/loop() both
+  // use, not an index into any cache.
+  int overviewSelectedRow = 0;
   // Left1 off row 0, or Left2 off the last row, moves focus here instead of
   // wrapping to the opposite end of the list -- one stop above the row list,
   // not a third index space of its own, so no separate cursor position is

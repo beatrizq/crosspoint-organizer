@@ -88,12 +88,13 @@ void mirrorToAppState(const std::string& text, const std::string& itemId, const 
 void QuickPickActivity::onEnter() {
   Activity::onEnter();
   mirrorToAppState(pickedText, itemId, isHabit, poolEmpty);
-  activeTab = Tab::Tasks;
+  activeTab = Tab::Overview;
   taskSelectedRow = 0;
   habitSelectedRow = 0;
   logSelectedRow = 0;
   calendarSelectedRow = 0;
   budgetSelectedRow = 0;
+  overviewSelectedRow = 0;
   companionFocused = false;
   requestUpdate(true);
 }
@@ -106,6 +107,7 @@ void QuickPickActivity::switchTab(const Tab next) {
   logSelectedRow = 0;
   calendarSelectedRow = 0;
   budgetSelectedRow = 0;
+  overviewSelectedRow = 0;
   companionFocused = false;
 }
 
@@ -885,6 +887,78 @@ void QuickPickActivity::loop() {
 
   // Right2/Left1/Left2: whatever the active tab needs (see this file's own
   // header comment for the full scheme per tab).
+  if (activeTab == Tab::Overview) {
+    constexpr int OVERVIEW_ROW_COUNT = 4;
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
+      if (companionFocused) {
+        companionFocused = false;
+        overviewSelectedRow = OVERVIEW_ROW_COUNT - 1;
+        requestUpdate();
+      } else if (overviewSelectedRow == 0) {
+        companionFocused = true;
+        requestUpdate();
+      } else {
+        overviewSelectedRow = (overviewSelectedRow + OVERVIEW_ROW_COUNT - 1) % OVERVIEW_ROW_COUNT;
+        requestUpdate();
+      }
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Left2)) {
+      if (companionFocused) {
+        companionFocused = false;
+        overviewSelectedRow = 0;
+        requestUpdate();
+      } else if (overviewSelectedRow == OVERVIEW_ROW_COUNT - 1) {
+        companionFocused = true;
+        requestUpdate();
+      } else {
+        overviewSelectedRow = (overviewSelectedRow + 1) % OVERVIEW_ROW_COUNT;
+        requestUpdate();
+      }
+      return;
+    }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
+      if (swallowConfirmRelease) {
+        swallowConfirmRelease = false;
+        return;
+      }
+      if (companionFocused) {
+        if (hasPendingNotification()) {
+          dismissAllNotifications();
+          return;
+        }
+        if (poolEmpty) {
+          setResult(QuickPickResult{pickedText, itemId, isHabit, poolEmpty});
+          finish();
+          return;
+        }
+        showOptions();
+      } else {
+        // Jump straight into the tab this row summarizes -- the "clickable"
+        // behavior this file's own header comment describes. switchTab()
+        // itself resets the destination tab's own row cursor to 0.
+        switch (overviewSelectedRow) {
+          case 0:
+            switchTab(Tab::Tasks);
+            break;
+          case 1:
+            switchTab(Tab::Habits);
+            break;
+          case 2:
+            switchTab(Tab::Calendar);
+            break;
+          case 3:
+            switchTab(Tab::Budget);
+            break;
+          default:
+            break;
+        }
+        requestUpdate(true);
+      }
+    }
+    return;
+  }
+
   if (activeTab == Tab::Logs) {
     const auto entries = logEntries();
     if (mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
@@ -1467,6 +1541,133 @@ void QuickPickActivity::renderBudgetTab(const int top, const int height) const {
   }
 }
 
+// The default landing tab: a fixed 4-row glance, one row per one of the
+// other four tabs (Tasks, Habits, Calendar, Budget -- Logs is derived from
+// the first two, so it earns no row here), each row built fresh from the
+// exact same cache that tab's own render*Tab() reads, so nothing here can
+// drift out of sync with the real tab. Falls back to each real tab's own
+// empty/never-synced strings where relevant, so the two states never
+// disagree. Right2 on a row (not companionFocused) jumps straight into the
+// tab it summarizes -- see loop()'s own comment.
+void QuickPickActivity::renderOverviewTab(const int top, const int height) const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  const int textX = metrics.contentSidePadding;
+  const int textWidth = pageWidth - metrics.contentSidePadding * 2;
+  const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
+
+  char taskValue[32];
+  {
+    const size_t left = relevantTaskIndices().size();
+    if (left == 0) {
+      snprintf(taskValue, sizeof(taskValue), "%s", tr(STR_OVERVIEW_TASKS_DONE));
+    } else {
+      snprintf(taskValue, sizeof(taskValue), tr(STR_OVERVIEW_TASKS_LEFT), left);
+    }
+  }
+
+  char habitValue[32];
+  {
+    const size_t total = HABITIFY_HABITS.getHabits().size();
+    if (total == 0) {
+      snprintf(habitValue, sizeof(habitValue), "%s", tr(STR_OVERVIEW_HABITS_EMPTY));
+    } else {
+      const size_t done = total - relevantHabitIndices().size();
+      snprintf(habitValue, sizeof(habitValue), tr(STR_OVERVIEW_HABITS_RATIO), done, total);
+    }
+  }
+
+  char calendarValue[80];
+  {
+    const auto& events = GCAL_EVENTS.getEvents();
+    if (events.empty()) {
+      snprintf(calendarValue, sizeof(calendarValue), "%s",
+               GCAL_EVENTS.hasSynced() ? tr(STR_GCAL_NO_EVENTS) : tr(STR_GCAL_NEVER_SYNCED));
+    } else {
+      // Sorted ascending by GCalEventCache itself, and the fetch window never
+      // reaches into the past (see OrganizerSync's own comment) -- so the
+      // first entry is always the soonest upcoming event.
+      const auto& event = events.front();
+      char when[24] = "";
+      if (civil::monthFromDate(event.date) != 0) {
+        char day[16];
+        organizer::formatDayLabel(event.date, day, sizeof(day));
+        if (event.isAllDay()) {
+          snprintf(when, sizeof(when), "%s", day);
+        } else {
+          snprintf(when, sizeof(when), "%s %02u:%02u", day, static_cast<unsigned>(event.startMin / 60),
+                   static_cast<unsigned>(event.startMin % 60));
+        }
+      }
+      if (when[0] != '\0') {
+        snprintf(calendarValue, sizeof(calendarValue), "%s \xC2\xB7 %s", event.summary.c_str(), when);
+      } else {
+        snprintf(calendarValue, sizeof(calendarValue), "%s", event.summary.c_str());
+      }
+    }
+  }
+
+  char budgetValue[80];
+  {
+    const auto& categories = YNAB_CATEGORIES.getCategories();
+    if (categories.empty()) {
+      snprintf(budgetValue, sizeof(budgetValue), "%s",
+               YNAB_CATEGORIES.hasSynced() ? tr(STR_YNAB_NO_CATEGORIES) : tr(STR_YNAB_NEVER_SYNCED));
+    } else {
+      // Inflow, when present, always sorts first (see YnabCategoryCache::
+      // sortInflowFirst()) -- "Ready to Assign" is the one number YNAB users
+      // actually check at a glance, so it is shown by name instead of just
+      // repeating whatever category happens to be first in plan order.
+      const auto& first = categories.front();
+      if (isYnabInflowCategory(first.name)) {
+        snprintf(budgetValue, sizeof(budgetValue), tr(STR_OVERVIEW_BUDGET_READY), first.balance.c_str());
+      } else {
+        snprintf(budgetValue, sizeof(budgetValue), "%s \xC2\xB7 %s", first.name.c_str(), first.balance.c_str());
+      }
+    }
+  }
+
+  struct OverviewRow {
+    const char* label;
+    const char* value;
+  };
+  const OverviewRow rows[] = {
+      {tr(STR_COMPANION_TAB_TASKS), taskValue},
+      {tr(STR_COMPANION_TAB_HABITS), habitValue},
+      {tr(STR_COMPANION_TAB_CALENDAR), calendarValue},
+      {tr(STR_COMPANION_TAB_BUDGET), budgetValue},
+  };
+  constexpr int ROW_COUNT = 4;
+
+  const int pageItems = std::max(1, height / ROW_HEIGHT);
+  const int pageStart = (overviewSelectedRow / pageItems) * pageItems;
+
+  for (int row = 0; row < pageItems; row++) {
+    const int i = pageStart + row;
+    if (i >= ROW_COUNT) break;
+    const int rowY = top + row * ROW_HEIGHT;
+    const bool selected = !companionFocused && i == overviewSelectedRow;
+    const bool ink = !selected;
+
+    if (selected) renderer.fillRect(0, rowY, pageWidth, ROW_HEIGHT);
+
+    const int gap = renderer.getSpaceWidth(UI_10_FONT_ID) * 2;
+    const int labelWidth = renderer.getTextWidth(UI_10_FONT_ID, rows[i].label);
+    const int valueMaxWidth = std::max(0, textWidth - labelWidth - gap);
+    const auto shownValue = renderer.truncatedText(UI_10_FONT_ID, rows[i].value, valueMaxWidth);
+    const int valueWidth = renderer.getTextWidth(UI_10_FONT_ID, shownValue.c_str());
+    const int textY = rowY + (ROW_HEIGHT - lineH) / 2;
+    renderer.drawText(UI_10_FONT_ID, textX, textY, rows[i].label, ink);
+    renderer.drawText(UI_10_FONT_ID, textX + textWidth - valueWidth, textY, shownValue.c_str(), ink);
+
+    const bool lastOnPage = row + 1 >= pageItems || i + 1 >= ROW_COUNT;
+    if (!selected && !lastOnPage) {
+      renderer.fillRectDither(textX, rowY + ROW_HEIGHT - SEPARATOR_HEIGHT, textWidth, SEPARATOR_HEIGHT,
+                              Color::LightGray);
+    }
+  }
+}
+
 void QuickPickActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
@@ -1485,6 +1686,7 @@ void QuickPickActivity::render(RenderLock&&) {
                  CompanionTracker::displayName(), status);
 
   const std::vector<TabInfo> tabs = {
+      {tr(STR_COMPANION_TAB_OVERVIEW), activeTab == Tab::Overview},
       {tr(STR_COMPANION_TAB_TASKS), activeTab == Tab::Tasks},
       {tr(STR_COMPANION_TAB_HABITS), activeTab == Tab::Habits},
       {tr(STR_COMPANION_TAB_CALENDAR), activeTab == Tab::Calendar},
@@ -1567,6 +1769,9 @@ void QuickPickActivity::render(RenderLock&&) {
   const int tabContentHeight = std::max(0, contentBottom - tabContentTop);
 
   switch (activeTab) {
+    case Tab::Overview:
+      renderOverviewTab(tabContentTop, tabContentHeight);
+      break;
     case Tab::Logs:
       renderLogsTab(tabContentTop, tabContentHeight);
       break;
@@ -1617,6 +1822,12 @@ void QuickPickActivity::render(RenderLock&&) {
                              static_cast<size_t>(logSelectedRow) < entries.size() &&
                              entries[static_cast<size_t>(logSelectedRow)].cached;
     confirmLabel = onCachedRow ? tr(STR_CLEAR_BUTTON) : "";
+    leftLabel = tr(STR_DIR_UP);
+    rightLabel = tr(STR_DIR_DOWN);
+  } else if (activeTab == Tab::Overview) {
+    // Every row is actionable here (see loop()'s own comment) -- Select
+    // always jumps into the row's own tab, unlike Calendar/Budget's rows.
+    confirmLabel = tr(STR_SELECT);
     leftLabel = tr(STR_DIR_UP);
     rightLabel = tr(STR_DIR_DOWN);
   } else if (activeTab == Tab::Calendar || activeTab == Tab::Budget) {
