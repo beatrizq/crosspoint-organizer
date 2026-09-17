@@ -18,6 +18,16 @@ class BleNotificationsActivity final : public Activity {
   // opens on a plain press -- same guard RecentBooksActivity uses for its own
   // long-press action.
   bool longPressFired = false;
+  // Side Up/Down jump to the previous/next app in the home grid's own order
+  // -- the same shortcut every other app screen has (see
+  // OrganizerScreenActivity/QuickPickActivity's own identical block).
+  // Row-paging (buttonNavigator's onNext/onPreviousRelease) is still
+  // reachable via front Left1/Left2, which NavNext/NavPrevious alias to
+  // alongside side Up/Down -- see MappedInputManager::mapButton()'s own
+  // NavNext/NavPrevious case. Guarded by a fresh-press check the same way
+  // every other screen's is.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
 
   void openDetail();
   void dismissAll();

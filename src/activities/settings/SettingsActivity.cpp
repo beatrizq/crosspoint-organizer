@@ -37,6 +37,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/BleNotifyRelay.h"
+#include "util/HomeAppOrder.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
                                                               StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM,
@@ -207,27 +208,25 @@ void SettingsActivity::loop() {
     return;
   }
 
-  // Side Up/Down: previous/next category, from wherever the cursor already
-  // is -- independent of the front buttons' own Up/Down (row paging) below.
-  // A fresh press each, same guard reasoning as Back/Confirm above.
+  // Side Up/Down: jump to the previous/next app in the home grid's own
+  // order, from wherever the cursor already is -- the same shortcut every
+  // app screen has (see OrganizerScreenActivity/QuickPickActivity's own
+  // identical block). Category-switching is still reachable the slower way:
+  // move the selection up to the tab bar and press Confirm to cycle it.
+  // Independent of the front buttons' own Up/Down (row paging) below. A
+  // fresh press each, same guard reasoning as Back/Confirm above.
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
   if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
     if (upPressSeen) {
-      selectedCategoryIndex = (selectedCategoryIndex + categoryCount - 1) % categoryCount;
-      selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
-      applyCategorySelection();
-      requestUpdate();
+      activityManager.goToApp(homeAppOrder::adjacentVisibleApp(homeAppOrder::AppId::Settings, /*forward=*/false));
     }
     upPressSeen = false;
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
     if (downPressSeen) {
-      selectedCategoryIndex = (selectedCategoryIndex + 1) % categoryCount;
-      selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
-      applyCategorySelection();
-      requestUpdate();
+      activityManager.goToApp(homeAppOrder::adjacentVisibleApp(homeAppOrder::AppId::Settings, /*forward=*/true));
     }
     downPressSeen = false;
     return;

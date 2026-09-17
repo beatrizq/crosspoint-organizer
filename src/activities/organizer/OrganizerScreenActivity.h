@@ -6,6 +6,7 @@
 #include "activities/Activity.h"
 #include "components/themes/BaseTheme.h"
 #include "util/ButtonNavigator.h"
+#include "util/HomeAppOrder.h"
 
 /**
  * Shared chrome for the three organizer screens: Tasks, Calendar and Budget.
@@ -66,6 +67,9 @@ class OrganizerScreenActivity : public Activity {
 
   // Drawn on the left of the header.
   virtual const char* screenTitle() const = 0;
+  // This screen's own identity in the home grid -- which app side Left/Right
+  // cycle to/from (see loop()'s own comment).
+  virtual homeAppOrder::AppId appId() const = 0;
   virtual int tabCount() const = 0;
   virtual const char* tabLabel(int index) const = 0;
   // The header's right-hand summary for the tab being shown. Write "" to draw
@@ -161,21 +165,20 @@ class OrganizerScreenActivity : public Activity {
   // and the cancel takes the user all the way back to Home instead of just
   // closing the popup.
   bool swallowBackRelease = false;
-  // Side Up/Down switch to the previous/next tab, whatever row (or the tab
-  // bar itself) is currently selected -- the point is reaching a sibling tab
-  // without first navigating up to the tab bar to cycle it with Confirm.
-  // Guarded by a fresh-press check the same way Back/Confirm are above, in
-  // case one was already held down when some other gesture left this screen
-  // (a hold begun elsewhere should not fire an unintended tab switch the
-  // moment it is finally released here).
+  // Side Up/Down jump to the previous/next app in the home grid's own order
+  // (see loop()'s own comment), whatever row (or the tab bar itself) is
+  // currently selected -- this screen's own tabs are still reachable by
+  // navigating up to the tab bar and cycling it with Select. Guarded by a
+  // fresh-press check the same way Back/Confirm are above, in case one was
+  // already held down when some other gesture left this screen (a hold
+  // begun elsewhere should not fire an unintended jump the moment it is
+  // finally released here).
   bool upPressSeen = false;
   bool downPressSeen = false;
 
  private:
   // The tab Select moves to when the tab bar is focused; wraps at the end.
   int nextTab() const { return tabCount() <= 1 ? activeTab : (activeTab + 1) % tabCount(); }
-  // Mirrors nextTab(): wraps the other way, for side Up.
-  int previousTab() const { return tabCount() <= 1 ? activeTab : (activeTab + tabCount() - 1) % tabCount(); }
   void switchTab(int next);
   // Geometry the input and render paths must agree on.
   int listTop() const;

@@ -10,6 +10,7 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/HomeAppOrder.h"
 #include "util/RecentBookLoader.h"
 
 void ReadMenuActivity::onEnter() {
@@ -69,6 +70,35 @@ void ReadMenuActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     activateSelected();
+    return;
+  }
+
+  // Side Up/Down: jump to the previous/next app in the home grid's own
+  // order (see this file's own header comment). A fresh press each, same
+  // guard reasoning as Right1/Right2 above.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    if (upPressSeen) {
+      activityManager.goToApp(homeAppOrder::adjacentVisibleApp(homeAppOrder::AppId::Read, /*forward=*/false));
+    }
+    upPressSeen = false;
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    if (downPressSeen) {
+      activityManager.goToApp(homeAppOrder::adjacentVisibleApp(homeAppOrder::AppId::Read, /*forward=*/true));
+    }
+    downPressSeen = false;
+    return;
+  }
+  // Swallowed for as long as either is held: buttonNavigator's row paging
+  // below reacts to the logical NavNext/NavPrevious buttons, which are side
+  // Up/Down blended with front Left1/Left2 (see MappedInputManager::
+  // mapButton()) -- without this, a side press would page a row immediately
+  // and only jump apps afterward, on release.
+  if (mappedInput.isPressed(MappedInputManager::Button::Up) ||
+      mappedInput.isPressed(MappedInputManager::Button::Down)) {
     return;
   }
 

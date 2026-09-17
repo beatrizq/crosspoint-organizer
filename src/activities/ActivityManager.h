@@ -12,6 +12,7 @@
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+#include "util/HomeAppOrder.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
@@ -141,6 +142,18 @@ class ActivityManager {
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
+  // Opens the companion screen fresh -- a new quickpick::roll(), the same
+  // "fresh visit" treatment HomeActivity::onEnter() gives its own tile (see
+  // its own homeSuggestionText comment) and main.cpp's boot-to-companion
+  // path use, rather than resuming whatever suggestion was last held. No-op
+  // when the companion is disabled -- see FRONT_BUTTON_HARDWARE/goToApp()'s
+  // own reasoning: nothing should call this for a hidden tile anyway.
+  void goToCompanion();
+  // Dispatches to whichever of the goTo* methods above opens `id`'s own
+  // screen -- the side Left/Right "previous/next app" shortcut every app
+  // screen has (see homeAppOrder::adjacentVisibleApp()) needs one call site
+  // that can take any app in the grid's own order, not a fixed pair.
+  void goToApp(homeAppOrder::AppId id);
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

@@ -39,6 +39,17 @@ class ReadMenuActivity final : public Activity {
   void activateSelected();
 
   ButtonNavigator buttonNavigator;
+  // Side Up/Down jump to the previous/next app in the home grid's own order
+  // -- the same shortcut every other app screen has (see
+  // OrganizerScreenActivity/QuickPickActivity's own identical block).
+  // Row-paging (buttonNavigator's onNext/onPrevious) is still reachable via
+  // front Left1/Left2, which NavNext/NavPrevious alias to alongside side
+  // Up/Down -- see MappedInputManager::mapButton()'s own NavNext/NavPrevious
+  // case. Guarded by a fresh-press check the same way every other screen's
+  // is, in case one was already held down when some other gesture left this
+  // screen.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
   std::vector<Entry> entries;
   // The single most recent book, when there is one -- drawn as a leading row
   // ahead of entries[] (selectedIndex 0), one cycle position of its own the

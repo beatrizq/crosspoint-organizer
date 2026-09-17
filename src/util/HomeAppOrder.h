@@ -114,4 +114,18 @@ void parse(const char* stored, int (&out)[APP_COUNT]);
 /** Renders an order back to the stored form. `outSize` must be >= APP_COUNT + 1. */
 void format(const int (&order)[APP_COUNT], char* out, size_t outSize);
 
+/**
+ * The app one step forward (or back) from `current` in the user's own grid
+ * order, skipping any app that would not actually be a selectable tile right
+ * now (Notifications without ENABLE_BLE_NOTIFY_SPIKE, Companion while
+ * disabled -- the same gates HomeActivity::buildEntries() applies), and
+ * wrapping at either end. Backs the side Left/Right "previous/next app"
+ * shortcut every app screen has (see e.g. OrganizerScreenActivity's own
+ * loop()) -- reusing this rather than each screen re-deriving the visible
+ * order keeps it consistent with what Home's own grid would actually show.
+ * Falls back to the first visible app if `current` itself is not one (should
+ * not happen: every caller passes its own, always-visible AppId).
+ */
+AppId adjacentVisibleApp(AppId current, bool forward);
+
 }  // namespace homeAppOrder

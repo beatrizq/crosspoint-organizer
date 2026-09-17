@@ -40,7 +40,6 @@
 #include "activities/home/QuickPickActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "companion/CompanionState.h"
-#include "companion/QuickPickRoll.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
@@ -514,18 +513,13 @@ void setup() {
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
              mappedInputManager.isPressed(MappedInputManager::Button::Right1) ||
              APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to the companion instead of the app menu (Home) if no book is open, last sleep was not from reader,
-    // back button is held, or reader activity crashed (indicated by readerActivityLoadCount > 0) -- unless the
-    // companion is disabled, in which case Home is still the only landing that makes sense. Rolls a fresh
-    // suggestion, the same one HomeActivity::onEnter() would compute for its own companion tile, since there is
-    // no HomeActivity instance here to source one from.
-    if (SETTINGS.companionEnabled) {
-      const auto rolled = quickpick::roll();
-      activityManager.replaceActivity(std::make_unique<QuickPickActivity>(
-          renderer, mappedInputManager, rolled.text, rolled.itemId, rolled.isHabit, rolled.poolEmpty));
-    } else {
-      activityManager.goHome();
-    }
+    // Boot to the app menu (Home) if no book is open, last sleep was not from
+    // reader, back button is held, or reader activity crashed (indicated by
+    // readerActivityLoadCount > 0). The companion screen is still reached the
+    // same way it always was otherwise -- its own grid tile, or the
+    // lastSleepFromQuickPick resume branch above when that is genuinely what
+    // was open at sleep.
+    activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
     const auto path = APP_STATE.openEpubPath;

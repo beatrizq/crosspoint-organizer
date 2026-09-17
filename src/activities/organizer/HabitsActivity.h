@@ -45,6 +45,7 @@ class HabitsActivity final : public OrganizerScreenActivity {
 
  protected:
   const char* screenTitle() const override;
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Habits; }
   int tabCount() const override { return static_cast<int>(visibleAreaIds.size()); }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;

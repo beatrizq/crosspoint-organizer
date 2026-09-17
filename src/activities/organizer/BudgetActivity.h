@@ -43,6 +43,7 @@ class BudgetActivity final : public OrganizerScreenActivity {
 
  protected:
   const char* screenTitle() const override;
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Budget; }
   int tabCount() const override { return 2 + static_cast<int>(tabLabels.size()); }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;

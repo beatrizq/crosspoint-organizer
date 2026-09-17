@@ -140,12 +140,18 @@ void ButtonRemapActivity::render(RenderLock&&) {
                    Rect{0, topOffset + 4 * metrics.listRowHeight + 5 * metrics.verticalSpacing + 20, pageWidth, 20},
                    tr(STR_REMAP_CANCEL_HINT));
 
-  // Live preview of logical labels under front buttons.
-  // This mirrors the on-device front button order: Right1, Right2, Left1, Left2.
-  GUI.drawButtonHints(renderer, labelForHardware(CrossPointSettings::FRONT_HW_RIGHT1),
-                      labelForHardware(CrossPointSettings::FRONT_HW_RIGHT2),
-                      labelForHardware(CrossPointSettings::FRONT_HW_LEFT1),
-                      labelForHardware(CrossPointSettings::FRONT_HW_LEFT2));
+  // Live preview of logical labels under front buttons. drawButtonHints()
+  // always draws its btn1/btn2 args in the screen's left-hand group and
+  // btn3/btn4 in the right-hand one (every theme agrees -- see
+  // CrossPointSettings::FRONT_BUTTON_HARDWARE's own comment), so this must
+  // pass raw hardware indices in true ascending order (BACK=0, CONFIRM=1,
+  // LEFT=2, RIGHT=3) to land each role's label under the physical button it
+  // was actually just assigned to -- CrossPointSettings::FRONT_HW_* would be
+  // wrong here, since those are default *role* assignments, not raw hardware
+  // identities, and Left1/Left2 no longer default to the same raw indices
+  // (2, 3) this preview would need to assume.
+  GUI.drawButtonHints(renderer, labelForHardware(HalGPIO::BTN_BACK), labelForHardware(HalGPIO::BTN_CONFIRM),
+                      labelForHardware(HalGPIO::BTN_LEFT), labelForHardware(HalGPIO::BTN_RIGHT));
   renderer.displayBuffer();
 }
 
@@ -184,14 +190,21 @@ const char* ButtonRemapActivity::getRoleName(const uint8_t roleIndex) const {
 }
 
 const char* ButtonRemapActivity::getHardwareName(const uint8_t buttonIndex) const {
+  // buttonIndex is a raw hardware index (straight from getPressedFrontButton(),
+  // i.e. one of HalGPIO::BTN_BACK/CONFIRM/LEFT/RIGHT) identifying which
+  // physical button was actually pressed -- switching on
+  // CrossPointSettings::FRONT_HW_* here would be wrong, since those are
+  // default *role* assignments (which can now differ from these raw
+  // identities; see FRONT_BUTTON_HARDWARE's own comment), not raw hardware
+  // identity itself.
   switch (buttonIndex) {
-    case CrossPointSettings::FRONT_HW_RIGHT1:
+    case HalGPIO::BTN_BACK:
       return tr(STR_HW_BACK_LABEL);
-    case CrossPointSettings::FRONT_HW_RIGHT2:
+    case HalGPIO::BTN_CONFIRM:
       return tr(STR_HW_CONFIRM_LABEL);
-    case CrossPointSettings::FRONT_HW_LEFT1:
+    case HalGPIO::BTN_LEFT:
       return tr(STR_HW_LEFT_LABEL);
-    case CrossPointSettings::FRONT_HW_LEFT2:
+    case HalGPIO::BTN_RIGHT:
       return tr(STR_HW_RIGHT_LABEL);
     default:
       return "Unknown";

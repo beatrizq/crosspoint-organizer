@@ -86,12 +86,29 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     FRONT_BUTTON_LAYOUT_COUNT
   };
 
-  // Front button hardware identifiers (for remapping)
+  // Front button hardware identifiers (for remapping).
+  //
+  // These raw indices (0-3) are HalGPIO::BTN_BACK/BTN_CONFIRM/BTN_LEFT/
+  // BTN_RIGHT -- freeink-sdk's own names, unrelated to this device's actual
+  // physical layout (see MappedInputManager's own header comment for the
+  // Left1/Left2/Right1/Right2 scheme these hardware indices are the default
+  // values for). Every theme's drawButtonHints() draws its btn1/btn2 in a
+  // left-hand screen group and btn3/btn4 in a right-hand one (BaseTheme,
+  // LyraTheme, RoundedRaffTheme all agree), and MappedInputManager::
+  // mapFrontLabels() builds those four labels in fixed raw-hardware order
+  // (BACK, CONFIRM, LEFT, RIGHT) -- so hw index 0/1 render in the left-hand
+  // group and 2/3 in the right-hand one. FRONT_HW_LEFT1/LEFT2 must therefore
+  // default to 0/1 and FRONT_HW_RIGHT1/RIGHT2 to 2/3, confirmed against the
+  // real device: the reverse (this enum's own previous values) put Right1/
+  // Right2 ("Apps"/"Select") on the physical left pair and Left1/Left2 ("Up"/
+  // "Down") on the physical right pair. A user's own remap (ButtonRemapActivity
+  // captures a literal press via getPressedFrontButton(), not one of these
+  // symbols) is unaffected either way.
   enum FRONT_BUTTON_HARDWARE {
-    FRONT_HW_RIGHT1 = 0,
-    FRONT_HW_RIGHT2 = 1,
-    FRONT_HW_LEFT1 = 2,
-    FRONT_HW_LEFT2 = 3,
+    FRONT_HW_LEFT1 = 0,
+    FRONT_HW_LEFT2 = 1,
+    FRONT_HW_RIGHT1 = 2,
+    FRONT_HW_RIGHT2 = 3,
     FRONT_BUTTON_HARDWARE_COUNT
   };
 

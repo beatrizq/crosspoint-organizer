@@ -264,31 +264,22 @@ void OrganizerScreenActivity::loop() {
     return;
   }
 
-  // Side Up/Down: previous/next tab, from wherever the cursor already is --
-  // no need to move up to the tab bar and cycle it with Confirm first.
-  // Independent of the front buttons' own Up/Down (row paging) below; a
-  // fresh press each, same guard reasoning as Back/Confirm above.
+  // Side Up/Down: jump to the previous/next app in the home grid's own order,
+  // from wherever the cursor already is -- the same shortcut every app
+  // screen has (see QuickPickActivity/SettingsActivity's own identical
+  // block). Tab-switching (this screen's own tab bar) is still reachable the
+  // slower way: move the selection up to the tab bar and press Select to
+  // cycle it. Independent of the front buttons' own Up/Down (row paging)
+  // below; a fresh press each, same guard reasoning as Back/Confirm above.
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
   if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-    if (upPressSeen) {
-      {
-        RenderLock lock(*this);
-        switchTab(previousTab());
-      }
-      requestUpdate(true);
-    }
+    if (upPressSeen) activityManager.goToApp(homeAppOrder::adjacentVisibleApp(appId(), /*forward=*/false));
     upPressSeen = false;
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
-    if (downPressSeen) {
-      {
-        RenderLock lock(*this);
-        switchTab(nextTab());
-      }
-      requestUpdate(true);
-    }
+    if (downPressSeen) activityManager.goToApp(homeAppOrder::adjacentVisibleApp(appId(), /*forward=*/true));
     downPressSeen = false;
     return;
   }

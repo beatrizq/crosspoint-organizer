@@ -225,6 +225,26 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     frontButtonLeft2 =
         clamp(doc["frontButtonLeft2"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
   }
+  // One-time correction for a value already written to disk under the *new*
+  // key names but holding the *old*, since-corrected default hardware
+  // indices (0/1/2/3 for Right1/Right2/Left1/Left2 -- see
+  // FRONT_BUTTON_HARDWARE's own comment for why that arrangement is wrong on
+  // this device's real physical layout). A device that migrated from the old
+  // key names (frontButtonBack/Confirm/Left/Right, above) before this
+  // correction existed already persisted these exact four values under the
+  // new keys, so simply changing the compiled-in default here does nothing
+  // for it -- the stored value always wins over the `| default` fallback
+  // once the key is present. This exact quadruple is otherwise unreachable
+  // (nothing else in the app ever writes it), so it is a safe, one-time
+  // fingerprint for "still on the old, wrong default" rather than a
+  // deliberate user remap.
+  if (frontButtonRight1 == 0 && frontButtonRight2 == 1 && frontButtonLeft1 == 2 && frontButtonLeft2 == 3) {
+    frontButtonRight1 = FRONT_HW_RIGHT1;
+    frontButtonRight2 = FRONT_HW_RIGHT2;
+    frontButtonLeft1 = FRONT_HW_LEFT1;
+    frontButtonLeft2 = FRONT_HW_LEFT2;
+    needsResave = true;
+  }
   validateFrontButtonMapping(s);
 
   // Reader font size — an actual point size since 1.5. Files written by 1.4 and

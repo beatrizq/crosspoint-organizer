@@ -104,4 +104,34 @@ void format(const int (&order)[APP_COUNT], char* out, const size_t outSize) {
   out[written] = '\0';
 }
 
+AppId adjacentVisibleApp(const AppId current, const bool forward) {
+  int order[APP_COUNT];
+  parse(SETTINGS.homeAppOrder, order);
+
+  // Same visibility gates HomeActivity::buildEntries() applies -- an app that
+  // is not really a selectable tile right now should not be a stop on this
+  // cycle either.
+  AppId visible[APP_COUNT];
+  int count = 0;
+  for (const int index : order) {
+    const auto& app = appAt(index);
+#ifndef ENABLE_BLE_NOTIFY_SPIKE
+    if (app.id == AppId::Notifications) continue;
+#endif
+    if (app.id == AppId::Companion && !SETTINGS.companionEnabled) continue;
+    visible[count++] = app.id;
+  }
+  if (count == 0) return current;
+
+  int currentIndex = 0;
+  for (int i = 0; i < count; i++) {
+    if (visible[i] == current) {
+      currentIndex = i;
+      break;
+    }
+  }
+  const int next = forward ? (currentIndex + 1) % count : (currentIndex + count - 1) % count;
+  return visible[next];
+}
+
 }  // namespace homeAppOrder

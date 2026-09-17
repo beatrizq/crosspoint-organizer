@@ -51,6 +51,7 @@ class TasksActivity final : public OrganizerScreenActivity {
 
  protected:
   const char* screenTitle() const override;
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Tasks; }
   int tabCount() const override { return static_cast<int>(visibleTabs.size()); }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;
