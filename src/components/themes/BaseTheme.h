@@ -231,8 +231,12 @@ class BaseTheme {
                         const std::function<UIIcon(int index)>& rowIcon = nullptr,
                         const std::function<std::string(int index)>& rowValue = nullptr, bool highlightValue = false,
                         const std::function<bool(int index)>& rowDimmed = nullptr) const;
-  virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
-                          const char* subtitle = nullptr) const;
+  // showRule: whether to draw the thin rule under the header, on the one
+  // theme (Lyra) that draws one at all -- false for QuickPickActivity, whose
+  // own companion-focus box highlight sits right where that rule would,
+  // making the two look like a redundant double line.
+  virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle = nullptr,
+                          bool showRule = true) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                              const char* rightLabel = nullptr) const;
   virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,

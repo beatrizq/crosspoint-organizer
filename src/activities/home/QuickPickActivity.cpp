@@ -648,20 +648,20 @@ void QuickPickActivity::renderLogsTab(const int top, const int height) const {
   // Right2 (Clear) is actually offered.
   const auto entries = logEntries();
   if (entries.empty()) {
-    if (companionFocused) {
-      // Focus is up on the companion (its own box highlight elsewhere) --
-      // nothing here to call out, so this reads as plain centred text.
-      renderer.drawCenteredText(UI_10_FONT_ID, listTop + listHeight / 2, tr(STR_LOG_EMPTY));
-    } else {
+    // Centred in the section either way -- only the highlight (and the
+    // text's own ink) toggles with focus, never its position, so hovering
+    // onto it doesn't make it jump.
+    const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
+    const int rowY = listTop + (listHeight - ROW_HEIGHT) / 2;
+    if (!companionFocused) {
       // The Logs section itself is focused, same as when a real row is
       // selected below -- the empty placeholder gets that section's own
       // row-highlight treatment (solid fill, inverted text) rather than the
       // companion's box style, so there is always something to see focused
       // here too.
-      const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
-      renderer.fillRect(0, listTop, pageWidth, ROW_HEIGHT);
-      renderer.drawCenteredText(UI_10_FONT_ID, listTop + (ROW_HEIGHT - lineH) / 2, tr(STR_LOG_EMPTY), false);
+      renderer.fillRect(0, rowY, pageWidth, ROW_HEIGHT);
     }
+    renderer.drawCenteredText(UI_10_FONT_ID, rowY + (ROW_HEIGHT - lineH) / 2, tr(STR_LOG_EMPTY), companionFocused);
     return;
   }
 
@@ -708,10 +708,20 @@ void QuickPickActivity::render(RenderLock&&) {
   const std::string ageValue = CompanionTracker::formatAge(COMPANION_STATE.activatedDay);
   snprintf(status, sizeof(status), "%s: %s  \xC2\xB7  %s: %u", tr(STR_COMPANION_AGE), ageValue.c_str(),
            tr(STR_COMPANION_HIGHSCORE), COMPANION_STATE.ledger.bestDayPoints);
+  // No header rule on this screen (see BaseTheme::drawHeader()'s own
+  // showRule comment) -- the companion-focus box highlight sits right where
+  // it would otherwise be, and the two together would read as a redundant
+  // double line.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 CompanionTracker::displayName(), status);
+                 CompanionTracker::displayName(), status, /*showRule=*/false);
 
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  // SELECTION_BOX_PADDING here, not metrics.verticalSpacing: the companion
+  // section's own box highlight is drawn at contentTop - SELECTION_BOX_PADDING
+  // (see below), and the point of this offset is landing that box's own top
+  // edge exactly on the header's bottom edge -- the same height the header
+  // rule this screen no longer draws (see the drawHeader() call above) used
+  // to sit at -- rather than leaving the old, larger vertical gap below it.
+  const int contentTop = metrics.topPadding + metrics.headerHeight + SELECTION_BOX_PADDING;
   const int contentBottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing;
   const int totalContentHeight = contentBottom - contentTop;
   const int contentWidth = pageWidth - MARGIN * 2;
@@ -764,11 +774,16 @@ void QuickPickActivity::render(RenderLock&&) {
   // section only -- bubble, sprite and the mood label under it -- fixed to
   // (almost) the full content width, but never reaching into the Logs
   // section below it: this screen reads as two sections (companion, logs),
-  // and the highlight should only ever claim the one that's focused. See
-  // SELECTION_BOX_LINE_WIDTH's own comment for where this style comes from.
+  // and the highlight should only ever claim the one that's focused. Left
+  // and right edges line up with metrics.contentSidePadding -- the same
+  // inset the header's own title/status text and the Logs section's own
+  // rows use -- rather than this file's own (slightly wider) MARGIN, so the
+  // box reads as bounding the same content column everything else on this
+  // screen already lines up with. See SELECTION_BOX_LINE_WIDTH's own comment
+  // for where this style comes from.
   if (companionFocused) {
-    const int boxX = MARGIN;
-    const int boxWidth = pageWidth - MARGIN * 2;
+    const int boxX = metrics.contentSidePadding;
+    const int boxWidth = pageWidth - metrics.contentSidePadding * 2;
     const int boxY = contentTop - SELECTION_BOX_PADDING;
     const int boxBottom = spriteTop + spriteH + moodLabelBlockHeight + SELECTION_BOX_PADDING;
     renderer.drawRoundedRect(boxX, boxY, boxWidth, boxBottom - boxY, SELECTION_BOX_LINE_WIDTH,
