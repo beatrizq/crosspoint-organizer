@@ -175,6 +175,19 @@ class SettingsActivity final : public Activity {
 
   bool preserveQuickResumeTimeoutOn = false;
   bool quickResumeTimeoutAutoEnabled = false;
+  // Set only by SettingAction::Network -- every other row here opens its own
+  // activity, which owns its own WiFi/reboot lifecycle if it needs one.
+  bool wifiActivated = false;
+  // Side Up/Down jump to the previous/next app in the home grid's own order
+  // -- the same shortcut every other app screen has (see
+  // OrganizerScreenActivity/QuickPickActivity's own identical block).
+  // Category-switching (this screen's own tab bar) is still reachable by
+  // navigating up to it and cycling with Confirm. Guarded by a fresh-press
+  // check, same reasoning as OrganizerScreenActivity's own upPressSeen/
+  // downPressSeen: a hold begun elsewhere should not fire an unintended jump
+  // the moment it is finally released here.
+  bool upPressSeen = false;
+  bool downPressSeen = false;
 
   OptionPopup optionPopup;
 
@@ -188,12 +201,6 @@ class SettingsActivity final : public Activity {
   // Points currentSettings at the bucket for selectedCategoryIndex.
   void applyCategorySelection();
   void syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged);
-  // Hands the user's own wallpaper back when the sleep screen is set to Custom.
-  void revertSleepScreenIfOff();
-  // Opens the SD file browser to pick the Custom sleep-screen file when the sleep
-  // screen is set to Custom. Returns true when it did, so the caller can skip its
-  // own post-selection work: the browser's own result handler takes over.
-  bool openCustomSleepScreenPickerIfChosen();
 
  public:
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

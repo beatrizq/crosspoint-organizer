@@ -9,6 +9,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "network/OtaUpdater.h"
 
 namespace {
@@ -70,6 +71,13 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
 
 void OtaUpdateActivity::onEnter() {
   Activity::onEnter();
+
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below always reboots once
+  // WiFi's mode is non-null, and BleNotifyRelay::begin() re-advertises fresh
+  // on the next boot.
+  BleNotifyRelay::pause();
 
   // Turn on WiFi immediately
   LOG_DBG("OTA", "Turning on WiFi...");
@@ -229,12 +237,12 @@ void OtaUpdateActivity::loop() {
       }
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       runUpdateInstall();
       return;
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       finish();
     }
 
@@ -244,7 +252,7 @@ void OtaUpdateActivity::loop() {
   if (state == FAILED) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) || mappedInput.wasScreenTapped(x, y)) {
       finish();
     }
     return;
@@ -253,7 +261,7 @@ void OtaUpdateActivity::loop() {
   if (state == NO_UPDATE) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) || mappedInput.wasScreenTapped(x, y)) {
       finish();
     }
     return;

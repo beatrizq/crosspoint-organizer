@@ -2,11 +2,13 @@
 
 #include <Arduino.h>
 #include <CivilTime.h>
+#include <HalClock.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <SecureHttpClient.h>
 
 #include <cstdio>
+#include <ctime>
 #include <utility>
 
 #include "YnabMonthParser.h"
@@ -145,7 +147,8 @@ void collectSelected(void* ctx, const YnabParsedCategory& category) {
  *
  * outMonth is left untouched unless the response carried a month.
  */
-YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, void* sinkCtx, uint16_t* outMonth) {
+YnabClient::Error requestCurrentMonth(freeink::SecureHttpClient& http, const YnabMonthParser::CategorySink sink,
+                                      void* sinkCtx, uint16_t* outMonth) {
   YnabClient::lastHttpCode = 0;
   if (!YNAB_STORE.hasToken()) {
     LOG_DBG("YNC", "No access token configured");
@@ -170,8 +173,6 @@ YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, 
   url += urlEncode(YNAB_STORE.getBudgetId());
   url += "/months/current";
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("YNC", "Bad month URL");
     return YnabClient::NETWORK_ERROR;
@@ -185,7 +186,6 @@ YnabClient::Error requestCurrentMonth(const YnabMonthParser::CategorySink sink, 
     parser->feed(reinterpret_cast<const char*>(data), len);
     return true;
   });
-  http.end();
   YnabClient::lastHttpCode = httpCode;
   LOG_DBG("YNC", "months/current: %d (%zu categories, month %s)", httpCode, parser->categoryCount(),
           parser->month()[0] != '\0' ? parser->month() : "?");
@@ -289,14 +289,29 @@ void collectTransaction(void* ctx, const YnabParsedRecord& record) {
   out.push_back(std::move(transaction));
 }
 
+// ISO "YYYY-MM-DD" for `daysAgo` days before today (UTC; a date-bound query
+// param has no need for the local-timezone precision the display side cares
+// about). Empty if the arithmetic underflows -- unreachable on any real
+// device clock, but civil::packDate/isoFromDate both already treat an
+// out-of-range day as "no date," so this just follows that convention rather
+// than asserting.
+std::string isoDateDaysAgo(const int daysAgo) {
+  const int32_t daysSince1970 = static_cast<int32_t>(time(nullptr) / 86400);
+  const int32_t packedSince = daysSince1970 - civil::DAYS_1970_TO_2000 - daysAgo;
+  if (packedSince < 0 || packedSince >= static_cast<int32_t>(civil::NO_DATE)) return std::string();
+  char buf[11];
+  civil::isoFromDate(static_cast<uint16_t>(packedSince), buf, sizeof(buf));
+  return std::string(buf);
+}
+
 /**
  * Runs a plan-scoped GET, feeding the body through a record parser as it arrives.
  *
  * `path` is appended to /plans/{plan_id}, already encoded.
  */
-YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, const YnabFieldSpec* fields,
-                                 const size_t fieldCount, YnabRecordParser::RecordSink sink, void* sinkCtx,
-                                 uint16_t* outDate) {
+YnabClient::Error requestRecords(freeink::SecureHttpClient& http, const std::string& path, const char* arrayKey,
+                                 const YnabFieldSpec* fields, const size_t fieldCount,
+                                 YnabRecordParser::RecordSink sink, void* sinkCtx, uint16_t* outDate) {
   YnabClient::lastHttpCode = 0;
   if (!YNAB_STORE.hasToken()) {
     LOG_DBG("YNC", "No access token configured");
@@ -322,8 +337,6 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
   url += urlEncode(YNAB_STORE.getBudgetId());
   url += path;
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("YNC", "Bad %s URL", arrayKey);
     return YnabClient::NETWORK_ERROR;
@@ -336,14 +349,28 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
     return true;
   });
 
-  // Read before end(): the parsed headers belong to this connection.
+  // Read before the caller's next begin(): a reused connection's headers get
+  // overwritten by the next request, and this function does not call end().
   const std::string dateHeader = outDate != nullptr ? http.getHeader("date") : std::string();
-  http.end();
   YnabClient::lastHttpCode = httpCode;
   LOG_DBG("YNC", "%s: %d (%zu records)", arrayKey, httpCode, parser->recordCount());
 
   const YnabClient::Error status = errorForStatus(httpCode);
   if (status != YnabClient::OK) return status;
+  // A dropped/timed-out connection mid-body still reports the 200 status line
+  // read earlier, and a stream that just stops (rather than emitting invalid
+  // syntax) never trips parser->hasError() either -- so both checks above can
+  // pass on a truncated response. This matters more here than for the other
+  // API clients: fetchTransactions() below has no since_date/server_knowledge
+  // (unbounded full-history fetch, see its own doc comment) and
+  // YnabAccountCache::setTransactions() unconditionally replaces the cache
+  // with whatever comes back, so an undetected truncation can silently
+  // overwrite a complete, correct cache with a partial, older-looking one.
+  // Same completeness check HttpDownloader::download() already relies on.
+  if (!http.responseComplete()) {
+    LOG_ERR("YNC", "Incomplete %s response (%zu records before drop)", arrayKey, parser->recordCount());
+    return YnabClient::NETWORK_ERROR;
+  }
   if (parser->hasError()) {
     LOG_ERR("YNC", "Malformed %s JSON", arrayKey);
     return YnabClient::PARSE_ERROR;
@@ -357,42 +384,70 @@ YnabClient::Error requestRecords(const std::string& path, const char* arrayKey, 
 
 }  // namespace
 
-YnabClient::Error YnabClient::fetchCategoryList(std::vector<CategoryInfo>& outCategories) {
+YnabClient::Error YnabClient::fetchCategoryList(freeink::SecureHttpClient& http,
+                                                std::vector<CategoryInfo>& outCategories) {
   outCategories.clear();
   ListCollector collector{&outCategories};
-  const Error error = requestCurrentMonth(collectForList, &collector, nullptr);
+  const Error error = requestCurrentMonth(http, collectForList, &collector, nullptr);
   if (error != OK) outCategories.clear();
   return error;
 }
 
-YnabClient::Error YnabClient::fetchSelectedCategories(std::vector<YnabCategory>& outCategories, uint16_t& outMonth) {
+YnabClient::Error YnabClient::fetchSelectedCategories(freeink::SecureHttpClient& http,
+                                                      std::vector<YnabCategory>& outCategories, uint16_t& outMonth) {
   outCategories.clear();
   outCategories.reserve(YNAB_STORE.getSelectedCategories().size());
   BalanceCollector collector{&outCategories};
-  const Error error = requestCurrentMonth(collectSelected, &collector, &outMonth);
+  const Error error = requestCurrentMonth(http, collectSelected, &collector, &outMonth);
   if (error != OK) outCategories.clear();
   return error;
 }
 
-YnabClient::Error YnabClient::fetchAccounts(std::vector<YnabAccount>& outAccounts) {
+YnabClient::Error YnabClient::fetchAccounts(freeink::SecureHttpClient& http, std::vector<YnabAccount>& outAccounts) {
   outAccounts.clear();
   outAccounts.reserve(YNAB_MAX_ACCOUNTS);
   AccountCollector collector{&outAccounts};
   const Error error =
-      requestRecords("/accounts", "accounts", ACCOUNT_FIELDS, sizeof(ACCOUNT_FIELDS) / sizeof(ACCOUNT_FIELDS[0]),
+      requestRecords(http, "/accounts", "accounts", ACCOUNT_FIELDS, sizeof(ACCOUNT_FIELDS) / sizeof(ACCOUNT_FIELDS[0]),
                      collectAccount, &collector, nullptr);
   if (error != OK) outAccounts.clear();
   return error;
 }
 
-YnabClient::Error YnabClient::fetchTransactions(const std::string& accountId,
+YnabClient::Error YnabClient::fetchTransactions(freeink::SecureHttpClient& http, const std::string& accountId,
                                                 std::vector<YnabTransaction>& outTransactions, uint16_t& outDate) {
   outTransactions.clear();
   if (accountId.empty()) return NOT_FOUND;
   outTransactions.reserve(YNAB_MAX_TRANSACTIONS * 2);
   TransactionCollector collector{&outTransactions};
-  const std::string path = "/accounts/" + urlEncode(accountId) + "/transactions";
-  const Error error = requestRecords(path, "transactions", TRANSACTION_FIELDS,
+  std::string path = "/accounts/" + urlEncode(accountId) + "/transactions";
+  // Bounded to recent history: an unbounded fetch (YNAB's own default when
+  // since_date is omitted) can run to years of transactions for an active
+  // account -- large enough to risk a timeout or an OOM read failure on this
+  // device before the body completes, which requestRecords() now correctly
+  // treats as a failure rather than silently accepting a truncated result
+  // (see its own comment on responseComplete()). 90 days is comfortably more
+  // than YNAB_MAX_TRANSACTIONS (25) worth of history for typical usage, so
+  // this stays a strict superset of what the cache keeps --
+  // YnabAccountCache::setTransactions()'s replace-then-sort-then-cap logic
+  // doesn't need to change, just what it's handed.
+  //
+  // isoDateDaysAgo() needs a real "today," which needs the clock actually
+  // synced. Sync All syncs it once up front for all four services
+  // (SyncAllActivity::runAll()), but BudgetActivity's own per-tab sync has no
+  // equivalent step -- without this, a per-tab sync on a freshly booted
+  // device (clock still unset) would find isoDateDaysAgo() underflow to an
+  // empty string and silently fall back to the exact unbounded fetch this
+  // bound exists to avoid. WiFi is already up by this point either way (see
+  // organizerSync::run()'s own contract), so the sync is safe to attempt here.
+  uint16_t syncedYear;
+  uint8_t syncedMonth, syncedDay, syncedHour, syncedMinute;
+  if (!halClock.getUtcDateTime(syncedYear, syncedMonth, syncedDay, syncedHour, syncedMinute)) {
+    halClock.syncFromNTP();
+  }
+  const std::string sinceDate = isoDateDaysAgo(90);
+  if (!sinceDate.empty()) path += "?since_date=" + sinceDate;
+  const Error error = requestRecords(http, path, "transactions", TRANSACTION_FIELDS,
                                      sizeof(TRANSACTION_FIELDS) / sizeof(TRANSACTION_FIELDS[0]), collectTransaction,
                                      &collector, &outDate);
   if (error != OK) outTransactions.clear();

@@ -11,6 +11,7 @@
 #include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
 #include <TodoistClient.h>
 #include <TodoistStore.h>
 #include <TodoistTaskCache.h>
@@ -21,6 +22,7 @@
 #include <esp_sntp.h>
 #include <time.h>
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,6 +43,15 @@ constexpr int NTP_POLL_ATTEMPTS = 50;
 // newest of the available sources is what keeps a partial one from regressing.
 // ISO dates order correctly as plain strings, and "" loses to any real date.
 const std::string& laterDate(const std::string& a, const std::string& b) { return b > a ? b : a; }
+
+// TodoistCompletedCountParser::TitleSink for the completed-count fetch below:
+// collects titles as the response streams in, capped the same way the cache
+// itself caps them so a busy day never grows this past what setCompletedToday
+// would keep anyway.
+void collectCompletedTitle(void* ctx, const char* content) {
+  auto* titles = static_cast<std::vector<std::string>*>(ctx);
+  if (titles->size() < TodoistTaskCache::MAX_COMPLETED_TODAY_TITLES) titles->emplace_back(content);
+}
 
 /**
  * Today from NTP, in the device's configured timezone.
@@ -165,6 +176,19 @@ const char* runTasks() {
   std::string ntpDate;
   if (!resolveTodayDate(ntpDate)) ntpDate.clear();
 
+  // Independent of whether the rest of this sync succeeds: if a fresh NTP
+  // read says the day has moved on since the last time this cache saw a
+  // completion, the log for that earlier day is retired now rather than
+  // surviving a failed fetch and still reading as today's.
+  if (!ntpDate.empty()) TODOIST_TASKS.clearCompletedIfStale(civil::dateFromIso(ntpDate.c_str()));
+
+  // Shared across every Todoist call below (all the same host,
+  // api.todoist.com) so SecureHttpClient's own keep-alive can actually take
+  // effect instead of a fresh TLS handshake per call -- see TodoistClient.h's
+  // own parameter doc on why this matters for heap fragmentation.
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+
   // Push queued completions before fetching, so the fetched list already
   // reflects them. A copy: clearPending() mutates the queue as we go.
   const std::vector<std::string> pending = TODOIST_TASKS.getPendingIds();
@@ -172,7 +196,7 @@ const char* runTasks() {
   for (const auto& id : pending) {
     // Each push is a full TLS request; the sync runs on the main task.
     resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::closeTask(id);
+    error = TodoistClient::closeTask(http, id);
     if (error != TodoistClient::OK) {
       LOG_ERR("OSYNC", "Task push failed for %s: %s", id.c_str(), TodoistClient::errorString(error));
       break;  // keep the rest queued for the next attempt
@@ -190,7 +214,7 @@ const char* runTasks() {
       resetTaskWatchdogIfSubscribed();
       char isoDate[11];
       todoist::isoFromDueDays(reschedule.dueDays, isoDate, sizeof(isoDate));
-      error = TodoistClient::rescheduleTask(reschedule.taskId, isoDate);
+      error = TodoistClient::rescheduleTask(http, reschedule.taskId, isoDate);
       resetTaskWatchdogIfSubscribed();
       if (error == TodoistClient::NOT_FOUND) {
         // Gone (deleted, or already completed elsewhere) - nowhere left to
@@ -215,7 +239,7 @@ const char* runTasks() {
   std::string serverDate;
   if (error == TodoistClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    error = TodoistClient::fetchTasks(fetched, serverDate);
+    error = TodoistClient::fetchTasks(http, fetched, serverDate);
     resetTaskWatchdogIfSubscribed();
   }
 
@@ -245,11 +269,14 @@ const char* runTasks() {
   if (error == TodoistClient::OK && !today.empty()) {
     resetTaskWatchdogIfSubscribed();
     uint16_t completedCount = 0;
-    const TodoistClient::Error countError = TodoistClient::fetchCompletedCountForDay(today, completedCount);
+    std::vector<std::string> completedTitles;
+    completedTitles.reserve(TodoistTaskCache::MAX_COMPLETED_TODAY_TITLES);
+    const TodoistClient::Error countError =
+        TodoistClient::fetchCompletedCountForDay(http, today, completedCount, collectCompletedTitle, &completedTitles);
     resetTaskWatchdogIfSubscribed();
     if (countError == TodoistClient::OK) {
       RenderLock lock;
-      TODOIST_TASKS.setCompletedToday(completedCount, today);
+      TODOIST_TASKS.setCompletedToday(completedCount, today, std::move(completedTitles));
       // Gated on success: a failed fetch means nothing here actually changed,
       // so there is nothing new to credit.
       COMPANION.recordActivity();
@@ -287,9 +314,14 @@ const char* runCalendar() {
   } else {
     const uint16_t lastDay = static_cast<uint16_t>(today + GCAL_WINDOW_DAYS - 1);
     fetched.reserve(GCAL_MAX_EVENTS);
+    // Shared across every calendar's fetch below (all the same host,
+    // www.googleapis.com) so SecureHttpClient's own keep-alive can actually
+    // take effect -- see GCalClient.h's own parameter doc.
+    freeink::SecureHttpClient http;
+    http.setInsecure();
     for (const auto& calendarId : GCAL_STORE.getSelectedCalendars()) {
       resetTaskWatchdogIfSubscribed();
-      error = GCalClient::fetchEvents(accessToken, calendarId, today, lastDay, fetched);
+      error = GCalClient::fetchEvents(http, accessToken, calendarId, today, lastDay, fetched);
       resetTaskWatchdogIfSubscribed();
       if (error != GCalClient::OK) {
         LOG_ERR("OSYNC", "Event fetch failed for %s: %s", calendarId.c_str(), GCalClient::errorString(error));
@@ -323,7 +355,12 @@ const char* runBudget() {
   std::vector<YnabCategory> fetched;
   uint16_t month = civil::NO_DATE;
   resetTaskWatchdogIfSubscribed();
-  const YnabClient::Error error = YnabClient::fetchSelectedCategories(fetched, month);
+  // Shared across every YNAB call below (all the same host, api.ynab.com) so
+  // SecureHttpClient's own keep-alive can actually take effect -- see
+  // YnabClient.h's own parameter doc.
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  const YnabClient::Error error = YnabClient::fetchSelectedCategories(http, fetched, month);
   resetTaskWatchdogIfSubscribed();
   if (error != YnabClient::OK) {
     LOG_ERR("OSYNC", "Plan fetch failed: %s", YnabClient::errorString(error));
@@ -355,7 +392,7 @@ const char* runBudget() {
   for (const auto& accountId : accountIds) {
     resetTaskWatchdogIfSubscribed();
     uint16_t date = civil::NO_DATE;
-    const YnabClient::Error txError = YnabClient::fetchTransactions(accountId, transactionsFetched, date);
+    const YnabClient::Error txError = YnabClient::fetchTransactions(http, accountId, transactionsFetched, date);
     resetTaskWatchdogIfSubscribed();
     if (txError == YnabClient::RATE_LIMITED) {
       LOG_ERR("OSYNC", "Account transaction fetch rate-limited; skipping the rest");
@@ -375,6 +412,22 @@ const char* runBudget() {
 }
 
 const char* runHabits() {
+  // Unlike Tasks, nothing else in this function resolves the clock -- the
+  // journal fetch below trusts Habitify's own server date entirely (see
+  // fetchJournal()'s own comment) and never asks the device what day it
+  // thinks it is. That leaves no chance to notice a stale cache before a
+  // sync, so it is done explicitly here: a real resync (not gated on
+  // halClock.isAvailable() -- configTzTime() inside it already updates the
+  // system clock on every board, RTC chip or not), then a day-rollover check
+  // independent of whether the fetch below succeeds, the same reasoning as
+  // runTasks()'s own clearCompletedIfStale() call.
+  halClock.syncFromNTP();
+  uint16_t year;
+  uint8_t month, day, hour, minute;
+  if (halClock.getUtcDateTime(year, month, day, hour, minute)) {
+    HABITIFY_HABITS.rolloverIfStale(civil::packDate(year, month, day));
+  }
+
   // Push what is owed before fetching, so the journal that comes back already
   // reflects it. A copy of the ids and amounts: clearPending() mutates the cache
   // as we go, and the fetch replaces the list wholesale.
@@ -394,10 +447,16 @@ const char* runHabits() {
     }
   }
 
+  // Shared across every Habitify call below (all the same host,
+  // api.habitify.me) so SecureHttpClient's own keep-alive can actually take
+  // effect -- see HabitifyClient.h's own parameter doc.
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+
   HabitifyClient::Error error = HabitifyClient::OK;
   for (const auto& entry : owed) {
     resetTaskWatchdogIfSubscribed();
-    const HabitifyClient::Error pushError = HabitifyClient::addLog(entry.id, entry.unit, entry.amount);
+    const HabitifyClient::Error pushError = HabitifyClient::addLog(http, entry.id, entry.unit, entry.amount);
     if (pushError == HabitifyClient::NOT_FOUND) {
       // The habit no longer exists server-side - deleted, or replaced with a new
       // one in the app. There is nowhere left to push this progress, and unlike
@@ -429,7 +488,7 @@ const char* runHabits() {
     }
     for (const auto& habitId : completions) {
       resetTaskWatchdogIfSubscribed();
-      const HabitifyClient::Error completeError = HabitifyClient::completeHabit(habitId);
+      const HabitifyClient::Error completeError = HabitifyClient::completeHabit(http, habitId);
       if (completeError == HabitifyClient::NOT_FOUND) {
         // Same reasoning as the progress queue's own NOT_FOUND handling above:
         // a gone habit can never accept a complete, so holding it queued
@@ -453,15 +512,55 @@ const char* runHabits() {
   uint16_t date = civil::NO_DATE;
   if (error == HabitifyClient::OK) {
     resetTaskWatchdogIfSubscribed();
-    error = HabitifyClient::fetchJournal(fetched, date);
+    error = HabitifyClient::fetchJournal(http, fetched, date);
     resetTaskWatchdogIfSubscribed();
+  }
+
+  // Areas: a second, best-effort fetch for the Habits screen's per-area tabs
+  // -- see HabitifyClient::fetchHabitAreas()'s own doc comment for why this
+  // cannot just be folded into the journal fetch above. Its own failure never
+  // fails the habit sync itself, the same way Todoist's completed-count fetch
+  // treats its own second call: it just leaves the tab set stale until the
+  // next attempt.
+  bool areasFresh = false;
+  std::vector<HabitifyHabitAreaAssignment> areaAssignments;
+  if (error == HabitifyClient::OK) {
+    resetTaskWatchdogIfSubscribed();
+    const HabitifyClient::Error areasError = HabitifyClient::fetchHabitAreas(http, areaAssignments);
+    resetTaskWatchdogIfSubscribed();
+    if (areasError == HabitifyClient::OK) {
+      areasFresh = true;
+    } else {
+      LOG_ERR("OSYNC", "Habit areas fetch failed: %s", HabitifyClient::errorString(areasError));
+    }
   }
 
   if (error == HabitifyClient::OK) {
     RenderLock lock;
+    std::vector<HabitifyArea> areasList;
+    if (areasFresh) {
+      // Join by id: each habit gets its first area (see
+      // HabitifyHabitAreaAssignment's own "first area only" comment), and the
+      // deduped set of areas becomes the tab list.
+      for (auto& fetchedHabit : fetched) {
+        for (const auto& assignment : areaAssignments) {
+          if (assignment.habitId == fetchedHabit.id) {
+            fetchedHabit.areaId = assignment.areaId;
+            break;
+          }
+        }
+      }
+      areasList.reserve(areaAssignments.size());
+      for (const auto& assignment : areaAssignments) {
+        const bool alreadyKnown = std::any_of(areasList.begin(), areasList.end(), [&assignment](const HabitifyArea& a) {
+          return a.id == assignment.areaId;
+        });
+        if (!alreadyKnown) areasList.push_back(HabitifyArea{assignment.areaId, assignment.areaName});
+      }
+    }
     // Carries over anything still owed - a press that landed between the push
     // above and this fetch.
-    HABITIFY_HABITS.setHabits(std::move(fetched), date);
+    HABITIFY_HABITS.setHabits(std::move(fetched), date, areasFresh, std::move(areasList));
     // Catches a habit completed elsewhere (the Habitify app itself, say) that
     // this device never saw a local press for. Gated on success: a failed
     // fetch means the cache did not change, so there is nothing new to credit,
@@ -474,6 +573,20 @@ const char* runHabits() {
 }
 
 }  // namespace
+
+std::string localIsoDateFromUtc(const uint16_t year, const uint8_t month, const uint8_t day, const uint8_t hour,
+                                const uint8_t minute) {
+  uint8_t offsetQ = SETTINGS.clockUtcOffsetQ;
+  if (offsetQ > 104) offsetQ = 104;  // clamp a corrupt persisted value to UTC+14
+  const int32_t utcDays = civil::daysFromCivil(year, month, day);
+  const time_t utcEpoch = static_cast<time_t>(utcDays) * 86400 + hour * 3600 + minute * 60;
+  const time_t local = utcEpoch + (static_cast<int>(offsetQ) - 48) * 15 * 60;
+  struct tm timeinfo;
+  gmtime_r(&local, &timeinfo);
+  char buf[11];
+  strftime(buf, sizeof(buf), "%Y-%m-%d", &timeinfo);
+  return std::string(buf);
+}
 
 const char* name(const Service service) {
   // The same name the home grid and the app's own screen use, nickname included:

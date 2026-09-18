@@ -23,6 +23,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 
 namespace {
 std::string calculateDocumentHashForMethod(const std::string& path, const DocumentMatchMethod method) {
@@ -378,6 +379,12 @@ void KOReaderSyncActivity::onEnter() {
   // Past this point every path uses WiFi.
   wifiActivated = true;
 
+  // Free NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their
+  // own headroom -- no matching resume(): onExit() below always reboots once
+  // wifiActivated is set, and BleNotifyRelay::begin() re-advertises fresh on
+  // the next boot.
+  BleNotifyRelay::pause();
+
   // Check if already connected (e.g. from settings page auth)
   if (WiFi.status() == WL_CONNECTED) {
     LOG_DBG("KOSync", "Already connected to WiFi");
@@ -532,8 +539,8 @@ void KOReaderSyncActivity::loop() {
       returnToReader();
       return;
     }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right1) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       returnToReader();
     }
     return;
@@ -571,20 +578,20 @@ void KOReaderSyncActivity::loop() {
 
     // Navigate options
     if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+        mappedInput.wasReleased(MappedInputManager::Button::Left1)) {
       selectedOption = (selectedOption + 1) % 2;  // Wrap around among 2 options
       requestUpdate();
     } else if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
-               mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+               mappedInput.wasReleased(MappedInputManager::Button::Left2)) {
       selectedOption = (selectedOption + 1) % 2;  // Wrap around among 2 options
       requestUpdate();
     }
 
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       chooseSelected();
     }
 
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
       returnToReader();
     }
     return;
@@ -606,7 +613,7 @@ void KOReaderSyncActivity::loop() {
       return;
     }
 
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       // Calculate hash if not done yet
       if (documentHash.empty()) {
         if (KOREADER_STORE.getMatchMethod() == DocumentMatchMethod::FILENAME) {
@@ -618,7 +625,7 @@ void KOReaderSyncActivity::loop() {
       performUpload();
     }
 
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
       returnToReader();
     }
     return;

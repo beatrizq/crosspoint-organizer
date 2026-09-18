@@ -17,27 +17,6 @@
 #include "activities/settings/SettingsActivity.h"
 #include "util/DictionaryRegistry.h"
 
-/**
- * The "what feeds the sleep screen" setting.
- *
- * Built by a function because it is registered twice: category-less in the master
- * list, which is what persists it, and pushed explicitly into the Organizer tab
- * after App Order so it sits where it was asked for rather than beside the font
- * size. Two constructions of the same labels would be two places to edit.
- *
- * Labelled with the services rather than with the nicknames: every other row in
- * Settings names the service, and a list of user-chosen names would not tell you
- * which account each one is. Custom is the odd one out: it has no service to
- * name, and picking it opens the SD file browser (SettingsActivity) rather
- * than just recording the choice.
- */
-inline SettingInfo buildOrganizerSleepAppSetting(const StrId category = StrId::STR_NONE_OPT) {
-  return SettingInfo::Enum(
-      StrId::STR_SLEEP_SCREEN_APP, &CrossPointSettings::organizerSleepApp,
-      {StrId::STR_CUSTOM, StrId::STR_TODOIST, StrId::STR_GOOGLE_CALENDAR, StrId::STR_YNAB, StrId::STR_HABITIFY},
-      "organizerSleepApp", category);
-}
-
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
 inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
@@ -221,6 +200,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     sleepScreenValues[CrossPointSettings::COVER_CUSTOM] = StrId::STR_COVER_CUSTOM;
     sleepScreenValues[CrossPointSettings::BLANK] = StrId::STR_NONE_OPT;
     sleepScreenValues[CrossPointSettings::QUICK_RESUME] = StrId::STR_QUICK_RESUME;
+    sleepScreenValues[CrossPointSettings::DYNAMIC] = StrId::STR_DYNAMIC_SLEEP_SCREEN;
 
     std::vector<StrId> statusBarClockValues(CrossPointSettings::STATUS_BAR_CLOCK_MODE_COUNT);
     statusBarClockValues[CrossPointSettings::STATUS_BAR_CLOCK_HIDE] = StrId::STR_HIDE;
@@ -364,14 +344,6 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
                             "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM),
 
-        // Sleep-screen-from-an-app: persisted + web-exposed here, and pushed into
-        // the Organizer tab separately so it lands after App Order.
-        buildOrganizerSleepAppSetting(),
-        // The mode to restore when that is switched off. Remembered state rather
-        // than a setting, so category-less and never shown.
-        SettingInfo::Value(StrId::STR_SLEEP_SCREEN_APP, &CrossPointSettings::previousSleepScreenMode, {0, 255, 1},
-                           "previousSleepScreenMode"),
-
         // Per-app nicknames: persisted + web-exposed, category-less so they stay
         // out of the on-device Settings list (edited from each app's own screen).
         SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.tasksNickname[0], sizeof(SETTINGS.tasksNickname),
@@ -382,6 +354,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                             "budgetNickname"),
         SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.habitsNickname[0], sizeof(SETTINGS.habitsNickname),
                             "habitsNickname"),
+        SettingInfo::String(StrId::STR_NICKNAME, &SETTINGS.companionNickname[0], sizeof(SETTINGS.companionNickname),
+                            "companionNickname"),
 
         // Home grid app order: persisted + web-exposed, category-less so it is
         // hidden from the on-device Settings screen (edited from App Order).

@@ -3,6 +3,7 @@
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <WiFi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -26,16 +27,17 @@
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
+#include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "TodoistSettingsActivity.h"
 #include "YnabSettingsActivity.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "util/OrganizerSleepScreen.h"
+#include "network/BleNotifyRelay.h"
+#include "util/HomeAppOrder.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
                                                               StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM,
@@ -87,21 +89,15 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
-  // App Order and Sleep Screen App lead the individual apps, as asked: both
-  // are properties of the set of apps rather than of any one of them, so
-  // they come first rather than trailing after it.
+  // App Order leads the individual apps, as asked: it is a property of the
+  // set of apps rather than of any one of them, so it comes first rather
+  // than trailing after it.
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_APP_ORDER, SettingAction::AppOrder));
-  organizerSettings.push_back(buildOrganizerSleepAppSetting(StrId::STR_CAT_ORGANIZER));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_TODOIST, SettingAction::Todoist));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_CALENDAR, SettingAction::GoogleCalendar));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_YNAB, SettingAction::Ynab));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_HABITIFY, SettingAction::Habitify));
   organizerSettings.push_back(SettingInfo::Action(StrId::STR_COMPANION, SettingAction::Companion));
-  // A footnote, not an action: the hold on the home screen's Settings button is
-  // the only way to reach a sync-everything, and nothing on that screen advertises
-  // it. A None action draws the row and does nothing when it is selected, which is
-  // also what marks it dimmed below.
-  organizerSettings.push_back(SettingInfo::Action(StrId::STR_SYNC_ALL_HINT, SettingAction::None));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   // TODO: Touch devices need their own firmware update path/artifacts before OTA is exposed.
   if (!BoardConfig::hasTouch()) {
@@ -172,6 +168,14 @@ void SettingsActivity::onExit() {
   Activity::onExit();
 
   UITheme::getInstance().reload();  // Re-apply theme in case it was changed
+
+  // Reclaim WiFi/TLS heap fragmentation the same way every other WiFi-using
+  // screen does, now that Network (like the rest of them) pauses BLE first.
+  if (wifiActivated && WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
 }
 
 void SettingsActivity::loop() {
@@ -180,7 +184,7 @@ void SettingsActivity::loop() {
   bool hasChangedCategory = false;
 
   // Handle actions with early return
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     if (selectedSettingIndex == 0) {
       selectedCategoryIndex = (selectedCategoryIndex < categoryCount - 1) ? (selectedCategoryIndex + 1) : 0;
       hasChangedCategory = true;
@@ -192,14 +196,39 @@ void SettingsActivity::loop() {
     }
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    if (selectedSettingIndex > 0) {
-      selectedSettingIndex = 0;
-      requestUpdate();
-    } else {
-      SETTINGS.saveToFile();
-      onGoHome();
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
+    // Always leaves, regardless of cursor depth: labelled Apps (see
+    // HomeActivity), so it reads as "go to the Apps screen", not "back up one
+    // level first" -- a setting row deep in a category used to need two
+    // presses to leave, one to surface the cursor to the category tab bar and
+    // a second to actually leave, which no longer matches what the button
+    // says it does.
+    SETTINGS.saveToFile();
+    onGoHome();
+    return;
+  }
+
+  // Side Up/Down: jump to the previous/next app in the home grid's own
+  // order, from wherever the cursor already is -- the same shortcut every
+  // app screen has (see OrganizerScreenActivity/QuickPickActivity's own
+  // identical block). Category-switching is still reachable the slower way:
+  // move the selection up to the tab bar and press Confirm to cycle it.
+  // Independent of the front buttons' own Up/Down (row paging) below. A
+  // fresh press each, same guard reasoning as Back/Confirm above.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    if (upPressSeen) {
+      activityManager.goToApp(homeAppOrder::adjacentVisibleApp(homeAppOrder::AppId::Settings, /*forward=*/false));
     }
+    upPressSeen = false;
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    if (downPressSeen) {
+      activityManager.goToApp(homeAppOrder::adjacentVisibleApp(homeAppOrder::AppId::Settings, /*forward=*/true));
+    }
+    downPressSeen = false;
     return;
   }
 
@@ -310,18 +339,6 @@ void SettingsActivity::loop() {
     requestUpdate();
   });
 
-  buttonNavigator.onNextContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::nextIndex(selectedCategoryIndex, categoryCount);
-    requestUpdate();
-  });
-
-  buttonNavigator.onPreviousContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::previousIndex(selectedCategoryIndex, categoryCount);
-    requestUpdate();
-  });
-
   if (hasChangedCategory) {
     selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
     applyCategorySelection();
@@ -336,7 +353,6 @@ void SettingsActivity::toggleCurrentSetting() {
 
   const auto& setting = (*currentSettings)[selectedSetting];
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
-  const bool sleepAppChanged = setting.valuePtr == &CrossPointSettings::organizerSleepApp;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
 
   if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
@@ -364,17 +380,10 @@ void SettingsActivity::toggleCurrentSetting() {
       // Their structure, with this branch's own side effect kept and
       // applyUiSettingChange dropped - that arrives with an upstream commit this
       // branch does not have.
-      auto onSelect = [this, valuePtr, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valuePtr, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         SETTINGS.*valuePtr = idx;
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
-        // After the save, because reverting writes settings of its own and must
-        // not be undone by this one.
-        if (sleepAppChanged) {
-          revertSleepScreenIfOff();
-          // Starts the file browser; its own result handler rebuilds the list.
-          if (openCustomSleepScreenPickerIfChosen()) return;
-        }
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -394,14 +403,10 @@ void SettingsActivity::toggleCurrentSetting() {
     const uint8_t cur = setting.valueGetter();
     if (totalValues > 2) {
       const auto valueSetter = setting.valueSetter;
-      auto onSelect = [this, valueSetter, sleepScreenChanged, sleepAppChanged, quickResumeTimeoutChanged](int idx) {
+      auto onSelect = [this, valueSetter, sleepScreenChanged, quickResumeTimeoutChanged](int idx) {
         valueSetter(idx);
         syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
         SETTINGS.saveToFile();
-        if (sleepAppChanged) {
-          revertSleepScreenIfOff();
-          if (openCustomSleepScreenPickerIfChosen()) return;
-        }
         rebuildSettingsLists();
       };
       if (!setting.enumStringValues.empty()) {
@@ -456,6 +461,15 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Network:
+        // Past this point WiFi has been used, so onExit() owes a teardown.
+        // Free NimBLE's ~55KB init-time heap reservation before WiFi/TLS need
+        // their own headroom -- no matching resume(): onExit() below now
+        // reboots once wifiActivated is set, and BleNotifyRelay::begin()
+        // re-advertises fresh on the next boot. This screen previously never
+        // rebooted after using WiFi at all (a pre-existing gap independent of
+        // BLE -- WiFi/TLS heap fragmentation went unreclaimed here too).
+        wifiActivated = true;
+        BleNotifyRelay::pause();
         startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
         break;
       case SettingAction::ClearCache:
@@ -503,49 +517,8 @@ void SettingsActivity::toggleCurrentSetting() {
 
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
-  // After the save, because reverting writes settings of its own. Reached by the
-  // inline-cycle path, which a two-value enum takes; the sleep-screen app has
-  // five and so goes through the popup above, but the flag is honoured either way.
-  if (sleepAppChanged) {
-    revertSleepScreenIfOff();
-    if (openCustomSleepScreenPickerIfChosen()) return;
-  }
   rebuildSettingsLists();
   selectedSettingIndex = std::min(selectedSettingIndex, settingsCount);
-}
-
-void SettingsActivity::revertSleepScreenIfOff() {
-  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return;
-  // Switched to Custom: hand back the wallpaper this feature displaced, before
-  // the picker below offers to replace it with something else. That file may be
-  // one the user picked themselves, so getting it back is the whole reason a
-  // copy was kept.
-  const bool hadWallpaper = organizerSleepScreen::hasBackup();
-  // The copy is ~48KB off the SD card, so the screen says something is happening.
-  if (hadWallpaper) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-  const bool restored = organizerSleepScreen::revert();
-  if (!hadWallpaper) return;
-  GUI.drawPopup(renderer, restored ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
-  delay(1000);
-  requestUpdate(true);
-}
-
-bool SettingsActivity::openCustomSleepScreenPickerIfChosen() {
-  if (SETTINGS.organizerSleepApp != CrossPointSettings::SLEEP_APP_OFF) return false;
-  startActivityForResult(
-      std::make_unique<FileBrowserActivity>(renderer, mappedInput, "/", FileBrowserActivity::Mode::PickImage),
-      [this](const ActivityResult& result) {
-        if (!result.isCancelled) {
-          if (const auto* picked = std::get_if<FilePathResult>(&result.data)) {
-            GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-            const bool success = organizerSleepScreen::installCustomWallpaper(picked->path);
-            GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
-            delay(1000);
-          }
-        }
-        rebuildSettingsLists();
-      });
-  return true;
 }
 
 void SettingsActivity::syncQuickResumeTimeoutForSleepScreen(bool sleepScreenChanged, bool quickResumeTimeoutChanged) {
@@ -671,7 +644,9 @@ void SettingsActivity::render(RenderLock&&) {
                  ? tr(STR_SELECT)
                  : tr(STR_TOGGLE));
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  // Back always ends at onGoHome() (see this file's own Back handler) rather
+  // than returning to a caller, so the hint says Home, not Back.
+  const auto labels = mappedInput.mapLabels(tr(STR_HOME), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   // Always use standard refresh for settings screen

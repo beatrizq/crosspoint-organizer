@@ -36,6 +36,10 @@ class SyncAllActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  // Prevents the idle timer from downclocking the CPU mid-run; runAll() blocks
+  // for seconds at a time without otherwise touching lastActivityTime, same as
+  // KOReaderSyncActivity and the other long-running sync activities.
+  bool preventAutoSleep() override { return !finished; }
 
  private:
   enum class RowState : uint8_t {

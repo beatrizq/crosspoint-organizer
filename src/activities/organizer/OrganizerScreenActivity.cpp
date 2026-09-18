@@ -17,7 +17,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "util/OrganizerSleepScreen.h"
+#include "network/BleNotifyRelay.h"
 
 namespace {
 // Hold threshold for "sync now" on the Select button (firmware convention).
@@ -110,16 +110,6 @@ int OrganizerScreenActivity::pageItems() const { return std::max(1, listHeight()
 
 // -- tabs -------------------------------------------------------------------
 
-void OrganizerScreenActivity::updateSleepScreen() {
-  if (!organizerSleepScreen::isChosen(appId())) return;
-  // First tab only: it is the tab the screen opens on, so it is the one the user
-  // would recognise, and a sleep screen whose shape depended on which tab was
-  // last open would be worse than one that did not change at all.
-  if (tab() != 0) return;
-  requestUpdateAndWait();
-  organizerSleepScreen::capture(renderer);
-}
-
 void OrganizerScreenActivity::setTab(const int index) {
   if (index < 0 || index >= tabCount()) return;
   activeTab = index;
@@ -168,6 +158,13 @@ void OrganizerScreenActivity::runSync(std::function<void()> work) {
 
   // Past this point every path uses WiFi, so onExit() owes a teardown.
   wifiActivated = true;
+
+  // Same reasoning as SyncAllActivity's own pause() call: free NimBLE's
+  // ~55KB init-time heap reservation before WiFi/TLS need their own headroom.
+  // No matching resume(): onExit() below always reboots once wifiActivated is
+  // set, and BleNotifyRelay::begin() re-advertises fresh on the next boot.
+  BleNotifyRelay::pause();
+
   if (WiFi.status() == WL_CONNECTED) {
     work();
     return;
@@ -204,9 +201,9 @@ void OrganizerScreenActivity::loop() {
   if (state == State::SYNCING) return;  // ignore input while the sync blocks
 
   // A press seen here is a fresh one, so nothing is owed any more.
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) swallowBackRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) swallowBackRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (swallowBackRelease) {
       // The tail of the press that cancelled a popup pushed from this screen.
       // Acting on it would leave the screen entirely instead of just closing
@@ -219,9 +216,9 @@ void OrganizerScreenActivity::loop() {
   }
 
   // A press seen here is a fresh one, so nothing is owed any more.
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       // The tail of the press that answered the confirmation prompt. Acting on
       // it would reopen the prompt, and cancelling would reopen it again.
@@ -264,6 +261,36 @@ void OrganizerScreenActivity::loop() {
     // gesture act on a row one place lower would make a misplaced hold
     // destructive.
     if (mappedInput.getHeldTime() < LONG_PRESS_MS) onRowConfirm();
+    return;
+  }
+
+  // Side Up/Down: jump to the previous/next app in the home grid's own order,
+  // from wherever the cursor already is -- the same shortcut every app
+  // screen has (see QuickPickActivity/SettingsActivity's own identical
+  // block). Tab-switching (this screen's own tab bar) is still reachable the
+  // slower way: move the selection up to the tab bar and press Select to
+  // cycle it. Independent of the front buttons' own Up/Down (row paging)
+  // below; a fresh press each, same guard reasoning as Back/Confirm above.
+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) upPressSeen = true;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) downPressSeen = true;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    if (upPressSeen) activityManager.goToApp(homeAppOrder::adjacentVisibleApp(appId(), /*forward=*/false));
+    upPressSeen = false;
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    if (downPressSeen) activityManager.goToApp(homeAppOrder::adjacentVisibleApp(appId(), /*forward=*/true));
+    downPressSeen = false;
+    return;
+  }
+  // Swallowed for as long as either is held, on the press frame and every
+  // frame after: buttonNavigator's row paging below reacts to the logical
+  // NavNext/NavPrevious buttons, which are side Up/Down blended with front
+  // Left/Right (see MappedInputManager::mapButton). Without this, a side
+  // press would page a row immediately (NavNext/NavPrevious firing on the
+  // same press) and only switch the tab afterwards, on release.
+  if (mappedInput.isPressed(MappedInputManager::Button::Up) ||
+      mappedInput.isPressed(MappedInputManager::Button::Down)) {
     return;
   }
 

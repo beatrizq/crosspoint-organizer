@@ -107,12 +107,12 @@ void StatusBarSettingsActivity::loop() {
       break;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     finish();
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     handleSelection();
     requestUpdate();
     return;

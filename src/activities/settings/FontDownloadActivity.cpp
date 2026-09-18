@@ -15,6 +15,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 #include "network/HttpDownloader.h"
 
 FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -24,6 +25,12 @@ FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputMan
 
 void FontDownloadActivity::onEnter() {
   Activity::onEnter();
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below always reboots once
+  // WiFi's mode is non-null, and BleNotifyRelay::begin() re-advertises fresh
+  // on the next boot.
+  BleNotifyRelay::pause();
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
@@ -303,8 +310,8 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
           fileProgress_ = downloaded;
           fileTotal_ = total;
           mappedInput.update();
-          if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
-              mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+          if (mappedInput.isPressed(MappedInputManager::Button::Right1) ||
+              mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
             cancelRequested_ = true;
           }
           requestUpdate(true);
@@ -454,7 +461,7 @@ void FontDownloadActivity::loop() {
       requestUpdateAndWait();
     };
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       finish();
       return;
     }
@@ -510,15 +517,15 @@ void FontDownloadActivity::loop() {
       requestUpdate();
     });
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       activateSelected();
       return;
     }
   } else if (state_ == COMPLETE) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Confirm) || mappedInput.wasScreenTapped(x, y)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) ||
+        mappedInput.wasPressed(MappedInputManager::Button::Right2) || mappedInput.wasScreenTapped(x, y)) {
       {
         RenderLock lock(*this);
         state_ = FAMILY_LIST;
@@ -526,13 +533,13 @@ void FontDownloadActivity::loop() {
       requestUpdate();
     }
   } else if (state_ == ERROR) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       {
         RenderLock lock(*this);
         state_ = FAMILY_LIST;
       }
       requestUpdate();
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (downloadingFamilyIndex_ >= 0 && downloadingFamilyIndex_ < static_cast<int>(families_.size())) {
         downloadFamily(families_[downloadingFamilyIndex_]);
         requestUpdateAndWait();

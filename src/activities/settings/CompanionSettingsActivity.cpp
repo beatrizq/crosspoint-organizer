@@ -21,14 +21,15 @@
 #include "fontIds.h"
 
 namespace {
-constexpr int ROW_ENABLED = 0;
-constexpr int ROW_SHOW_MOOD_LABEL = 1;
-constexpr int ROW_SLEEP_START = 2;
-constexpr int ROW_SLEEP_END = 3;
-constexpr int ROW_HAPPY_POINTS = 4;
-constexpr int ROW_SATISFIED_POINTS = 5;
-constexpr int ROW_NEGLECTED_DAYS = 6;
-constexpr int ROW_RESET = 7;
+constexpr int ROW_NICKNAME = 0;
+constexpr int ROW_ENABLED = 1;
+constexpr int ROW_SHOW_MOOD_LABEL = 2;
+constexpr int ROW_SLEEP_START = 3;
+constexpr int ROW_SLEEP_END = 4;
+constexpr int ROW_HAPPY_POINTS = 5;
+constexpr int ROW_SATISFIED_POINTS = 6;
+constexpr int ROW_NEGLECTED_DAYS = 7;
+constexpr int ROW_RESET = 8;
 
 // "HH:MM" for a Sleep start/end row's value column -- digits need no
 // translation.
@@ -51,7 +52,7 @@ std::string thresholdValue(const StrId formatId, const uint8_t n) {
 void CompanionSettingsActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
-  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   stampActivationIfNeeded();
   requestUpdate();
 }
@@ -69,6 +70,9 @@ void CompanionSettingsActivity::stampActivationIfNeeded() {
 
 void CompanionSettingsActivity::handleSelection() {
   switch (selectedIndex) {
+    case ROW_NICKNAME:
+      editSettingsText(tr(STR_NICKNAME_ENTER), SETTINGS.companionNickname, sizeof(SETTINGS.companionNickname));
+      return;
     case ROW_ENABLED: {
       const bool turningOn = SETTINGS.companionEnabled == 0;
       startActivityForResult(std::make_unique<ConfirmationActivity>(
@@ -79,9 +83,9 @@ void CompanionSettingsActivity::handleSelection() {
                                // back here once this screen is active again -- same reasoning as
                                // swallowConfirmRelease in onEnter(), just armed from this result
                                // instead.
-                               if (mappedInput.isPressed(MappedInputManager::Button::Confirm))
+                               if (mappedInput.isPressed(MappedInputManager::Button::Right2))
                                  swallowConfirmRelease = true;
-                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+                               if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
                                  swallowBackRelease = true;
                                }
                                if (result.isCancelled) return;
@@ -103,10 +107,10 @@ void CompanionSettingsActivity::handleSelection() {
             // Same reasoning as ROW_ENABLED's popup above: this sub-screen
             // answers Back/Confirm on the button going down in places, so a
             // release can still land here.
-            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+            if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
               swallowConfirmRelease = true;
             }
-            if (mappedInput.isPressed(MappedInputManager::Button::Back)) {
+            if (mappedInput.isPressed(MappedInputManager::Button::Right1)) {
               swallowBackRelease = true;
             }
             requestUpdate();
@@ -122,10 +126,10 @@ void CompanionSettingsActivity::handleSelection() {
           std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_COMPANION_RESET_CONFIRM), ""),
           [this](const ActivityResult& result) {
             // Same reasoning as ROW_ENABLED's popup above.
-            if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+            if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
               swallowConfirmRelease = true;
             }
-            if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+            if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
               swallowBackRelease = true;
             }
             if (result.isCancelled) return;
@@ -183,10 +187,10 @@ void CompanionSettingsActivity::offerThresholdPicker(const int row) {
                                                   /*readerActivity=*/false, /*ignoreInitialConfirmRelease=*/true),
       [this, row](const ActivityResult& result) {
         // Same reasoning as ROW_ENABLED's popup above.
-        if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+        if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
           swallowConfirmRelease = true;
         }
-        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Back)) {
+        if (result.isCancelled || mappedInput.isPressed(MappedInputManager::Button::Right1)) {
           swallowBackRelease = true;
         }
         if (result.isCancelled) return;
@@ -217,8 +221,8 @@ void CompanionSettingsActivity::offerThresholdPicker(const int row) {
 void CompanionSettingsActivity::loop() {
   if (optionPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) swallowBackRelease = false;
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) swallowBackRelease = false;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (swallowBackRelease) {
       swallowBackRelease = false;
       return;
@@ -227,9 +231,9 @@ void CompanionSettingsActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) swallowConfirmRelease = false;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (swallowConfirmRelease) {
       swallowConfirmRelease = false;
       return;
@@ -284,6 +288,8 @@ void CompanionSettingsActivity::render(RenderLock&&) {
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_ITEMS, selectedIndex,
       [](int index) -> std::string {
         switch (index) {
+          case ROW_NICKNAME:
+            return std::string(tr(STR_NICKNAME));
           case ROW_ENABLED:
             return std::string(tr(STR_COMPANION_ENABLED));
           case ROW_SHOW_MOOD_LABEL:
@@ -305,6 +311,8 @@ void CompanionSettingsActivity::render(RenderLock&&) {
       nullptr, nullptr,
       [](int index) -> std::string {
         switch (index) {
+          case ROW_NICKNAME:
+            return std::string(CompanionTracker::displayName());
           case ROW_ENABLED:
             return SETTINGS.companionEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
           case ROW_SHOW_MOOD_LABEL:

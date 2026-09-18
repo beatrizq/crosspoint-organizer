@@ -21,21 +21,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     COVER_CUSTOM = 4,
     BLANK = 5,
     QUICK_RESUME = 6,
+    // Captures whatever screen the device was actually showing right before
+    // it went to sleep -- see ActivityManager::goToSleep(), which writes the
+    // outgoing screen's own framebuffer to /sleep.bmp before replacing it
+    // with SleepActivity, the same file and format CUSTOM already renders
+    // from (see SleepActivity::renderCustomSleepScreen()). Replaces the old
+    // per-app "Sleep Screen App" picker (Settings -> Organizer), which only
+    // ever snapshotted one of four organizer screens' own first tab, and only
+    // opportunistically, whenever that screen's own data changed.
+    DYNAMIC = 7,
     SLEEP_SCREEN_MODE_COUNT
-  };
-  // What feeds the sleep screen: a user-picked file (SLEEP_APP_OFF, labelled
-  // "Custom" - the name is legacy, kept because it is persisted) or an
-  // organizer app's first tab. Values are persisted, so append rather than
-  // renumber -- and never reuse 5, retired along with the per-mood companion
-  // wallpapers feature; the generic ENUM clamp in fromJson() resets a stale
-  // persisted 5 to the struct default on load.
-  enum ORGANIZER_SLEEP_APP {
-    SLEEP_APP_OFF = 0,
-    SLEEP_APP_TASKS = 1,
-    SLEEP_APP_CALENDAR = 2,
-    SLEEP_APP_BUDGET = 3,
-    SLEEP_APP_HABITS = 4,
-    ORGANIZER_SLEEP_APP_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
   enum SLEEP_SCREEN_COVER_FILTER {
@@ -81,22 +76,39 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
 
   // Front button layout options (legacy)
-  // Default: Back, Confirm, Left, Right
-  // Swapped: Left, Right, Back, Confirm
+  // Default: Right1, Right2, Left1, Left2
+  // Swapped: Left1, Left2, Right1, Right2
   enum FRONT_BUTTON_LAYOUT {
-    BACK_CONFIRM_LEFT_RIGHT = 0,
-    LEFT_RIGHT_BACK_CONFIRM = 1,
-    LEFT_BACK_CONFIRM_RIGHT = 2,
-    BACK_CONFIRM_RIGHT_LEFT = 3,
+    RIGHT1_RIGHT2_LEFT1_LEFT2 = 0,
+    LEFT1_LEFT2_RIGHT1_RIGHT2 = 1,
+    LEFT1_RIGHT1_RIGHT2_LEFT2 = 2,
+    RIGHT1_RIGHT2_LEFT2_LEFT1 = 3,
     FRONT_BUTTON_LAYOUT_COUNT
   };
 
-  // Front button hardware identifiers (for remapping)
+  // Front button hardware identifiers (for remapping).
+  //
+  // These raw indices (0-3) are HalGPIO::BTN_BACK/BTN_CONFIRM/BTN_LEFT/
+  // BTN_RIGHT -- freeink-sdk's own names, unrelated to this device's actual
+  // physical layout (see MappedInputManager's own header comment for the
+  // Left1/Left2/Right1/Right2 scheme these hardware indices are the default
+  // values for). Every theme's drawButtonHints() draws its btn1/btn2 in a
+  // left-hand screen group and btn3/btn4 in a right-hand one (BaseTheme,
+  // LyraTheme, RoundedRaffTheme all agree), and MappedInputManager::
+  // mapFrontLabels() builds those four labels in fixed raw-hardware order
+  // (BACK, CONFIRM, LEFT, RIGHT) -- so hw index 0/1 render in the left-hand
+  // group and 2/3 in the right-hand one. FRONT_HW_LEFT1/LEFT2 must therefore
+  // default to 0/1 and FRONT_HW_RIGHT1/RIGHT2 to 2/3, confirmed against the
+  // real device: the reverse (this enum's own previous values) put Right1/
+  // Right2 ("Apps"/"Select") on the physical left pair and Left1/Left2 ("Up"/
+  // "Down") on the physical right pair. A user's own remap (ButtonRemapActivity
+  // captures a literal press via getPressedFrontButton(), not one of these
+  // symbols) is unaffected either way.
   enum FRONT_BUTTON_HARDWARE {
-    FRONT_HW_BACK = 0,
-    FRONT_HW_CONFIRM = 1,
-    FRONT_HW_LEFT = 2,
-    FRONT_HW_RIGHT = 3,
+    FRONT_HW_LEFT1 = 0,
+    FRONT_HW_LEFT2 = 1,
+    FRONT_HW_RIGHT1 = 2,
+    FRONT_HW_RIGHT2 = 3,
     FRONT_BUTTON_HARDWARE_COUNT
   };
 
@@ -158,18 +170,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
-  // What the sleep screen shows: a user-picked file (SLEEP_APP_OFF/"Custom",
-  // the default), an organizer app repainting /sleep.bmp from its first tab
-  // whenever its contents change, or the companion's per-mood wallpapers. See
-  // util/OrganizerSleepScreen.h.
-  uint8_t organizerSleepApp = SLEEP_APP_OFF;
-  // The sleep screen mode in force before an app's screenshot switched it to
-  // CUSTOM, so switching the app off can put it back. NO_PREVIOUS_SLEEP_SCREEN
-  // until something has been replaced. Persisted via a category-less
-  // SettingInfo::Value: it is remembered state, not a setting anyone chooses.
-  uint8_t previousSleepScreenMode = 0xFF;
-  static constexpr uint8_t NO_PREVIOUS_SLEEP_SCREEN = 0xFF;
-
   // Per-app display names. Empty means "use the app's own name", which is what
   // every one of these ships as; a value here replaces it on the home grid and on
   // the app's own screen, while Settings keeps listing the service so an app is
@@ -182,6 +182,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char calendarNickname[24] = "";
   char budgetNickname[24] = "";
   char habitsNickname[24] = "";
+  // Same idea, for the companion -- falls back to its own built-in character
+  // name (CompanionTracker::displayName()) rather than an app's service name,
+  // since the companion has no account behind it to keep listing.
+  char companionNickname[24] = "";
   // Home grid app order: one digit per app id, left to right (see
   // util/HomeAppOrder.h). Persisted via a category-less SettingInfo::String in
   // SettingsList.h, so it stays out of the on-device Settings screen - it is
@@ -255,15 +259,15 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
   // Button layouts (front layout retained for migration only)
-  uint8_t frontButtonLayout = BACK_CONFIRM_LEFT_RIGHT;
+  uint8_t frontButtonLayout = RIGHT1_RIGHT2_LEFT1_LEFT2;
   uint8_t sideButtonLayout = PREV_NEXT;
   uint8_t frontButtonFollowOrientation = 0;
   // Front button remap (logical -> hardware)
   // Used by MappedInputManager to translate logical buttons into physical front buttons.
-  uint8_t frontButtonBack = FRONT_HW_BACK;
-  uint8_t frontButtonConfirm = FRONT_HW_CONFIRM;
-  uint8_t frontButtonLeft = FRONT_HW_LEFT;
-  uint8_t frontButtonRight = FRONT_HW_RIGHT;
+  uint8_t frontButtonRight1 = FRONT_HW_RIGHT1;
+  uint8_t frontButtonRight2 = FRONT_HW_RIGHT2;
+  uint8_t frontButtonLeft1 = FRONT_HW_LEFT1;
+  uint8_t frontButtonLeft2 = FRONT_HW_LEFT2;
   // Reader font settings
   uint8_t fontFamily = NOTOSERIF;
   // Point size of the reader font. Only sizes the active family actually ships

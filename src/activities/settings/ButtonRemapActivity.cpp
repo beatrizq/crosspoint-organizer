@@ -9,7 +9,7 @@
 #include "fontIds.h"
 
 namespace {
-// UI steps correspond to logical roles in order: Back, Confirm, Left, Right.
+// UI steps correspond to logical roles in order: Right1, Right2, Left1, Left2.
 constexpr uint8_t kRoleCount = 4;
 // Marker used when a role has not been assigned yet.
 constexpr uint8_t kUnassigned = 0xFF;
@@ -47,10 +47,10 @@ void ButtonRemapActivity::loop() {
   // - Down: cancel without saving.
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
     // Persist default mapping immediately so the user can recover quickly.
-    SETTINGS.frontButtonBack = CrossPointSettings::FRONT_HW_BACK;
-    SETTINGS.frontButtonConfirm = CrossPointSettings::FRONT_HW_CONFIRM;
-    SETTINGS.frontButtonLeft = CrossPointSettings::FRONT_HW_LEFT;
-    SETTINGS.frontButtonRight = CrossPointSettings::FRONT_HW_RIGHT;
+    SETTINGS.frontButtonRight1 = CrossPointSettings::FRONT_HW_RIGHT1;
+    SETTINGS.frontButtonRight2 = CrossPointSettings::FRONT_HW_RIGHT2;
+    SETTINGS.frontButtonLeft1 = CrossPointSettings::FRONT_HW_LEFT1;
+    SETTINGS.frontButtonLeft2 = CrossPointSettings::FRONT_HW_LEFT2;
     SETTINGS.saveToFile();
     finish();
     return;
@@ -140,21 +140,27 @@ void ButtonRemapActivity::render(RenderLock&&) {
                    Rect{0, topOffset + 4 * metrics.listRowHeight + 5 * metrics.verticalSpacing + 20, pageWidth, 20},
                    tr(STR_REMAP_CANCEL_HINT));
 
-  // Live preview of logical labels under front buttons.
-  // This mirrors the on-device front button order: Back, Confirm, Left, Right.
-  GUI.drawButtonHints(renderer, labelForHardware(CrossPointSettings::FRONT_HW_BACK),
-                      labelForHardware(CrossPointSettings::FRONT_HW_CONFIRM),
-                      labelForHardware(CrossPointSettings::FRONT_HW_LEFT),
-                      labelForHardware(CrossPointSettings::FRONT_HW_RIGHT));
+  // Live preview of logical labels under front buttons. drawButtonHints()
+  // always draws its btn1/btn2 args in the screen's left-hand group and
+  // btn3/btn4 in the right-hand one (every theme agrees -- see
+  // CrossPointSettings::FRONT_BUTTON_HARDWARE's own comment), so this must
+  // pass raw hardware indices in true ascending order (BACK=0, CONFIRM=1,
+  // LEFT=2, RIGHT=3) to land each role's label under the physical button it
+  // was actually just assigned to -- CrossPointSettings::FRONT_HW_* would be
+  // wrong here, since those are default *role* assignments, not raw hardware
+  // identities, and Left1/Left2 no longer default to the same raw indices
+  // (2, 3) this preview would need to assume.
+  GUI.drawButtonHints(renderer, labelForHardware(HalGPIO::BTN_BACK), labelForHardware(HalGPIO::BTN_CONFIRM),
+                      labelForHardware(HalGPIO::BTN_LEFT), labelForHardware(HalGPIO::BTN_RIGHT));
   renderer.displayBuffer();
 }
 
 void ButtonRemapActivity::applyTempMapping() {
   // Commit temporary mapping into settings (logical role -> hardware).
-  SETTINGS.frontButtonBack = tempMapping[0];
-  SETTINGS.frontButtonConfirm = tempMapping[1];
-  SETTINGS.frontButtonLeft = tempMapping[2];
-  SETTINGS.frontButtonRight = tempMapping[3];
+  SETTINGS.frontButtonRight1 = tempMapping[0];
+  SETTINGS.frontButtonRight2 = tempMapping[1];
+  SETTINGS.frontButtonLeft1 = tempMapping[2];
+  SETTINGS.frontButtonLeft2 = tempMapping[3];
 }
 
 bool ButtonRemapActivity::validateUnassigned(const uint8_t pressedButton) {
@@ -184,14 +190,21 @@ const char* ButtonRemapActivity::getRoleName(const uint8_t roleIndex) const {
 }
 
 const char* ButtonRemapActivity::getHardwareName(const uint8_t buttonIndex) const {
+  // buttonIndex is a raw hardware index (straight from getPressedFrontButton(),
+  // i.e. one of HalGPIO::BTN_BACK/CONFIRM/LEFT/RIGHT) identifying which
+  // physical button was actually pressed -- switching on
+  // CrossPointSettings::FRONT_HW_* here would be wrong, since those are
+  // default *role* assignments (which can now differ from these raw
+  // identities; see FRONT_BUTTON_HARDWARE's own comment), not raw hardware
+  // identity itself.
   switch (buttonIndex) {
-    case CrossPointSettings::FRONT_HW_BACK:
+    case HalGPIO::BTN_BACK:
       return tr(STR_HW_BACK_LABEL);
-    case CrossPointSettings::FRONT_HW_CONFIRM:
+    case HalGPIO::BTN_CONFIRM:
       return tr(STR_HW_CONFIRM_LABEL);
-    case CrossPointSettings::FRONT_HW_LEFT:
+    case HalGPIO::BTN_LEFT:
       return tr(STR_HW_LEFT_LABEL);
-    case CrossPointSettings::FRONT_HW_RIGHT:
+    case HalGPIO::BTN_RIGHT:
       return tr(STR_HW_RIGHT_LABEL);
     default:
       return "Unknown";

@@ -51,6 +51,7 @@ class TasksActivity final : public OrganizerScreenActivity {
 
  protected:
   const char* screenTitle() const override;
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Tasks; }
   int tabCount() const override { return static_cast<int>(visibleTabs.size()); }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;
@@ -68,7 +69,6 @@ class TasksActivity final : public OrganizerScreenActivity {
   void onRowConfirm() override;
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::TASKS; }
-  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Tasks; }
 
  private:
   // The kind on screen at `index`, or ALL when the index is out of range.

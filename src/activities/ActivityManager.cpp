@@ -2,9 +2,11 @@
 
 #include <FontCacheManager.h>
 #include <HalPowerManager.h>
+#include <Logging.h>
 
 #include <algorithm>
 
+#include "CrossPointSettings.h"
 #include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -15,6 +17,12 @@
 #include "home/ReadMenuActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "util/ScreenshotUtil.h"
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+#include "network/BleNotificationsActivity.h"
+#endif
+#include "companion/QuickPickRoll.h"
+#include "home/QuickPickActivity.h"
 #include "organizer/BudgetActivity.h"
 #include "organizer/CalendarActivity.h"
 #include "organizer/HabitsActivity.h"
@@ -218,6 +226,12 @@ void ActivityManager::goToHabits(std::string selectHabitId) {
 
 void ActivityManager::goToSyncAll() { replaceActivity(std::make_unique<SyncAllActivity>(renderer, mappedInput)); }
 
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+void ActivityManager::goToBleNotifications() {
+  replaceActivity(std::make_unique<BleNotificationsActivity>(renderer, mappedInput));
+}
+#endif
+
 void ActivityManager::goToBudget(const uint8_t initialTab) {
   replaceActivity(std::make_unique<BudgetActivity>(renderer, mappedInput, static_cast<int>(initialTab)));
 }
@@ -239,6 +253,24 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
 }
 
 void ActivityManager::goToSleep(bool fromTimeout) {
+  // Captured here, before replaceActivity() below swaps in SleepActivity:
+  // the framebuffer still holds whatever the outgoing screen last rendered,
+  // which is "whatever screen the device is on" -- capturing any later, once
+  // SleepActivity itself has painted, would just save a picture of the sleep
+  // screen. Same file and format installCustomWallpaper() writes, so
+  // SleepActivity's CUSTOM-mode render (which DYNAMIC also uses -- see
+  // SleepActivity::renderCustomSleepScreen()) picks it up unchanged.
+  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::DYNAMIC) {
+    const uint8_t* framebuffer = renderer.getFrameBuffer();
+    if (framebuffer != nullptr) {
+      if (!ScreenshotUtil::saveFramebufferAsBmp("/sleep.bmp", framebuffer, renderer.getDisplayWidth(),
+                                                renderer.getDisplayHeight())) {
+        LOG_ERR("ACT", "Failed to write dynamic sleep screen");
+      }
+    } else {
+      LOG_ERR("ACT", "Framebuffer unavailable; dynamic sleep screen not updated");
+    }
+  }
   replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
@@ -267,6 +299,48 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
   replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput, initialMenuItem));
 }
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
+
+void ActivityManager::goToCompanion() {
+  if (!SETTINGS.companionEnabled) return;
+  const auto rolled = quickpick::roll();
+  replaceActivity(std::make_unique<QuickPickActivity>(renderer, mappedInput, rolled.text, rolled.itemId, rolled.isHabit,
+                                                      rolled.poolEmpty));
+}
+
+void ActivityManager::goToApp(const homeAppOrder::AppId id) {
+  switch (id) {
+    case homeAppOrder::AppId::Read:
+      goToReadMenu();
+      return;
+    case homeAppOrder::AppId::Tasks:
+      goToTasks();
+      return;
+    case homeAppOrder::AppId::Calendar:
+      goToCalendar();
+      return;
+    case homeAppOrder::AppId::Budget:
+      goToBudget();
+      return;
+    case homeAppOrder::AppId::Habits:
+      goToHabits();
+      return;
+    case homeAppOrder::AppId::Notifications:
+      // adjacentVisibleApp() already skips this app entirely when
+      // ENABLE_BLE_NOTIFY_SPIKE isn't compiled in, so this case is only ever
+      // reached in a build where goToBleNotifications() actually exists --
+      // see its own declaration comment.
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+      goToBleNotifications();
+#endif
+      return;
+    case homeAppOrder::AppId::Companion:
+      goToCompanion();
+      return;
+    case homeAppOrder::AppId::Settings:
+      goToSettings();
+      return;
+  }
+}
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   if (pendingActivity) {

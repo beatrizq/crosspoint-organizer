@@ -144,11 +144,11 @@ void ClearCacheActivity::loop() {
   if (state == WARNING) {
     if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return;
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       beginClear();
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       LOG_DBG("CLEAR_CACHE", "User cancelled");
       goBack();
     }
@@ -158,7 +158,7 @@ void ClearCacheActivity::loop() {
   if (state == SUCCESS || state == FAILED) {
     int x = 0;
     int y = 0;
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasScreenTapped(x, y)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) || mappedInput.wasScreenTapped(x, y)) {
       goBack();
     }
     return;

@@ -15,6 +15,10 @@ constexpr AppInfo APPS[APP_COUNT] = {
     {AppId::Calendar, StrId::STR_GOOGLE_CALENDAR, UIIcon::Calendar},
     {AppId::Budget, StrId::STR_YNAB, UIIcon::Budget},
     {AppId::Habits, StrId::STR_HABITIFY, UIIcon::Habits},
+    {AppId::Notifications, StrId::STR_BLE_NOTIFICATIONS, UIIcon::Bell},
+    // None: drawn dynamically instead (see AppId::Companion's own comment).
+    {AppId::Companion, StrId::STR_COMPANION, UIIcon::None},
+    {AppId::Settings, StrId::STR_SETTINGS_TITLE, UIIcon::Settings},
 };
 
 }  // namespace
@@ -41,6 +45,16 @@ char* nicknameField(const AppId id, size_t& outSize) {
     case AppId::Read:
       // Read is not an integration - it has no account, no settings screen of its
       // own, and so nothing to rename it from.
+      break;
+    case AppId::Notifications:
+      // Same reasoning as Read: not an account, nothing to nickname.
+      break;
+    case AppId::Companion:
+      outSize = sizeof(SETTINGS.companionNickname);
+      return SETTINGS.companionNickname;
+    case AppId::Settings:
+      // Not an integration either - the Settings screen itself, nothing to
+      // rename it from.
       break;
   }
   outSize = 0;
@@ -88,6 +102,36 @@ void format(const int (&order)[APP_COUNT], char* out, const size_t outSize) {
     out[written++] = static_cast<char>('0' + index);
   }
   out[written] = '\0';
+}
+
+AppId adjacentVisibleApp(const AppId current, const bool forward) {
+  int order[APP_COUNT];
+  parse(SETTINGS.homeAppOrder, order);
+
+  // Same visibility gates HomeActivity::buildEntries() applies -- an app that
+  // is not really a selectable tile right now should not be a stop on this
+  // cycle either.
+  AppId visible[APP_COUNT];
+  int count = 0;
+  for (const int index : order) {
+    const auto& app = appAt(index);
+#ifndef ENABLE_BLE_NOTIFY_SPIKE
+    if (app.id == AppId::Notifications) continue;
+#endif
+    if (app.id == AppId::Companion && !SETTINGS.companionEnabled) continue;
+    visible[count++] = app.id;
+  }
+  if (count == 0) return current;
+
+  int currentIndex = 0;
+  for (int i = 0; i < count; i++) {
+    if (visible[i] == current) {
+      currentIndex = i;
+      break;
+    }
+  }
+  const int next = forward ? (currentIndex + 1) % count : (currentIndex + count - 1) % count;
+  return visible[next];
 }
 
 }  // namespace homeAppOrder

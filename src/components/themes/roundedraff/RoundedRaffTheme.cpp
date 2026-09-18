@@ -47,9 +47,10 @@ void drawScrollBar(const GfxRenderer& renderer, Rect rect, int itemCount, int pa
 }  // namespace
 int coverWidth = 0;
 
-void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
-                                  const char* subtitle) const {
+void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                                  const bool showRule) const {
   (void)subtitle;
+  (void)showRule;  // This theme never draws a header rule to begin with.
   // Home screen header is custom-rendered in drawRecentBookCover.
   if (title == nullptr) {
     return;

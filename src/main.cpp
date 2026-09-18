@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <BoardConfig.h>
+#include <CivilTime.h>
 #include <Epub.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
@@ -31,6 +32,7 @@
 #include "SdCardFontSystem.h"
 #include "TodoistStore.h"
 #include "TodoistTaskCache.h"
+#include "YnabAccountCache.h"
 #include "YnabStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -41,7 +43,12 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
+#include "network/BleNotifyRelay.h"
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+#include "network/BleNotificationQueue.h"
+#endif
 #include "util/ButtonNavigator.h"
+#include "util/OrganizerSync.h"
 #include "util/ScreenshotUtil.h"
 
 GfxRenderer renderer(display);
@@ -328,6 +335,16 @@ void setup() {
   TODOIST_STORE.loadFromFile();
   GCAL_STORE.loadFromFile();
   YNAB_STORE.loadFromFile();
+  // Sync All's Budget step (OrganizerSync.cpp's runBudget()) refreshes every
+  // *already-known* account's transactions without re-fetching the account
+  // list itself -- it reads YNAB_ACCOUNTS.getAccounts() to know which ids to
+  // ask for. Same reasoning as the caches below: SyncAllActivity reboots on
+  // exit whenever WiFi was activated, so relying on whatever was in RAM before
+  // that reboot means a Sync All triggered before ever opening the Budget
+  // screen this session sees an empty account list and silently skips every
+  // transaction refresh -- the account tab then just shows whatever was
+  // already cached, unchanged, with no error surfaced anywhere.
+  YNAB_ACCOUNTS.loadFromFile();
   HABITIFY_STORE.loadFromFile();
   // Loaded unconditionally, not just when the companion is enabled: a wake from
   // deep sleep re-runs setup(), so gating on the setting means turning the
@@ -343,6 +360,30 @@ void setup() {
   // making the mood look reset even though nothing was actually lost.
   TODOIST_TASKS.loadFromFile();
   HABITIFY_HABITS.loadFromFile();
+  // Retires a day-old completion log before the companion ever reads it this
+  // boot, using whatever the clock already knows -- no WiFi/NTP forced here,
+  // since boot must not block on the network. This is what catches the
+  // common case (the device sat in deep sleep and its clock tracked the days
+  // correctly the whole time); organizerSync::runTasks()/runHabits() cover
+  // the other case, where the clock itself was only wrong until a sync
+  // corrected it. See TodoistTaskCache::clearCompletedIfStale() and
+  // HabitifyHabitCache::rolloverIfStale()'s own comments for what this is
+  // protecting against.
+  {
+    uint16_t year;
+    uint8_t month, day, hour, minute;
+    if (halClock.getUtcDateTime(year, month, day, hour, minute)) {
+      if (HABITIFY_HABITS.rolloverIfStale(civil::packDate(year, month, day))) HABITIFY_HABITS.saveToFile();
+      TODOIST_TASKS.clearCompletedIfStale(
+          civil::dateFromIso(organizerSync::localIsoDateFromUtc(year, month, day, hour, minute).c_str()));
+    }
+  }
+#ifdef ENABLE_BLE_NOTIFY_SPIKE
+  // Same reasoning as the caches above: SyncAllActivity reboots on exit
+  // whenever WiFi was activated, so this must be loaded at boot rather than
+  // relying on whatever was in RAM before the reboot.
+  BLE_NOTIFICATIONS.loadFromFile();
+#endif
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
@@ -463,16 +504,21 @@ void setup() {
         renderer, mappedInputManager, APP_STATE.focusSessionText, APP_STATE.focusSessionItemId,
         APP_STATE.focusSessionIsHabit, APP_STATE.focusSessionEndAbsMinutes, APP_STATE.focusSessionEndHour,
         APP_STATE.focusSessionEndMinute));
-  } else if (APP_STATE.lastSleepFromQuickPick && !mappedInputManager.isPressed(MappedInputManager::Button::Back)) {
+  } else if (APP_STATE.lastSleepFromQuickPick && !mappedInputManager.isPressed(MappedInputManager::Button::Right1)) {
     // Same escape hatch as the reader branch below: holding Back on wake skips
     // straight to home instead of putting the old pick back up.
     activityManager.replaceActivity(std::make_unique<QuickPickActivity>(
         renderer, mappedInputManager, APP_STATE.quickPickText, APP_STATE.quickPickItemId, APP_STATE.quickPickIsHabit,
         APP_STATE.quickPickPoolEmpty));
   } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-             mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
+             mappedInputManager.isPressed(MappedInputManager::Button::Right1) ||
+             APP_STATE.readerActivityLoadCount > 0) {
+    // Boot to the app menu (Home) if no book is open, last sleep was not from
+    // reader, back button is held, or reader activity crashed (indicated by
+    // readerActivityLoadCount > 0). The companion screen is still reached the
+    // same way it always was otherwise -- its own grid tile, or the
+    // lastSleepFromQuickPick resume branch above when that is genuinely what
+    // was open at sleep.
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
@@ -503,6 +549,10 @@ void setup() {
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
   allowSleepAt = millis() + 2000;
+
+  // Spike only (see BleNotifyRelay's own comment) -- last, so any BLE bring-up
+  // issue can never affect the boot path above it.
+  BleNotifyRelay::begin();
 }
 
 void loop() {
@@ -513,6 +563,7 @@ void loop() {
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   gpio.update();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+  BleNotifyRelay::poll();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 

@@ -156,8 +156,8 @@ GCalClient::Error GCalClient::fetchCalendars(const std::string& accessToken, std
   return OK;
 }
 
-GCalClient::Error GCalClient::fetchEvents(const std::string& accessToken, const std::string& calendarId,
-                                          const uint16_t fromDate, const uint16_t toDate,
+GCalClient::Error GCalClient::fetchEvents(freeink::SecureHttpClient& http, const std::string& accessToken,
+                                          const std::string& calendarId, const uint16_t fromDate, const uint16_t toDate,
                                           std::vector<GCalEvent>& outEvents) {
   lastHttpCode = 0;
   if (accessToken.empty()) return NO_TOKEN;
@@ -189,8 +189,6 @@ GCalClient::Error GCalClient::fetchEvents(const std::string& accessToken, const 
   EventCollector collector{&outEvents, fromDate, toDate};
   GCalEventsParser parser(collectEvent, &collector);
 
-  freeink::SecureHttpClient http;
-  http.setInsecure();
   if (!http.begin(url)) {
     LOG_ERR("GCC", "Bad events URL");
     return NETWORK_ERROR;
@@ -204,7 +202,6 @@ GCalClient::Error GCalClient::fetchEvents(const std::string& accessToken, const 
     parser.feed(reinterpret_cast<const char*>(data), len);
     return true;
   });
-  http.end();
   lastHttpCode = httpCode;
   LOG_DBG("GCC", "events: %d (%zu seen, %zu kept)", httpCode, parser.eventCount(), outEvents.size());
 

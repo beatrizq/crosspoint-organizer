@@ -174,7 +174,7 @@ void BmpViewerActivity::loop() {
     return true;
   };
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     activityManager.goToFileBrowser(filePath);
     return;
   }
@@ -189,18 +189,18 @@ void BmpViewerActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     doSetSleepCover();
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left1) ||
       mappedInput.wasReleased(MappedInputManager::Button::Up)) {
     openSibling(-1);
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Right) ||
+  if (mappedInput.wasReleased(MappedInputManager::Button::Left2) ||
       mappedInput.wasReleased(MappedInputManager::Button::Down)) {
     openSibling(1);
     return;

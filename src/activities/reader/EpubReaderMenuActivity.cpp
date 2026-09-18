@@ -73,18 +73,18 @@ void EpubReaderMenuActivity::loop() {
     return;
   }
   if (popupClosing) {
-    if (mappedInput.isPressed(MappedInputManager::Button::Back) ||
-        mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.isPressed(MappedInputManager::Button::Right1) ||
+        mappedInput.isPressed(MappedInputManager::Button::Right2)) {
       return;  // closing press still held
     }
     popupClosing = false;
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right1) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
       return;  // swallow the release that closed the popup
     }
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     closeCancelled();
     return;
   }
@@ -153,7 +153,7 @@ void EpubReaderMenuActivity::loop() {
     requestUpdate();
   });
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     activateSelected();
     return;
   }

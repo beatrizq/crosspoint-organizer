@@ -31,7 +31,7 @@ void EpubReaderChapterSelectionActivity::loop() {
   const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, false);
   const int totalItems = getTotalItems();
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     ActivityResult result;
     result.isCancelled = true;
     setResult(std::move(result));
@@ -78,7 +78,7 @@ void EpubReaderChapterSelectionActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     selectChapter();
   }
 

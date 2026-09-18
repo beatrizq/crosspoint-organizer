@@ -53,8 +53,8 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
   const bool swapFront = input.isNavDirectionSwapped();
-  const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
-  const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
+  const auto prevButton = swapFront ? MappedInputManager::Button::Left2 : MappedInputManager::Button::Left1;
+  const auto nextButton = swapFront ? MappedInputManager::Button::Left1 : MappedInputManager::Button::Left2;
   const bool prev =
       tiltPrev ||
       (usePress ? (input.wasPressed(MappedInputManager::Button::PageBack) || input.wasPressed(prevButton))
@@ -170,7 +170,7 @@ struct BackNavCallback {
 // - with backShortToFileBrowser: go to file browser.
 inline bool handleBackNavigation(const MappedInputManager& mappedInput, ActivityManager& activityManager,
                                  const char* filePath, BackNavCallback goHome) {
-  if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= GO_BACK_OR_HOME_MS) {
+  if (mappedInput.isPressed(MappedInputManager::Button::Right1) && mappedInput.getHeldTime() >= GO_BACK_OR_HOME_MS) {
     if (SETTINGS.backShortToFileBrowser) {
       goHome.fn(goHome.ctx);
     } else {
@@ -178,7 +178,7 @@ inline bool handleBackNavigation(const MappedInputManager& mappedInput, Activity
     }
     return true;
   }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < GO_BACK_OR_HOME_MS) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1) && mappedInput.getHeldTime() < GO_BACK_OR_HOME_MS) {
     if (SETTINGS.backShortToFileBrowser) {
       activityManager.goToFileBrowser(filePath);
     } else {

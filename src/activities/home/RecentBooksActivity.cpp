@@ -51,7 +51,7 @@ void RecentBooksActivity::loop() {
   // After a long-press has fired, swallow input until Confirm is physically released
   // (so the release doesn't also open the book; re-arm only once the button is up).
   if (longPressFired) {
-    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Right2)) {
       longPressFired = false;
     }
     return;
@@ -61,13 +61,13 @@ void RecentBooksActivity::loop() {
   // Fires when the hold times out while still held (firmware hold-to-act pattern,
   // cf. FileBrowserActivity BACK long-press).
   if (!recentBooks.empty() && selectorIndex < recentBooks.size() &&
-      mappedInput.isPressed(MappedInputManager::Button::Confirm) && mappedInput.getHeldTime() >= LONG_PRESS_MS) {
+      mappedInput.isPressed(MappedInputManager::Button::Right2) && mappedInput.getHeldTime() >= LONG_PRESS_MS) {
     longPressFired = true;
     promptRemoveBook(recentBooks[selectorIndex].path, recentBooks[selectorIndex].title);
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (!recentBooks.empty() && selectorIndex < static_cast<int>(recentBooks.size())) {
       LOG_DBG("RBA", "Selected recent book: %s", recentBooks[selectorIndex].path.c_str());
       onSelectBook(recentBooks[selectorIndex].path);
@@ -87,7 +87,7 @@ void RecentBooksActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (returnToReadMenu) {
       activityManager.goToReadMenu();
     } else {

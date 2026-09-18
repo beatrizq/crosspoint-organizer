@@ -13,10 +13,9 @@ class MappedInputManager;
  * Options menu acting on the companion's suggested item.
  *
  * Each screen still owns what is particular to it - TasksActivity's tab
- * rebuild and selection clamp, HabitsActivity's requestUpdate(), either's
- * updateSleepScreen() - this only holds the three steps that must not drift
- * out of sync between call sites: mutate the cache, persist it, and credit
- * the companion.
+ * rebuild and selection clamp, HabitsActivity's requestUpdate() - this only
+ * holds the three steps that must not drift out of sync between call sites:
+ * mutate the cache, persist it, and credit the companion.
  *
  * Callers are responsible for holding a RenderLock across the call, exactly
  * as they already do around TodoistTaskCache/HabitifyHabitCache mutations

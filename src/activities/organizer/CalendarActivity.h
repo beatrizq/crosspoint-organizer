@@ -34,6 +34,7 @@ class CalendarActivity final : public OrganizerScreenActivity {
 
  protected:
   const char* screenTitle() const override;
+  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Calendar; }
   int tabCount() const override { return TAB_COUNT; }
   const char* tabLabel(int index) const override;
   void formatStatus(char* out, size_t outSize) const override;
@@ -47,7 +48,6 @@ class CalendarActivity final : public OrganizerScreenActivity {
   bool rowsHaveSubtitle() const override { return true; }
   void loadCaches() override;
   HomeMenuItem homeItem() const override { return HomeMenuItem::CALENDAR; }
-  homeAppOrder::AppId appId() const override { return homeAppOrder::AppId::Calendar; }
 
  private:
   void performCalendarSync();

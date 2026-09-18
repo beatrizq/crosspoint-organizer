@@ -29,15 +29,15 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 }  // namespace
 
 void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
-  const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,
-                             settings.frontButtonRight};
+  const uint8_t mapping[] = {settings.frontButtonRight1, settings.frontButtonRight2, settings.frontButtonLeft1,
+                             settings.frontButtonLeft2};
   for (size_t i = 0; i < 4; i++) {
     for (size_t j = i + 1; j < 4; j++) {
       if (mapping[i] == mapping[j]) {
-        settings.frontButtonBack = FRONT_HW_BACK;
-        settings.frontButtonConfirm = FRONT_HW_CONFIRM;
-        settings.frontButtonLeft = FRONT_HW_LEFT;
-        settings.frontButtonRight = FRONT_HW_RIGHT;
+        settings.frontButtonRight1 = FRONT_HW_RIGHT1;
+        settings.frontButtonRight2 = FRONT_HW_RIGHT2;
+        settings.frontButtonLeft1 = FRONT_HW_LEFT1;
+        settings.frontButtonLeft2 = FRONT_HW_LEFT2;
         return;
       }
     }
@@ -83,10 +83,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   }
 
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  doc["frontButtonBack"] = frontButtonBack;
-  doc["frontButtonConfirm"] = frontButtonConfirm;
-  doc["frontButtonLeft"] = frontButtonLeft;
-  doc["frontButtonRight"] = frontButtonRight;
+  doc["frontButtonRight1"] = frontButtonRight1;
+  doc["frontButtonRight2"] = frontButtonRight2;
+  doc["frontButtonLeft1"] = frontButtonLeft1;
+  doc["frontButtonLeft2"] = frontButtonLeft2;
   // Font family and size — both use dynamic getter/setters in SettingsList (the
   // option lists depend on the SD font registry), so the generic loop skips them.
   doc["fontFamily"] = fontFamily;
@@ -187,12 +187,64 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
-  frontButtonConfirm =
-      clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-  frontButtonLeft = clamp(doc["frontButtonLeft"] | (uint8_t)FRONT_HW_LEFT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT);
-  frontButtonRight =
-      clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_RIGHT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT);
+  // The JSON keys were renamed (frontButtonBack/Confirm/Left/Right -> frontButtonRight1/
+  // Right2/Left1/Left2) to match the button-ID rename, but an existing on-disk settings.json
+  // still has the OLD keys -- reading only the new ones would silently discard any saved
+  // custom remap and fall back to hardware defaults. Read the new key first; if it is absent,
+  // fall back to the old key so an existing save still loads correctly, and flag a resave so
+  // it is written back out under the new key from then on.
+  if (doc["frontButtonRight1"].isNull() && !doc["frontButtonBack"].isNull()) {
+    frontButtonRight1 =
+        clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_RIGHT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT1);
+    needsResave = true;
+  } else {
+    frontButtonRight1 =
+        clamp(doc["frontButtonRight1"] | (uint8_t)FRONT_HW_RIGHT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT1);
+  }
+  if (doc["frontButtonRight2"].isNull() && !doc["frontButtonConfirm"].isNull()) {
+    frontButtonRight2 =
+        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_RIGHT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT2);
+    needsResave = true;
+  } else {
+    frontButtonRight2 =
+        clamp(doc["frontButtonRight2"] | (uint8_t)FRONT_HW_RIGHT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT2);
+  }
+  if (doc["frontButtonLeft1"].isNull() && !doc["frontButtonLeft"].isNull()) {
+    frontButtonLeft1 =
+        clamp(doc["frontButtonLeft"] | (uint8_t)FRONT_HW_LEFT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT1);
+    needsResave = true;
+  } else {
+    frontButtonLeft1 =
+        clamp(doc["frontButtonLeft1"] | (uint8_t)FRONT_HW_LEFT1, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT1);
+  }
+  if (doc["frontButtonLeft2"].isNull() && !doc["frontButtonRight"].isNull()) {
+    frontButtonLeft2 =
+        clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
+    needsResave = true;
+  } else {
+    frontButtonLeft2 =
+        clamp(doc["frontButtonLeft2"] | (uint8_t)FRONT_HW_LEFT2, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT2);
+  }
+  // One-time correction for a value already written to disk under the *new*
+  // key names but holding the *old*, since-corrected default hardware
+  // indices (0/1/2/3 for Right1/Right2/Left1/Left2 -- see
+  // FRONT_BUTTON_HARDWARE's own comment for why that arrangement is wrong on
+  // this device's real physical layout). A device that migrated from the old
+  // key names (frontButtonBack/Confirm/Left/Right, above) before this
+  // correction existed already persisted these exact four values under the
+  // new keys, so simply changing the compiled-in default here does nothing
+  // for it -- the stored value always wins over the `| default` fallback
+  // once the key is present. This exact quadruple is otherwise unreachable
+  // (nothing else in the app ever writes it), so it is a safe, one-time
+  // fingerprint for "still on the old, wrong default" rather than a
+  // deliberate user remap.
+  if (frontButtonRight1 == 0 && frontButtonRight2 == 1 && frontButtonLeft1 == 2 && frontButtonLeft2 == 3) {
+    frontButtonRight1 = FRONT_HW_RIGHT1;
+    frontButtonRight2 = FRONT_HW_RIGHT2;
+    frontButtonLeft1 = FRONT_HW_LEFT1;
+    frontButtonLeft2 = FRONT_HW_LEFT2;
+    needsResave = true;
+  }
   validateFrontButtonMapping(s);
 
   // Reader font size — an actual point size since 1.5. Files written by 1.4 and

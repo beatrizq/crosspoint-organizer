@@ -25,9 +25,17 @@ struct HabitifyHabit {
   std::string id;          // Habitify habit id, needed for the log push
   std::string name;        // Display name, truncated at parse time
   std::string unitSymbol;  // Unit for logging, e.g. "rep"
-  float current = 0.0f;    // Accumulated for the period, as the server last said
-  float target = 0.0f;     // Goal for the period; 0 when the habit has no goal
-  float pending = 0.0f;    // Added locally, awaiting push
+  // The first Habitify Area this habit is assigned to, if any -- "" for none.
+  // A habit can belong to several areas in Habitify itself; only the first is
+  // kept, since this app shows one tab per habit rather than repeating a habit
+  // across several. Not returned by /habits/journal (the endpoint everything
+  // else here comes from) -- see HabitifyClient::fetchHabitAreas() and
+  // HabitifyHabitCache::getAreas() for where this actually comes from and is
+  // named.
+  std::string areaId;
+  float current = 0.0f;  // Accumulated for the period, as the server last said
+  float target = 0.0f;   // Goal for the period; 0 when the habit has no goal
+  float pending = 0.0f;  // Added locally, awaiting push
   // Habitify's own "status" == "completed" for the day, as of the last fetch.
   // The only way to know a goal-less habit (no numeric target) is done - see
   // isComplete() - and also true for a numeric habit marked done in Habitify
@@ -67,3 +75,24 @@ static constexpr size_t HABITIFY_MAX_HABITS = 40;
 // A habit id is a UUID-ish string; ids are cut to this length everywhere so one
 // stored against pending progress still matches the same habit next sync.
 static constexpr size_t HABITIFY_HABIT_ID_MAX_LEN = 48;
+
+/**
+ * One Habitify Area (a user-defined category habits can be grouped into,
+ * e.g. "Health", "Work") -- the Habits screen's tab bar is one tab per area
+ * that has at least one habit in it, plus a leading All. Distinct from
+ * HabitifyHabit: a habit only carries the area's id (see HabitifyHabit::areaId
+ * above); the name lives here once per area rather than repeated on every
+ * habit in it.
+ */
+struct HabitifyArea {
+  std::string id;
+  std::string name;  // Truncated at parse time, same as a habit's own name
+};
+
+// Areas this app tracks at once. Small: a Habitify account's areas are a
+// handful of top-level categories, not one per habit.
+static constexpr size_t HABITIFY_MAX_AREAS = 12;
+// Longest area name kept, matching HabitifyHabit::NAME_MAX_LEN: an area name
+// is user-written the same way a habit's is, so the same truncation budget
+// applies.
+static constexpr size_t HABITIFY_AREA_NAME_MAX_LEN = 64;

@@ -12,6 +12,7 @@
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+#include "util/HomeAppOrder.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
@@ -31,7 +32,20 @@ enum class HomeMenuItem {
   HABITS,
   OPDS_BROWSER,
   FILE_TRANSFER,
-  SETTINGS_MENU
+  SETTINGS_MENU,
+  // Named NOTIFICATIONS, not BLE_NOTIFICATIONS: the latter collides with the
+  // BLE_NOTIFICATIONS macro (BleNotificationQueue.h's
+  // #define BLE_NOTIFICATIONS BleNotificationQueue::getInstance()) -- the
+  // preprocessor rewrites it even after "HomeMenuItem::", which does not fail
+  // quietly (it errors on the resulting bogus qualified name).
+  NOTIFICATIONS,
+  // Named COMPANION_SCREEN, not COMPANION: the latter collides with the
+  // COMPANION macro (CompanionTracker.h's
+  // #define COMPANION CompanionTracker::getInstance()), the same problem
+  // NOTIFICATIONS above already has its own comment about. Opens
+  // QuickPickActivity, the same as any other home grid tile -- see
+  // HomeActivity::activateCompanion().
+  COMPANION_SCREEN
 };
 
 /**
@@ -114,6 +128,10 @@ class ActivityManager {
   void goToCalendar();
   void goToBudget(uint8_t initialTab = 0);  // 0 = Plan
   void goToHabits(std::string selectHabitId = "");
+  // Only reachable when ENABLE_BLE_NOTIFY_SPIKE is defined -- see
+  // BleNotifyRelay's own doc comment. HomeActivity never offers this tile
+  // otherwise, so no caller outside that build should ever invoke it.
+  void goToBleNotifications();
   // Syncs every configured integration over one Wi-Fi association.
   void goToSyncAll();
   void goToReadMenu();
@@ -124,6 +142,18 @@ class ActivityManager {
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
+  // Opens the companion screen fresh -- a new quickpick::roll(), the same
+  // "fresh visit" treatment HomeActivity::onEnter() gives its own tile (see
+  // its own homeSuggestionText comment) and main.cpp's boot-to-companion
+  // path use, rather than resuming whatever suggestion was last held. No-op
+  // when the companion is disabled -- see FRONT_BUTTON_HARDWARE/goToApp()'s
+  // own reasoning: nothing should call this for a hidden tile anyway.
+  void goToCompanion();
+  // Dispatches to whichever of the goTo* methods above opens `id`'s own
+  // screen -- the side Left/Right "previous/next app" shortcut every app
+  // screen has (see homeAppOrder::adjacentVisibleApp()) needs one call site
+  // that can take any app in the grid's own order, not a fixed pair.
+  void goToApp(homeAppOrder::AppId id);
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

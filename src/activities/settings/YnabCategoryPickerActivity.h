@@ -41,4 +41,5 @@ class YnabCategoryPickerActivity final : public Activity {
   const char* statusMessage = nullptr;
   std::vector<YnabClient::CategoryInfo> categories;
   bool dirty = false;  // Selection changed and needs persisting on exit
+  bool wifiActivated = false;
 };

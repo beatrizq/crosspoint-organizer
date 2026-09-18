@@ -180,12 +180,12 @@ void ClockOffsetActivity::getTouchControlRects(Rect& minusRect, Rect& plusRect) 
 }
 
 void ClockOffsetActivity::loop() {
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
     finish();
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
     activeField = static_cast<Field>((activeField + 1) % FIELD_COUNT);
     requestUpdate();
     return;

@@ -3,21 +3,33 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
 #include <WiFi.h>
 #include <YnabStore.h>
 
 #include <memory>
 #include <string>
 
+#include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "network/BleNotifyRelay.h"
 
 void YnabCategoryPickerActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
   state = State::LOADING;
   requestUpdate();
+
+  // Past this point every path uses WiFi, so onExit() owes a teardown. Free
+  // NimBLE's ~55KB init-time heap reservation before WiFi/TLS need their own
+  // headroom -- no matching resume(): onExit() below now reboots once
+  // wifiActivated is set, and BleNotifyRelay::begin() re-advertises fresh on
+  // the next boot. This screen previously never rebooted after using WiFi at
+  // all (a pre-existing gap independent of BLE).
+  wifiActivated = true;
+  BleNotifyRelay::pause();
 
   if (WiFi.status() == WL_CONNECTED) {
     fetchCategories();
@@ -46,10 +58,20 @@ void YnabCategoryPickerActivity::onExit() {
     LOG_DBG("YCP", "Saved %zu selected categories", YNAB_STORE.getSelectedCategories().size());
   }
   Activity::onExit();
+
+  // Reclaim WiFi/TLS heap fragmentation the same way every other WiFi-using
+  // screen does, now that onEnter() pauses BLE first.
+  if (wifiActivated && WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
 }
 
 void YnabCategoryPickerActivity::fetchCategories() {
-  const YnabClient::Error error = YnabClient::fetchCategoryList(categories);
+  freeink::SecureHttpClient http;
+  http.setInsecure();
+  const YnabClient::Error error = YnabClient::fetchCategoryList(http, categories);
   RenderLock lock(*this);
   if (error != YnabClient::OK) {
     LOG_ERR("YCP", "Category list failed: %s", YnabClient::errorString(error));
@@ -87,13 +109,13 @@ void YnabCategoryPickerActivity::toggleSelected() {
 }
 
 void YnabCategoryPickerActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     finish();
     return;
   }
   if (state == State::LOADING) return;
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
     if (state == State::FAILED) {
       finish();
       return;

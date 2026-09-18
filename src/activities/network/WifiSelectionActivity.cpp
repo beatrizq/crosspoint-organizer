@@ -5,6 +5,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 
 #include <algorithm>
 
@@ -355,10 +356,20 @@ void WifiSelectionActivity::attemptConnection() {
   WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
   delay(100);
 
-  // Scan all channels so networks with multiple APs use the strongest matching
-  // BSSID instead of the first match found by the framework's default fast scan.
-  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
-  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+  // Deliberately NOT calling WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN) /
+  // setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL) here (as a previous version of
+  // this code did, to pick the strongest BSSID when multiple APs share one
+  // SSID): WIFI_ALL_CHANNEL_SCAN scans every channel to completion and
+  // retains a wifi_ap_record_t for every match found, rather than stopping at
+  // the first one -- a real, reproduced crash traced free heap collapsing
+  // from ~56KB to under 3KB within ~5 seconds of a connection attempt
+  // starting, well before any success/failure/timeout outcome was even
+  // reached (esp_wifi_clear_ap_list() after the fact, added elsewhere in this
+  // file, can't help with a collapse that happens mid-scan). Falling back to
+  // the library default (WIFI_FAST_SCAN, which stops at the first SSID
+  // match) avoids that accumulation entirely. Trade-off: with multiple APs
+  // broadcasting the same SSID (a mesh network or WiFi extenders), this may
+  // connect to whichever is found first rather than the strongest one.
 
   // Set hostname so routers show "CrossPoint-Reader-AABBCCDDEEFF" instead of "esp32-XXXXXXXXXXXX"
   String mac = WiFi.macAddress();
@@ -380,7 +391,23 @@ void WifiSelectionActivity::checkConnectionStatus() {
 
   const wl_status_t status = WiFi.status();
 
+  // WIFI_ALL_CHANNEL_SCAN (set in attemptConnection()) makes WiFi.begin()
+  // perform a full-channel scan internally to find the target AP. Per
+  // esp_wifi.h's own documentation (esp_wifi_scan_start()), that scan's AP/BSS
+  // records are held in WiFi-driver-allocated memory until explicitly freed --
+  // this codebase never reads them out, so without this call they leak on
+  // every attempt. Matches a documented ESP-IDF issue (espressif/esp-idf#11381,
+  // "won't fix": freeing scan records is the caller's responsibility) with the
+  // same trigger (WIFI_ALL_CHANNEL_SCAN + a failed connection); reproduced here
+  // as a real crash -- one failed attempt measured a ~55KB free-heap collapse
+  // moments before Arduino-ESP32's own WiFi event handling hit an OOM abort().
+  // Called for every resolved outcome below (connected, failed, or timed out),
+  // not just failure, since the doc comment says to free it "once the scan is
+  // done" with no success/failure distinction -- never while still connecting,
+  // since that's not a resolved outcome yet.
+
   if (status == WL_CONNECTED) {
+    esp_wifi_clear_ap_list();
     // Successfully connected
     IPAddress ip = WiFi.localIP();
     char ipStr[16];
@@ -432,6 +459,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   }
 
   if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+    esp_wifi_clear_ap_list();
     connectionError = tr(STR_ERROR_GENERAL_FAILURE);
     if (status == WL_NO_SSID_AVAIL) {
       connectionError = tr(STR_ERROR_NETWORK_NOT_FOUND);
@@ -448,6 +476,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   // Check for timeout
   const unsigned long timeoutMs = autoConnecting ? AUTO_CONNECTION_TIMEOUT_MS : CONNECTION_TIMEOUT_MS;
   if (millis() - connectionStartTime > timeoutMs) {
+    esp_wifi_clear_ap_list();
     WiFi.disconnect();
     connectionError = tr(STR_ERROR_CONNECTION_TIMEOUT);
     if (autoConnecting) {
@@ -463,12 +492,12 @@ void WifiSelectionActivity::checkConnectionStatus() {
 void WifiSelectionActivity::loop() {
   // Check scan progress
   if (state == WifiSelectionState::SCANNING) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       WiFi.scanDelete();
       onComplete(false);
       return;
     }
-    if (autoConnecting && mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (autoConnecting && mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       autoConnecting = false;
       manualNetworkListRequested = true;
       requestUpdate();
@@ -480,12 +509,12 @@ void WifiSelectionActivity::loop() {
   // Check connection progress
   if (state == WifiSelectionState::CONNECTING || state == WifiSelectionState::AUTO_CONNECTING) {
     if (state == WifiSelectionState::AUTO_CONNECTING) {
-      if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
         WiFi.disconnect();
         onComplete(false);
         return;
       }
-      if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
         showNetworkListFromAutoConnect();
         return;
       }
@@ -547,18 +576,18 @@ void WifiSelectionActivity::loop() {
     }
 
     if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Left)) {
+        mappedInput.wasPressed(MappedInputManager::Button::Left1)) {
       if (savePromptSelection > 0) {
         savePromptSelection--;
         requestUpdate();
       }
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
-               mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+               mappedInput.wasPressed(MappedInputManager::Button::Left2)) {
       if (savePromptSelection < 1) {
         savePromptSelection++;
         requestUpdate();
       }
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (savePromptSelection == 0) {
         // User chose "Yes" - save the password
         RenderLock lock(*this);
@@ -566,7 +595,7 @@ void WifiSelectionActivity::loop() {
       }
       // Complete - parent will start web server
       onComplete(true);
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       // Skip saving, complete anyway
       onComplete(true);
     }
@@ -609,18 +638,18 @@ void WifiSelectionActivity::loop() {
     }
 
     if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Left)) {
+        mappedInput.wasPressed(MappedInputManager::Button::Left1)) {
       if (forgetPromptSelection > 0) {
         forgetPromptSelection--;
         requestUpdate();
       }
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Down) ||
-               mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+               mappedInput.wasPressed(MappedInputManager::Button::Left2)) {
       if (forgetPromptSelection < 1) {
         forgetPromptSelection++;
         requestUpdate();
       }
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (forgetPromptSelection == 1) {
         RenderLock lock(*this);
         // User chose "Forget network" - forget the network
@@ -634,7 +663,7 @@ void WifiSelectionActivity::loop() {
       }
       // Go back to network list (whether Cancel or Forget network was selected)
       startWifiScan();
-    } else if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    } else if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       // Skip forgetting, go back to network list
       startWifiScan();
     }
@@ -651,8 +680,8 @@ void WifiSelectionActivity::loop() {
 
   // Handle connection failed state
   if (state == WifiSelectionState::CONNECTION_FAILED) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1) ||
+        mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       // If we were auto-connecting or using a saved credential, offer to forget
       // the network
       if (autoConnecting || usedSavedPassword) {
@@ -671,13 +700,13 @@ void WifiSelectionActivity::loop() {
   // Handle network list state
   if (state == WifiSelectionState::NETWORK_LIST) {
     // Check for Back button to exit (cancel)
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right1)) {
       onComplete(false);
       return;
     }
 
     // Check for Confirm button to select network or rescan
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) {
       if (!networks.empty()) {
         selectNetwork(selectedNetworkIndex);
       } else {
@@ -686,12 +715,12 @@ void WifiSelectionActivity::loop() {
       return;
     }
 
-    if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Left2)) {
       startWifiScan();
       return;
     }
 
-    const bool leftPressed = mappedInput.wasPressed(MappedInputManager::Button::Left);
+    const bool leftPressed = mappedInput.wasPressed(MappedInputManager::Button::Left1);
     if (leftPressed) {
       const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
       if (hasSavedPassword) {

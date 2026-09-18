@@ -456,8 +456,8 @@ void EpubReaderActivity::loop() {
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
 
   if (automaticPageTurnActive) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Back) || ReaderUtils::isTouchMenuGesture(mappedInput)) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Right2) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Right1) || ReaderUtils::isTouchMenuGesture(mappedInput)) {
       automaticPageTurnActive = false;
       // updates chapter title space to indicate page turn disabled
       requestUpdate();
@@ -497,7 +497,7 @@ void EpubReaderActivity::loop() {
   // block. A Confirm release after a long-press function (bookmark/sync) fired is left
   // to the regular Confirm handler below, which consumes it via ignoreNextConfirmRelease.
   if (atEndOfBook && endOfBookOptions.menuActive() &&
-      !(ignoreNextConfirmRelease && mappedInput.wasReleased(MappedInputManager::Button::Confirm))) {
+      !(ignoreNextConfirmRelease && mappedInput.wasReleased(MappedInputManager::Button::Right2))) {
     std::string openPath;
     switch (endOfBookOptions.handleMenuInput(mappedInput, &openPath)) {
       case EndOfBookOptions::Action::OpenBook:
@@ -523,7 +523,7 @@ void EpubReaderActivity::loop() {
   // Enter reader menu activity on short-press Confirm or a downward swipe from the top edge. A long-press
   // that fired a bound function (bookmark or KOReader sync) sets ignoreNextConfirmRelease so the release
   // following the hold does not also open the menu.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) || ReaderUtils::isTouchMenuGesture(mappedInput)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2) || ReaderUtils::isTouchMenuGesture(mappedInput)) {
     if (ignoreNextConfirmRelease) {
       ignoreNextConfirmRelease = false;
     } else {
@@ -532,7 +532,7 @@ void EpubReaderActivity::loop() {
   }
 
   // Long-press Confirm runs the user-selected function (SETTINGS.longPressMenuFunction).
-  if (mappedInput.isPressed(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.isPressed(MappedInputManager::Button::Right2)) {
     switch (SETTINGS.longPressMenuFunction) {
       case CrossPointSettings::LP_MENU_BOOKMARK:
         // Hold ~0.4s drops a bookmark at the current page.
@@ -569,7 +569,7 @@ void EpubReaderActivity::loop() {
   }
 
   // Short press Back restores position when viewing a footnote (takes priority over navigation)
-  if (footnoteDepth > 0 && mappedInput.wasReleased(MappedInputManager::Button::Back) &&
+  if (footnoteDepth > 0 && mappedInput.wasReleased(MappedInputManager::Button::Right1) &&
       mappedInput.getHeldTime() < ReaderUtils::GO_BACK_OR_HOME_MS) {
     restoreSavedPosition();
     return;

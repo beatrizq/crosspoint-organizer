@@ -36,9 +36,29 @@ enum class AppId : uint8_t {
   Calendar = 2,
   Budget = 3,
   Habits = 4,
+  // Only ever a real, selectable tile in builds with ENABLE_BLE_NOTIFY_SPIKE
+  // defined (see BleNotifyRelay's own doc comment) -- HomeActivity skips it
+  // from the grid otherwise. Kept as a real id in every build regardless, not
+  // just the spike one, so this table and the persisted order format stay
+  // identical across build flavors.
+  Notifications = 5,
+  // Only a real, selectable tile when SETTINGS.companionEnabled -- HomeActivity
+  // skips it from the grid otherwise, the same runtime-gated treatment
+  // Notifications gets at compile time. Its icon is dynamic (the companion's
+  // own current pose, not a static UIIcon -- see HomeActivity's own grid
+  // rendering), and its display name prefers its character's built-in name
+  // over this table's generic appName when no nickname is set -- see
+  // CompanionTracker::displayName(), which HomeActivity calls directly for
+  // this entry's label instead of this file's own displayName().
+  Companion = 6,
+  // Always a real, selectable tile -- unlike Notifications/Companion, there is
+  // no condition it is ever hidden behind. Opens the same Settings screen the
+  // gear icon always has; Home's own Back button no longer does (see
+  // HomeActivity's own comment on its Back handling).
+  Settings = 7,
 };
 
-constexpr int APP_COUNT = 5;
+constexpr int APP_COUNT = 8;
 
 struct AppInfo {
   AppId id;
@@ -93,5 +113,19 @@ void parse(const char* stored, int (&out)[APP_COUNT]);
 
 /** Renders an order back to the stored form. `outSize` must be >= APP_COUNT + 1. */
 void format(const int (&order)[APP_COUNT], char* out, size_t outSize);
+
+/**
+ * The app one step forward (or back) from `current` in the user's own grid
+ * order, skipping any app that would not actually be a selectable tile right
+ * now (Notifications without ENABLE_BLE_NOTIFY_SPIKE, Companion while
+ * disabled -- the same gates HomeActivity::buildEntries() applies), and
+ * wrapping at either end. Backs the side Left/Right "previous/next app"
+ * shortcut every app screen has (see e.g. OrganizerScreenActivity's own
+ * loop()) -- reusing this rather than each screen re-deriving the visible
+ * order keeps it consistent with what Home's own grid would actually show.
+ * Falls back to the first visible app if `current` itself is not one (should
+ * not happen: every caller passes its own, always-visible AppId).
+ */
+AppId adjacentVisibleApp(AppId current, bool forward);
 
 }  // namespace homeAppOrder

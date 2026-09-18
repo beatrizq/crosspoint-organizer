@@ -20,6 +20,7 @@ void AppOrderActivity::onEnter() {
   selectedIndex = 0;
   holding = false;
   dirty = false;
+  swallowConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Right2);
   requestUpdate();
 }
 
@@ -58,7 +59,9 @@ void AppOrderActivity::moveHeld(const int delta) {
 }
 
 void AppOrderActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right2)) swallowConfirmRelease = false;
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right1)) {
     if (holding) {
       // Back puts the row down rather than leaving, so there is a way out of
       // holding that is not "commit wherever it happens to be".
@@ -70,7 +73,12 @@ void AppOrderActivity::loop() {
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Right2)) {
+    if (swallowConfirmRelease) {
+      // The tail of the press that opened this screen -- see its own comment.
+      swallowConfirmRelease = false;
+      return;
+    }
     holding = !holding;
     requestUpdate(true);
     return;
@@ -154,7 +162,11 @@ void AppOrderActivity::render(RenderLock&&) {
                  homeAppOrder::displayName(homeAppOrder::appAt(rows[index]).id));
         return std::string(label);
       },
-      nullptr, [rows](int index) { return homeAppOrder::appAt(rows[index]).icon; },
+      // No icon column: only Read's (UIIcon::Book) actually has art at this
+      // list's icon size, so showing icons here meant Read alone got one and
+      // every other app's row looked broken beside it. The position number
+      // in the label already identifies each row without one.
+      nullptr, nullptr,
       // The held row says so in its value column: the selection highlight alone
       // cannot distinguish "here" from "moving".
       [held, selected](int index) -> std::string {

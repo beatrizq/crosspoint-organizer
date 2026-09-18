@@ -42,6 +42,13 @@ class AppOrderActivity final : public Activity {
   // True while a row is picked up, so Up/Down move it instead of the cursor.
   bool holding = false;
   bool dirty = false;
+  // Guards against the Confirm press that opened this screen (from the
+  // Settings row that leads here) still being down on entry: unswallowed,
+  // its own release would read as a fresh Confirm here and immediately pick
+  // up row 0, before the user ever meant to start moving anything. Armed in
+  // onEnter() only when Confirm is still physically down at that point, same
+  // pattern as CompanionSettingsActivity's own swallowConfirmRelease.
+  bool swallowConfirmRelease = false;
 
   // Indices into the app table, in display order.
   int order[homeAppOrder::APP_COUNT] = {};

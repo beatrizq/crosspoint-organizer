@@ -94,12 +94,12 @@ class OptionPopup {
       selectedIndex = (selectedIndex + 1) % count;
       requestUpdate();
       return true;
-    } else if (input.wasPressed(MappedInputManager::Button::Confirm)) {
+    } else if (input.wasPressed(MappedInputManager::Button::Right2)) {
       active = false;
       if (onSelectCallback) onSelectCallback(selectedIndex);
       requestUpdate();
       return true;
-    } else if (input.wasPressed(MappedInputManager::Button::Back)) {
+    } else if (input.wasPressed(MappedInputManager::Button::Right1)) {
       active = false;
       requestUpdate();
       return true;

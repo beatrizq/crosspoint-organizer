@@ -12,13 +12,20 @@
  *   {"items":[{"id":"...","content":"...","completed_at":"...",...}, ...],
  *    "next_cursor":null}
  *
- * Nothing about a completed task is kept - the caller only wants how many
- * items matched, not what they were - so every field is walked past without
- * being stored, the same streaming approach TodoistTasksParser uses.
+ * Every field except `content` is walked past without being stored, the same
+ * streaming approach TodoistTasksParser uses -- content (the task's title) is
+ * captured into a small per-item scratch buffer and handed to an optional
+ * sink as each item closes, so a response with many items never needs more
+ * than one title's worth of RAM at a time. The sink is optional: a caller
+ * that only wants the count (as this class originally did) can pass nullptr.
  */
 class TodoistCompletedCountParser {
  public:
-  TodoistCompletedCountParser();
+  // Invoked once per completed item, as soon as it closes, with its title
+  // (content field). Not invoked for an item with no content field.
+  using TitleSink = void (*)(void* ctx, const char* content);
+
+  explicit TodoistCompletedCountParser(TitleSink sink = nullptr, void* sinkCtx = nullptr);
 
   TodoistCompletedCountParser(const TodoistCompletedCountParser&) = delete;
   TodoistCompletedCountParser& operator=(const TodoistCompletedCountParser&) = delete;
@@ -36,6 +43,12 @@ class TodoistCompletedCountParser {
     IN_ITEM_OBJECT,
   };
 
+  enum class LastKey : uint8_t {
+    NONE,
+    ITEMS,
+    CONTENT,
+  };
+
   static void sOnKey(void* ctx, const char* key, size_t len);
   static void sOnString(void* ctx, const char* value, size_t len);
   static void sOnNumber(void* ctx, const char* value, size_t len);
@@ -47,10 +60,16 @@ class TodoistCompletedCountParser {
   static void sOnArrayEnd(void* ctx);
 
   StreamingJsonParser parser;
+  TitleSink sink;
+  void* sinkCtx;
 
   Position position;
-  bool lastKeyWasItems;
+  LastKey lastKey;
   uint8_t depth;      // Object/array nesting outside the items array
   uint8_t itemDepth;  // Nesting inside the current item object (1 = the item itself)
   size_t itemCount;
+
+  // Same size as TodoistTasksParser's currentContent -- Todoist's own title
+  // length convention, not something this parser invents independently.
+  char currentContent[121];
 };
